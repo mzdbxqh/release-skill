@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://release-skill.dev/artifact-plan.schema.json",
+  "title": "ArtifactPlan",
+  "description": "Read-only inspection plan for artifact state and next action.",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "operation",
+    "bindings",
+    "artifacts",
+    "safeToWrite",
+    "targetUnchanged",
+    "nextAction",
+    "planDigest"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "type": "string", "const": "release-skill.dev/artifact-plan/v1" },
+    "operation": { "type": "string", "enum": ["inspect", "init", "status"] },
+    "bindings": {
+      "type": "object",
+      "required": [
+        "repositoryIdentity",
+        "policyDigest",
+        "baseManifestDigest",
+        "currentManifestDigest",
+        "producerClosureDigest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "repositoryIdentity": { "type": "string" },
+        "policyDigest": { "type": "string" },
+        "baseManifestDigest": { "type": "string" },
+        "currentManifestDigest": { "type": "string" },
+        "producerClosureDigest": { "type": "string" }
+      }
+    },
+    "artifacts": { "type": "array" },
+    "safeToWrite": { "type": "boolean" },
+    "targetUnchanged": { "type": "boolean" },
+    "nextAction": {
+      "type": "object",
+      "required": ["command"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string" }
+      }
+    },
+    "planDigest": { "type": "string" }
+  }
+}

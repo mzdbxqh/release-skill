@@ -1,0 +1,75 @@
+{
+  "name": "release-skill",
+  "version": "0.1.1",
+  "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mzdbxqh/release-skill.git"
+  },
+  "homepage": "https://github.com/mzdbxqh/release-skill#readme",
+  "bugs": {
+    "url": "https://github.com/mzdbxqh/release-skill/issues"
+  },
+  "type": "module",
+  "bin": {
+    "release-skill": "./bin/release-skill.mjs"
+  },
+  "files": [
+    ".agents/",
+    ".claude-plugin/",
+    ".codex-plugin/",
+    "bin/",
+    "src/",
+    "skills/",
+    "skills-src/",
+    "adapters/",
+    "references/",
+    "schemas/",
+    "native/",
+    "!native/safe-write/build/",
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "INSTALL.md",
+    "LICENSE",
+    "NOTICE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "node --check src/**/*.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:no-dogfood": "node --test $(ls test/*.test.mjs | grep -v -E 'dogfood|artifacts-safe-fs-native-seam')",
+    "typecheck": "node --check src/**/*.mjs bin/*.mjs",
+    "sync:skills": "node scripts/sync-skills.mjs",
+    "sync:skills:check": "node scripts/sync-skills.mjs --check",
+    "build:adapters": "node scripts/build-adapters.mjs",
+    "build:adapters:check": "node scripts/build-adapters.mjs --check",
+    "native:build": "node-gyp rebuild --directory native/safe-write",
+    "native:build:test": "GYP_DEFINES='test_seam=1' node-gyp rebuild --directory native/safe-write",
+    "native:test": "npm run native:build:test && node --expose-gc --test test/artifacts-safe-fs-native-seam.test.mjs && npm run native:build && RELEASE_SKILL_NATIVE_DEV=1 node --test test/artifacts-safe-fs.test.mjs test/artifacts-transaction-native.test.mjs && node --input-type=module -e \"import {createRequire} from 'node:module';const a=createRequire(import.meta.url)('./native/safe-write/build/Release/safe_write.node');const k=Object.keys(a).sort();const e=['abortTemp','chmod','close','createTemp','fsync','mkdir','openDir','openRoot','readEntry','readFile','rename','rmdir','unlink'];if(k.length!==e.length||k.some((v,i)=>v!==e[i])){console.error('Production exports mismatch:',k);process.exit(1)}console.log('Production exports verified:',k.length,'functions')\""
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "libnpmpublish": "11.1.0",
+    "npm-registry-fetch": "18.0.2",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "node-gyp": "12.3.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "release",
+    "publish",
+    "governance",
+    "skill",
+    "claude-code",
+    "codex"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,23 @@
+{
+  "name": "release-skill",
+  "interface": {
+    "displayName": "Release Skill",
+    "shortDescription": "Safe preparation and frozen GitHub/npm production publishing",
+    "category": "DevOps"
+  },
+  "plugins": [
+    {
+      "name": "release-skill",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "DevOps",
+      "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification"
+    }
+  ]
+}

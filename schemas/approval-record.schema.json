@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://release-skill.dev/schemas/approval-record/v1",
+  "title": "Approval Record",
+  "description": "Schema for human approval record bound to a frozen release plan",
+  "type": "object",
+  "required": [
+    "planDigest",
+    "baseline",
+    "approvedActions",
+    "actor",
+    "approvedAt",
+    "expiresAt"
+  ],
+  "anyOf": [
+    { "required": ["targetVersion"] },
+    { "required": ["unitVersions"] }
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "planDigest": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SHA-256 digest of the frozen release plan"
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["gitTreeHash"],
+      "additionalProperties": false,
+      "properties": {
+        "gitTreeHash": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Git tree hash at plan freeze time"
+        },
+        "workspaceDigest": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Deterministic digest of workspace file state at plan freeze time"
+        },
+        "workspaceDigestAlgorithm": {
+          "type": "string",
+          "const": "git-workspace-v2",
+          "description": "Versioned algorithm authority for workspaceDigest"
+        }
+      }
+    },
+    "targetVersion": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target release version approved"
+    },
+    "unitVersions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Exact unit-id to target-version authority for multi-unit releases"
+    },
+    "approvedActions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "List of approved external actions (no wildcards)"
+    },
+    "actor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identity of the approver"
+    },
+    "approvedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when approval was granted"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when approval expires (max 24h after approvedAt)"
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "reason", "responsible", "expiresAt"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "responsible": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "description": "Exception waivers with reason, responsible person, and expiration"
+    }
+  }
+}
