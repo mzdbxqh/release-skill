@@ -25,6 +25,7 @@ const execFile = promisify(execFileCb);
 import { loadProjectConfig } from '../core/config.mjs';
 import { captureBaseline } from '../core/baseline.mjs';
 import { runHook } from '../core/hooks.mjs';
+import { runSnapshotVerificationGates } from '../core/verification-gates.mjs';
 import { createEvidenceWriter } from '../core/evidence.mjs';
 import { computePlanDigest, writePlanAtomic, writePlanImmutable } from '../core/plan.mjs';
 import { sha256Hex } from '../core/digest.mjs';
@@ -483,7 +484,37 @@ async function processSnapshots(config, root, evidence, runDir, production = fal
   return { unitResults, snapshotDigests };
 }
 
-async function buildProductionAssets(unitResults, resolvedVersions, root, runDir) {
+function resolveProductionBranch(unit, version) {
+  const tagTemplate = unit.version?.tagTemplate ?? `${unit.id}-v{version}`;
+  const tag = tagTemplate.replace('{version}', version);
+  const branchTemplate = unit.production?.branchTemplate ?? 'release/{tag}';
+  return {
+    tag,
+    branch: branchTemplate
+      .replaceAll('{tag}', tag)
+      .replaceAll('{version}', version)
+      .replaceAll('{unit}', unit.id),
+    branchStrategy: unit.production?.branchStrategy ?? 'create-release-branch',
+  };
+}
+
+function normalizedProductionConfig(unit) {
+  return {
+    ...(unit.production ?? {}),
+    githubHost: unit.production?.githubHost ?? 'github.com',
+    branchTemplate: unit.production?.branchTemplate ?? 'release/{tag}',
+    branchStrategy: unit.production?.branchStrategy ?? 'create-release-branch',
+  };
+}
+
+async function buildProductionAssets(
+  unitResults,
+  resolvedVersions,
+  root,
+  runDir,
+  unitBaselineResults,
+  buildGitRepository = buildFrozenGitRepository,
+) {
   for (const { unit } of unitResults) {
     const npmDistribution = (unit.distributions ?? []).find((distribution) => distribution.type === 'npm');
     if (npmDistribution && !['public', 'restricted'].includes(npmDistribution.access)) {
@@ -497,13 +528,7 @@ async function buildProductionAssets(unitResults, resolvedVersions, root, runDir
   for (let index = 0; index < unitResults.length; index += 1) {
     const { unit, manifest } = unitResults[index];
     const version = resolvedVersions[index];
-    const tagTemplate = unit.version?.tagTemplate ?? `${unit.id}-v{version}`;
-    const tag = tagTemplate.replace('{version}', version);
-    const branchTemplate = unit.production?.branchTemplate ?? 'release/{tag}';
-    const branch = branchTemplate
-      .replaceAll('{tag}', tag)
-      .replaceAll('{version}', version)
-      .replaceAll('{unit}', unit.id);
+    const { tag, branch, branchStrategy } = resolveProductionBranch(unit, version);
     const snapshotPath = relative(root, manifest.outputDir);
     const observed = await computeFrozenSnapshot(manifest.outputDir);
     if (observed.digest !== manifest.snapshotDigest) {
@@ -521,11 +546,21 @@ async function buildProductionAssets(unitResults, resolvedVersions, root, runDir
     const sealed = await computeFrozenSnapshot(manifest.outputDir);
 
     const repositoryDir = resolveUnitScopedPath(resolve(runDir, 'git'), unit.id, { suffix: '.git' });
-    const git = await buildFrozenGitRepository({
+    const unitBaseline = unitBaselineResults.get(unit.id);
+    const parent = branchStrategy === 'create-release-branch'
+      ? undefined
+      : {
+          githubHost: unitBaseline.githubHost,
+          repo: unitBaseline.repo,
+          ref: unitBaseline.ref,
+          commit: unitBaseline.commit,
+        };
+    const git = await buildGitRepository({
       snapshotDir: manifest.outputDir,
       repositoryDir,
       version,
       expectedSnapshotDigest: sealed.digest,
+      parent,
     });
 
     let npm = null;
@@ -551,6 +586,8 @@ async function buildProductionAssets(unitResults, resolvedVersions, root, runDir
       gitObjectDir: relative(root, repositoryDir),
       commit: git.commit,
       tree: git.tree,
+      branchStrategy,
+      ...(git.parentCommit ? { parentCommit: git.parentCommit } : {}),
       branch,
       tag,
       npm: npm ? {
@@ -725,6 +762,11 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
         githubHost: unit.production?.githubHost ?? 'github.com',
         commit: asset.commit,
         tree: asset.tree,
+        branchStrategy: asset.branchStrategy,
+        ...(asset.parentCommit ? { parentCommit: asset.parentCommit } : {}),
+        ...(asset.branchStrategy === 'advance-existing-branch'
+          ? { expectedBaselineCommit: asset.parentCommit }
+          : {}),
       },
       expected: {
         branch: asset.branch,
@@ -734,6 +776,24 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
       },
       status: 'PENDING',
     });
+
+    if (asset.branchStrategy === 'initialize-default-branch') {
+      actions.push({
+        id: `set-default-branch-${unit.id}`,
+        type: 'set-default-branch',
+        adapter: 'git-github',
+        unitId: unit.id,
+        parameters: {
+          repo: unit.publicRepo,
+          githubHost: unit.production?.githubHost ?? 'github.com',
+          oldBranch: unit.production.expectedCurrentDefaultBranch,
+          newBranch: asset.branch,
+          expectedNewBranchCommit: asset.commit,
+        },
+        expected: { defaultBranch: asset.branch, newBranchCommit: asset.commit },
+        status: 'PENDING',
+      });
+    }
 
     // Create tag
     actions.push({
@@ -908,6 +968,8 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
  *   the project config declares hooks. Hooks are user-configured arbitrary
  *   local processes without filesystem/network isolation. Authorization
  *   means the user accepts hook side-effect risks, not that hooks are safe.
+ * @param {boolean} [options.verificationGatesAuthorized] - Must be explicitly
+ *   true when project verification gates are declared.
  *
  * @returns {Promise<{ planPath: string, planDigest: string, evidenceDir: string }>}
  *
@@ -922,6 +984,7 @@ export async function prepareRelease(options) {
     runDir: runDirOpt,
     clock,
     hooksAuthorized,
+    verificationGatesAuthorized,
     production = false,
     observePreviousPublicBaselineFn,
   } = options ?? {};
@@ -1048,6 +1111,43 @@ export async function prepareRelease(options) {
       });
     }
 
+    const declaredVerificationGates = config.verificationGates ?? [];
+    if (declaredVerificationGates.length > 0) {
+      await evidence.append({
+        phase: 'verification-gate-authorization',
+        status: 'started',
+        gateCount: declaredVerificationGates.length,
+        gates: declaredVerificationGates.map((gate) => ({
+          id: gate.id,
+          phase: gate.phase,
+          unitId: gate.scope.unit,
+          distribution: gate.scope.distribution ?? null,
+          executable: gate.command[0],
+          args: gate.command.slice(1),
+          cwd: gate.cwd,
+        })),
+      });
+      if (verificationGatesAuthorized !== true) {
+        await evidence.append({
+          phase: 'verification-gate-authorization',
+          status: 'denied',
+          gateCount: declaredVerificationGates.length,
+        });
+        throw new ReleaseError(
+          GATE_FAILED,
+          `project declares ${declaredVerificationGates.length} verification gate(s). ` +
+          'They run local project commands without a network sandbox. ' +
+          'To proceed, pass --acknowledge-gate-side-effects (CLI) or verificationGatesAuthorized=true (API).',
+          { gateIds: declaredVerificationGates.map((gate) => gate.id) },
+        );
+      }
+      await evidence.append({
+        phase: 'verification-gate-authorization',
+        status: 'authorized',
+        gateCount: declaredVerificationGates.length,
+      });
+    }
+
     // --- Step 3: Run declared hooks ---
     await evidence.append({ phase: 'hooks', status: 'started' });
     await runDeclaredHooks(config, realRoot, evidence);
@@ -1069,6 +1169,12 @@ export async function prepareRelease(options) {
 
     // --- Step 4b: Per-unit previous public baseline observe ---
     const configUnits = config.releaseUnits ?? [];
+    const resolvedVersions = await resolveAllUnitVersions(
+      configUnits,
+      realRoot,
+      version,
+      evidence,
+    );
     const defaultObserveFn = async (repo, ref, expectedCommit, { githubHost = 'github.com' } = {}) => {
       try {
         const { stdout } = await execFile("git", ["ls-remote", `https://${githubHost}/${repo}.git`, ref], {
@@ -1084,11 +1190,57 @@ export async function prepareRelease(options) {
       }
     };
     const observeFn = options.observePreviousPublicBaselineFn ?? defaultObserveFn;
+    const defaultObserveDefaultBranchFn = async (repo, { githubHost = 'github.com' } = {}) => {
+      try {
+        const { stdout } = await execFile(
+          'gh',
+          ['api', `repos/${repo}`, '--jq', '.default_branch'],
+          {
+            shell: false,
+            encoding: 'utf8',
+            timeout: 30000,
+            env: { ...process.env, GH_HOST: githubHost },
+          },
+        );
+        return { status: 'observed', defaultBranch: stdout.trim() };
+      } catch (error) {
+        return { status: 'unknown', error: error.message };
+      }
+    };
+    const observeDefaultBranch = options.observeDefaultBranchFn ?? defaultObserveDefaultBranchFn;
     const unitBaselineResults = new Map();
-    for (const unit of configUnits) {
+    for (let unitIndex = 0; unitIndex < configUnits.length; unitIndex += 1) {
+      const unit = configUnits[unitIndex];
       const ppbConfig = unit.previousPublicBaseline;
       if (!ppbConfig) continue;
       const productionGithubHost = unit.production?.githubHost ?? 'github.com';
+      const { branch, branchStrategy } = resolveProductionBranch(unit, resolvedVersions[unitIndex]);
+      if (production && ['advance-existing-branch', 'initialize-default-branch'].includes(branchStrategy)) {
+        if (offline) {
+          throw new ReleaseError(
+            GATE_FAILED,
+            `unit "${unit.id}" branch strategy "${branchStrategy}" requires online production prepare`,
+            { unitId: unit.id, branchStrategy },
+          );
+        }
+        if (ppbConfig.mode !== 'bound') {
+          throw new ReleaseError(
+            GATE_FAILED,
+            `unit "${unit.id}" branch strategy "${branchStrategy}" requires previousPublicBaseline.mode=bound`,
+            { unitId: unit.id, branchStrategy },
+          );
+        }
+        if (
+          branchStrategy === 'advance-existing-branch' &&
+          ppbConfig.ref !== `refs/heads/${branch}`
+        ) {
+          throw new ReleaseError(
+            GATE_FAILED,
+            `unit "${unit.id}" advance-existing-branch baseline ref must equal refs/heads/${branch}`,
+            { unitId: unit.id, expectedRef: `refs/heads/${branch}`, actualRef: ppbConfig.ref },
+          );
+        }
+      }
       const effectivePpbConfig = ppbConfig.mode === 'bound'
         ? { ...ppbConfig, githubHost: productionGithubHost }
         : ppbConfig;
@@ -1214,12 +1366,59 @@ export async function prepareRelease(options) {
         status: "completed",
         consistent: true,
       });
+
+      if (production && branchStrategy === 'initialize-default-branch') {
+        const expectedCurrent = unit.production?.expectedCurrentDefaultBranch;
+        const observedDefault = await observeDefaultBranch(unit.publicRepo, {
+          githubHost: productionGithubHost,
+        });
+        await evidence.append({
+          phase: 'default-branch-observe',
+          unitId: unit.id,
+          status: observedDefault.status,
+          expectedCurrentDefaultBranch: expectedCurrent,
+          observedCurrentDefaultBranch: observedDefault.defaultBranch ?? null,
+          ...(observedDefault.error ? { error: observedDefault.error } : {}),
+        });
+        if (
+          observedDefault.status !== 'observed' ||
+          !observedDefault.defaultBranch ||
+          observedDefault.defaultBranch !== expectedCurrent
+        ) {
+          throw new ReleaseError(
+            GATE_FAILED,
+            `unit "${unit.id}" GitHub default branch does not match expectedCurrentDefaultBranch`,
+            {
+              unitId: unit.id,
+              expectedCurrentDefaultBranch: expectedCurrent,
+              observedCurrentDefaultBranch: observedDefault.defaultBranch ?? null,
+              observationStatus: observedDefault.status,
+            },
+          );
+        }
+      }
     }
 
     // --- Step 5: Build snapshots, scan, and evaluate README ---
     const { unitResults, snapshotDigests } = await processSnapshots(
       config, realRoot, evidence, runDir, production,
     );
+
+    // Snapshot gates always run on disposable writable copies. The public
+    // snapshot authority is re-digested after every gate and is never exposed
+    // as the gate working directory.
+    const snapshotGateResults = await runSnapshotVerificationGates({
+      gates: declaredVerificationGates,
+      unitResults,
+      runDir,
+      evidence,
+      env: options.gateEnv ?? process.env,
+    });
+    await evidence.append({
+      phase: 'snapshot-verify',
+      status: 'completed',
+      gateCount: snapshotGateResults.length,
+    });
 
     // --- Step 6: Remote uniqueness (deferred to publish preflight) ---
     // Prepare only observes the previous public baseline (already done above).
@@ -1244,16 +1443,15 @@ export async function prepareRelease(options) {
     // --- Step 7: Build plan object ---
     await evidence.append({ phase: 'plan-assembly', status: 'started' });
 
-    // Resolve versions for all units
-    const resolvedVersions = await resolveAllUnitVersions(
-      config.releaseUnits ?? [],
-      realRoot,
-      version,
-      evidence,
-    );
-
     const productionAssets = production
-      ? await buildProductionAssets(unitResults, resolvedVersions, realRoot, runDir)
+      ? await buildProductionAssets(
+          unitResults,
+          resolvedVersions,
+          realRoot,
+          runDir,
+          unitBaselineResults,
+          options.buildFrozenGitRepositoryFn ?? buildFrozenGitRepository,
+        )
       : null;
 
     const units = unitResults.map(({ unit, manifest }, idx) => {
@@ -1267,14 +1465,18 @@ export async function prepareRelease(options) {
         tagTemplate: unit.version?.tagTemplate,
         snapshotDigest: snapshotDigests[idx],
         ...(productionAssets ? {
-          productionConfig: unit.production ?? {},
+          productionConfig: normalizedProductionConfig(unit),
           frozenSnapshot: {
             path: productionAssets[idx].snapshotPath,
             manifestDigest: productionAssets[idx].manifestDigest,
             gitObjectDir: productionAssets[idx].gitObjectDir,
             branch: productionAssets[idx].branch,
+            branchStrategy: productionAssets[idx].branchStrategy,
             commit: productionAssets[idx].commit,
             tree: productionAssets[idx].tree,
+            ...(productionAssets[idx].parentCommit
+              ? { parentCommit: productionAssets[idx].parentCommit }
+              : {}),
             npm: productionAssets[idx].npm,
           },
         } : {}),
@@ -1300,6 +1502,7 @@ export async function prepareRelease(options) {
         capturedAt: baseline.capturedAt,
       },
       configDigest,
+      verificationGates: config.verificationGates ?? [],
       snapshotDigest: overallSnapshotDigest,
       ...(production ? {
         production: {

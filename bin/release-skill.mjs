@@ -7,7 +7,7 @@ import { parseNodeMajor, meetsMinimum, computeReadinessStatus } from '../src/cor
 
 const execFile = promisify(execFileCb);
 
-const COMMANDS = new Set(['help', 'assess', 'prepare', 'approve', 'publish', 'reconcile', 'verify', 'artifacts']);
+const COMMANDS = new Set(['help', 'setup', 'assess', 'prepare', 'approve', 'publish', 'reconcile', 'verify', 'artifacts']);
 
 /**
  * Check if a command is available and get its version.
@@ -113,6 +113,11 @@ async function performEnvironmentChecks() {
  */
 function getCapabilityMaturity() {
   return {
+    setup: {
+      available: true,
+      mode: 'read-only dry-run / confirmed create-once',
+      description: 'Discover first-use facts and create an absent config only after exact setupDigest confirmation',
+    },
     assess: {
       available: true,
       mode: 'read-only',
@@ -125,17 +130,17 @@ function getCapabilityMaturity() {
     },
     publish: {
       available: true,
-      mode: 'controlled production (sandbox-verified)',
+      mode: 'controlled production (protocol-tested; no OS/network sandbox)',
       description: 'Publishes frozen GitHub/npm artifacts and runs configured Claude/Codex consumer checkpoints with approval and exact digest confirmation',
     },
     reconcile: {
       available: true,
-      mode: 'evidence-based recovery (sandbox-verified)',
+      mode: 'evidence-based recovery (protocol-tested; no OS/network sandbox)',
       description: 'Reconcile PARTIAL runs, retry safe missing checkpoints, and stop for human decisions on conflicts',
     },
     verify: {
       available: true,
-      mode: 'fresh consumer verification (sandbox-verified)',
+      mode: 'fresh consumer verification (protocol-tested; no OS/network sandbox)',
       description: 'Recheck remote state, exact npm installation, CLI help, and configured Claude/Codex installs before VERIFIED',
     },
   };
@@ -149,6 +154,7 @@ Usage:
 
 Commands:
   help       Show this help message and exit
+  setup      Discover first-use configuration and gate candidates (dry-run by default)
   assess     Read-only assessment of project release readiness
   prepare    Freeze a release plan (release-skill output to .release-skill/; hooks may do remote ops)
   approve    Record local approval for a frozen release plan
@@ -166,12 +172,17 @@ Options:
   --confirm-production <digest> Confirm the exact production plan digest
   --output <path>  Override prepare/approve output path (non-production only)
   --run-dir <path> Override prepare run directory; production requires one direct child of .release-skill/runs
+  --answers <path> Human-reviewed setup answers JSON
+  --write          Create an absent project.yaml during setup; never overwrites
+  --confirm-setup <digest> Confirm exact setup facts and answers before create
+  --acknowledge-hook-side-effects Acknowledge unsandboxed legacy hook execution
+  --acknowledge-gate-side-effects Acknowledge unsandboxed local verification gate execution
   --json           Output results as JSON
   --version        Show version and exit
   -h, --help       Show this help message and exit
 
 Safety:
-  Safe default: help -> assess -> prepare --offline -> human review.
+  Safe default: help -> setup (when config is absent) -> assess -> prepare --offline -> human review.
   Production happy end: prepare --production -> approve -> publish -> verify.
   prepare copies current public files into a local snapshot; it does not rewrite source files.
   - Default mode is offline (release-skill pipeline does no remote writes)
@@ -185,6 +196,7 @@ Safety:
 
 First safe command:
   release-skill help --json    # Environment check (read-only)
+  release-skill setup --root <path> --json  # First-use discovery (read-only)
   release-skill assess --root <path> --offline --json  # Project assessment`);
 }
 
@@ -245,12 +257,13 @@ if (!command || command === 'help') {
       checks,
       capabilities,
       maturity: {
+        setup: 'read-only by default; create-once requires answers plus exact setupDigest confirmation',
         assess: 'read-only (default); --output writes local report',
-        prepare: 'offline local writes; requires --acknowledge-hook-side-effects when hooks are configured',
+        prepare: 'offline local writes; configured hooks/gates require their explicit side-effect acknowledgements',
         onlinePrepare: 'previous-public-baseline observation available; production mode freezes publish artifacts and fails closed on drift or unknown state',
-        publish: 'GitHub/npm plus configured Claude/Codex consumer checkpoints are sandbox-verified; approval and exact digest confirmation required',
-        reconcile: 'PARTIAL recovery sandbox-verified; remote conflicts require human intervention',
-        verify: 'fresh exact npm and Claude/Codex consumer installation checks are sandbox-verified; success reaches VERIFIED',
+        publish: 'GitHub/npm plus configured Claude/Codex consumer checkpoints are protocol-tested without an OS/network sandbox; approval and exact digest confirmation required',
+        reconcile: 'PARTIAL recovery is protocol-tested without an OS/network sandbox; remote conflicts require human intervention',
+        verify: 'fresh exact npm and Claude/Codex consumer installation checks are protocol-tested without an OS/network sandbox; configured consumer processes require explicit acknowledgement; success reaches VERIFIED',
       },
       recommendations: [],
     };
@@ -307,6 +320,45 @@ if (!COMMANDS.has(command)) {
     console.error('Run "release-skill help" for available commands.');
   }
   process.exit(2);
+}
+
+// --- Setup command routing ---
+if (command === 'setup') {
+  const { setupProject } = await import('../src/commands/setup.mjs');
+  const rootIdx = args.indexOf('--root');
+  const rawRoot = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
+  const root = resolve(rawRoot);
+  const answersIdx = args.indexOf('--answers');
+  const answersPath = answersIdx !== -1 && args[answersIdx + 1] ? args[answersIdx + 1] : undefined;
+  const confirmationIdx = args.indexOf('--confirm-setup');
+  const confirmSetup = confirmationIdx !== -1 && args[confirmationIdx + 1]
+    ? args[confirmationIdx + 1]
+    : undefined;
+  const write = args.includes('--write');
+  try {
+    const report = await setupProject({ root, answersPath, write, confirmSetup });
+    if (hasJson) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(`Setup status: ${report.status}`);
+      if (report.setupDigest) console.log(`Setup digest: ${report.setupDigest}`);
+      if (report.configPath) console.log(`Config: ${report.configPath}`);
+      if (report.next) console.log(`Next: ${report.next}`);
+    }
+    process.exit(['READY_TO_WRITE', 'CONFIG_CREATED', 'ALREADY_CONFIGURED'].includes(report.status) ? 0 : 2);
+  } catch (err) {
+    if (hasJson) {
+      console.log(JSON.stringify({
+        error: err.code ?? 'UNKNOWN_ERROR',
+        message: err.message,
+        details: err.details ?? {},
+        exitCode: err.exitCode ?? 1,
+      }));
+    } else {
+      console.error(`Error: ${err.message}`);
+    }
+    process.exit(err.exitCode ?? 1);
+  }
 }
 
 // --- Assess command routing ---
@@ -366,6 +418,7 @@ if (command === 'prepare') {
   }
 
   const hooksAuthorized = args.includes('--acknowledge-hook-side-effects');
+  const verificationGatesAuthorized = args.includes('--acknowledge-gate-side-effects');
   const production = args.includes('--production');
   const outputIdx = args.indexOf('--output');
   const output = outputIdx !== -1 && args[outputIdx + 1] ? resolve(args[outputIdx + 1]) : undefined;
@@ -378,6 +431,7 @@ if (command === 'prepare') {
       version: targetVersion,
       offline,
       hooksAuthorized,
+      verificationGatesAuthorized,
       production,
       output,
       runDir,
@@ -563,6 +617,7 @@ if (command === 'verify') {
   const planPath = planIdx !== -1 && args[planIdx + 1] ? resolve(args[planIdx + 1]) : undefined;
   const runIdx = args.indexOf('--run');
   const runPath = runIdx !== -1 && args[runIdx + 1] ? resolve(args[runIdx + 1]) : undefined;
+  const verificationGatesAuthorized = args.includes('--acknowledge-gate-side-effects');
 
   if (!planPath || !runPath) {
     const msg = 'verify requires --plan <path> and --run <path>';
@@ -587,6 +642,7 @@ if (command === 'verify') {
       sourceRunPath: runPath,
       adapterRegistry: registry,
       root,
+      verificationGatesAuthorized,
     });
 
     if (hasJson) {

@@ -57,6 +57,9 @@ export const ActionType = Object.freeze({
   // consumer marketplace install (production)
   CLAUDE_MARKETPLACE_INSTALL: 'claude-marketplace-install',
   CODEX_MARKETPLACE_INSTALL: 'codex-marketplace-install',
+
+  // default branch management
+  SET_DEFAULT_BRANCH: 'set-default-branch',
 });
 
 /**

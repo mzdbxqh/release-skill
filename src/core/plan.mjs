@@ -132,6 +132,31 @@ export function validatePlan(plan) {
       { validationErrors: errors },
     );
   }
+
+  const unitsById = new Map((plan.units ?? []).map((unit) => [unit.id, unit]));
+  const gateIds = new Set();
+  for (const gate of plan.verificationGates ?? []) {
+    if (gateIds.has(gate.id)) {
+      throw new ReleaseError(GATE_FAILED, `duplicate verification gate id: "${gate.id}"`);
+    }
+    gateIds.add(gate.id);
+    const unit = unitsById.get(gate.scope.unit);
+    if (!unit) {
+      throw new ReleaseError(
+        GATE_FAILED,
+        `verification gate "${gate.id}" references unknown unit "${gate.scope.unit}"`,
+      );
+    }
+    if (
+      gate.phase === 'consumer-verify' &&
+      !(unit.distributions ?? []).some((distribution) => distribution.type === gate.scope.distribution)
+    ) {
+      throw new ReleaseError(
+        GATE_FAILED,
+        `verification gate "${gate.id}" references undeclared distribution "${gate.scope.distribution}"`,
+      );
+    }
+  }
 }
 
 /**
@@ -260,6 +285,7 @@ const EXPECTED_ADAPTER = {
   'npm-publish': 'npm',
   'claude-marketplace-install': 'plugin-marketplace',
   'codex-marketplace-install': 'plugin-marketplace',
+  'set-default-branch': 'git-github',
 };
 
 /** Required action types for every unit. */
@@ -317,6 +343,7 @@ export function validatePlanActionCompleteness(plan) {
     const production = plan.production?.mode === 'github-npm-v1';
     const frozen = unit.frozenSnapshot;
     const productionConfig = unit.productionConfig ?? {};
+    const branchStrategy = productionConfig.branchStrategy;
     const expectedTag = tagTemplate
       ? tagTemplate.replace('{version}', targetVersion ?? '')
       : null;
@@ -346,12 +373,41 @@ export function validatePlanActionCompleteness(plan) {
       failures.push(`unit "${unitId}" is missing frozenSnapshot for production publish`);
     }
     if (production && frozen) {
+      if (!['create-release-branch', 'advance-existing-branch', 'initialize-default-branch'].includes(branchStrategy)) {
+        failures.push(`unit "${unitId}" productionConfig.branchStrategy is missing or invalid`);
+      }
       const expectedBranch = (productionConfig.branchTemplate ?? 'release/{tag}')
         .replaceAll('{tag}', expectedTag ?? '')
         .replaceAll('{version}', targetVersion ?? '')
         .replaceAll('{unit}', unitId);
       if (frozen.branch !== expectedBranch) {
         failures.push(`unit "${unitId}" frozen branch does not match productionConfig.branchTemplate`);
+      }
+      if (frozen.branchStrategy !== branchStrategy) {
+        failures.push(`unit "${unitId}" frozenSnapshot.branchStrategy does not match productionConfig.branchStrategy`);
+      }
+      if (['advance-existing-branch', 'initialize-default-branch'].includes(branchStrategy)) {
+        if (unit.previousPublicBaseline?.mode !== 'bound') {
+          failures.push(`unit "${unitId}" branch strategy "${branchStrategy}" requires a bound previous public baseline`);
+        }
+        if (!frozen.parentCommit || frozen.parentCommit !== unit.previousPublicBaseline?.commit) {
+          failures.push(`unit "${unitId}" frozenSnapshot.parentCommit does not match previous public baseline commit`);
+        }
+      } else if (frozen.parentCommit) {
+        failures.push(`unit "${unitId}" create-release-branch must not freeze a parentCommit`);
+      }
+      if (
+        branchStrategy === 'advance-existing-branch' &&
+        unit.previousPublicBaseline?.ref !== `refs/heads/${expectedBranch}`
+      ) {
+        failures.push(`unit "${unitId}" advance-existing-branch baseline ref does not match the target branch`);
+      }
+      if (branchStrategy === 'initialize-default-branch') {
+        if (productionConfig.setAsDefaultBranch !== true || !productionConfig.expectedCurrentDefaultBranch) {
+          failures.push(`unit "${unitId}" initialize-default-branch requires explicit default branch settings`);
+        }
+      } else if (productionConfig.setAsDefaultBranch === true) {
+        failures.push(`unit "${unitId}" setAsDefaultBranch is only valid for initialize-default-branch`);
       }
     }
 
@@ -411,10 +467,19 @@ export function validatePlanActionCompleteness(plan) {
             _checkRequired(action, 'parameters.branch', action.parameters?.branch, frozen?.branch, unitId, failures);
             _checkRequired(action, 'parameters.commit', action.parameters?.commit, frozen?.commit, unitId, failures);
             _checkRequired(action, 'parameters.tree', action.parameters?.tree, frozen?.tree, unitId, failures);
+            _checkRequired(action, 'parameters.branchStrategy', action.parameters?.branchStrategy, branchStrategy, unitId, failures);
             _checkRequired(action, 'parameters.githubHost', action.parameters?.githubHost, productionConfig.githubHost ?? 'github.com', unitId, failures);
             _checkRequired(action, 'expected.commit', action.expected?.commit, frozen?.commit, unitId, failures);
             _checkRequired(action, 'expected.tree', action.expected?.tree, frozen?.tree, unitId, failures);
             _checkRequired(action, 'expected.manifestDigest', action.expected?.manifestDigest, frozen?.manifestDigest, unitId, failures);
+            if (['advance-existing-branch', 'initialize-default-branch'].includes(branchStrategy)) {
+              _checkRequired(action, 'parameters.parentCommit', action.parameters?.parentCommit, frozen?.parentCommit, unitId, failures);
+            }
+            if (branchStrategy === 'advance-existing-branch') {
+              _checkRequired(action, 'parameters.expectedBaselineCommit', action.parameters?.expectedBaselineCommit, frozen?.parentCommit, unitId, failures);
+            } else if (action.parameters?.expectedBaselineCommit !== undefined) {
+              failures.push(`unit "${unitId}", action "${action.id}": unexpected parameters.expectedBaselineCommit`);
+            }
           } else {
             _checkRequired(action, 'expected.tag', action.expected?.tag, expectedTag, unitId, failures);
           }
@@ -689,6 +754,64 @@ export function validatePlanActionCompleteness(plan) {
           _checkRequired(action, 'expected.ref', action.expected?.ref, expectedTag, unitId, failures);
           _checkRequired(action, 'expected.entrySkillFound', action.expected?.entrySkillFound, true, unitId, failures);
           _checkRequired(action, 'expected.manifestDigest', action.expected?.manifestDigest, frozen?.manifestDigest, unitId, failures);
+        }
+      }
+    }
+
+    // set-default-branch: only required when productionConfig.setAsDefaultBranch is true
+    if (branchStrategy === 'initialize-default-branch') {
+      const oldBranch = productionConfig.expectedCurrentDefaultBranch;
+      const newBranch = frozen?.branch;
+      expectedCount++;
+      const expectedActionId = `set-default-branch-${unitId}`;
+      const branchActions = actions.filter(
+        (a) => a.unitId === unitId && a.type === 'set-default-branch',
+      );
+
+      if (branchActions.length === 0) {
+        failures.push(
+          `unit "${unitId}": productionConfig.setAsDefaultBranch is true but "set-default-branch" action is missing`,
+        );
+      } else if (branchActions.length > 1) {
+        failures.push(
+          `unit "${unitId}": duplicate set-default-branch actions (${branchActions.length} found, expected 1)`,
+        );
+      } else {
+        const action = branchActions[0];
+
+        if (action.id !== expectedActionId) {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": id is "${action.id}", expected "${expectedActionId}"`,
+          );
+        }
+        if (action.unitId !== unitId) {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": unitId is "${action.unitId}", expected "${unitId}"`,
+          );
+        }
+        if (action.adapter !== 'git-github') {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": adapter is "${action.adapter}", expected "git-github"`,
+          );
+        }
+        if (action.status !== 'PENDING') {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": status is "${action.status ?? '(missing)'}", expected "PENDING"`,
+          );
+        }
+
+        // Required parameters
+        _checkRequired(action, 'parameters.repo', action.parameters?.repo, publicRepo, unitId, failures);
+        _checkRequired(action, 'parameters.oldBranch', action.parameters?.oldBranch, oldBranch, unitId, failures);
+        _checkRequired(action, 'parameters.newBranch', action.parameters?.newBranch, newBranch, unitId, failures);
+        _checkRequired(action, 'parameters.expectedNewBranchCommit', action.parameters?.expectedNewBranchCommit, frozen?.commit, unitId, failures);
+        _checkRequired(action, 'parameters.githubHost', action.parameters?.githubHost, productionConfig.githubHost ?? 'github.com', unitId, failures);
+
+        // Required expected
+        _checkRequired(action, 'expected.defaultBranch', action.expected?.defaultBranch, newBranch, unitId, failures);
+        _checkRequired(action, 'expected.newBranchCommit', action.expected?.newBranchCommit, frozen?.commit, unitId, failures);
+        if (Object.keys(action.expected ?? {}).some((key) => !['defaultBranch', 'newBranchCommit'].includes(key))) {
+          failures.push(`unit "${unitId}", action "${action.id}": expected may only contain defaultBranch and newBranchCommit`);
         }
       }
     }

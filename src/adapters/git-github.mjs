@@ -25,7 +25,7 @@ async function run(command, args, options = {}) {
 
 function isNotFound(error) {
   const text = `${error?.stdout ?? ''}\n${error?.stderr ?? ''}\n${error?.message ?? ''}`;
-  return /(?:HTTP\s+404|\bstatus(?: code)?\s*[:=]?\s*404\b)/i.test(text);
+  return /(?:HTTP\s+404|\bstatus(?: code)?\s*[:=]?\s*404\b|(?:^|\n)\s*release not found\s*(?:\n|$))/i.test(text);
 }
 
 function ghRepo(action) {
@@ -62,11 +62,40 @@ async function readRemoteTag(action, remoteUrl, exec) {
   return stdout.trim().split(/\s+/)[0] ?? '';
 }
 
+function validateDefaultBranchAction(action) {
+  if (!action.repo || !action.oldBranch || !action.newBranch || !action.expectedNewBranchCommit) {
+    throw new Error('set-default-branch requires repo, oldBranch, newBranch, and expectedNewBranchCommit');
+  }
+  validateOid(action.expectedNewBranchCommit);
+  githubRepositoryUrl(action.repo, action.githubHost);
+  for (const [label, branch] of [['oldBranch', action.oldBranch], ['newBranch', action.newBranch]]) {
+    if (
+      typeof branch !== 'string' || branch.length === 0 || branch.startsWith('/') ||
+      branch.endsWith('/') || branch.includes('..') || branch.includes('\\') || /[\s~^:?*[\]]/.test(branch)
+    ) {
+      throw new Error(`${label} is not a safe Git branch name`);
+    }
+  }
+  if (action.oldBranch === action.newBranch) {
+    throw new Error('set-default-branch oldBranch and newBranch must differ');
+  }
+}
+
+async function readRemoteBranchCommit(action, exec) {
+  const remoteUrl = githubRepositoryUrl(action.repo, action.githubHost);
+  const { stdout } = await exec(
+    'git',
+    ['ls-remote', '--heads', remoteUrl, `refs/heads/${action.newBranch}`],
+    { shell: false },
+  );
+  return stdout.trim().split(/\s+/)[0] ?? '';
+}
+
 export function createGitGithubAdapter(deps = {}) {
   const exec = deps.exec ?? run;
   return Object.freeze({
     name: NAME,
-    actionTypes: Object.freeze([ActionType.GIT_PUSH, ActionType.GIT_TAG, ActionType.GITHUB_RELEASE]),
+    actionTypes: Object.freeze([ActionType.GIT_PUSH, ActionType.GIT_TAG, ActionType.GITHUB_RELEASE, ActionType.SET_DEFAULT_BRANCH]),
 
     async preflight(action, context) {
       try {
@@ -103,6 +132,27 @@ export function createGitGithubAdapter(deps = {}) {
           } catch (err) {
             if (err.message?.includes('already exists')) throw err;
             if (!isNotFound(err)) throw new Error(`cannot determine GitHub Release uniqueness: ${err.message}`);
+          }
+        } else if (action.actionType === ActionType.SET_DEFAULT_BRANCH) {
+          validateDefaultBranchAction(action);
+          await exec('gh', ['auth', 'status'], {
+            cwd: context.root,
+            shell: false,
+            env: { ...process.env, GH_HOST: action.githubHost ?? 'github.com' },
+          });
+          const { stdout: current } = await exec('gh', ['api', `repos/${action.repo}`, '--jq', '.default_branch'], {
+            cwd: context.root,
+            shell: false,
+            env: { ...process.env, GH_HOST: action.githubHost ?? 'github.com' },
+          });
+          if (current.trim() !== action.oldBranch) {
+            throw new Error(`default branch drift: expected ${action.oldBranch} but observed ${current.trim()}`);
+          }
+          const newBranchCommit = await readRemoteBranchCommit(action, exec);
+          if (newBranchCommit && newBranchCommit !== action.expectedNewBranchCommit) {
+            throw new Error(
+              `new default branch commit drift: expected ${action.expectedNewBranchCommit} but observed ${newBranchCommit}`,
+            );
           }
         } else {
           throw new Error(`unsupported action type: ${action.actionType}`);
@@ -149,6 +199,27 @@ export function createGitGithubAdapter(deps = {}) {
             '--title', action.name ?? `Release ${action.tag}`,
             '--notes', action.notes ?? `Release ${action.tag}`,
           ], { cwd: context.root, shell: false, env: { ...process.env, GH_HOST: action.githubHost ?? 'github.com' } });
+        } else if (action.actionType === ActionType.SET_DEFAULT_BRANCH) {
+          validateDefaultBranchAction(action);
+          const { stdout: current } = await exec('gh', ['api', `repos/${action.repo}`, '--jq', '.default_branch'], {
+            cwd: context.root,
+            shell: false,
+            env: { ...process.env, GH_HOST: action.githubHost ?? 'github.com' },
+          });
+          if (current.trim() !== action.oldBranch) {
+            throw new Error(`default branch drift immediately before update: expected ${action.oldBranch} but observed ${current.trim()}`);
+          }
+          const newBranchCommit = await readRemoteBranchCommit(action, exec);
+          if (newBranchCommit !== action.expectedNewBranchCommit) {
+            throw new Error(
+              `new default branch commit drift immediately before update: expected ${action.expectedNewBranchCommit} but observed ${newBranchCommit || 'missing'}`,
+            );
+          }
+          await exec('gh', ['api', `repos/${action.repo}`, '-X', 'PATCH', '-f', `default_branch=${action.newBranch}`], {
+            cwd: context.root,
+            shell: false,
+            env: { ...process.env, GH_HOST: action.githubHost ?? 'github.com' },
+          });
         } else {
           throw new Error(`unsupported action type: ${action.actionType}`);
         }
@@ -183,6 +254,17 @@ export function createGitGithubAdapter(deps = {}) {
             { cwd: context.root, shell: false, env: { ...process.env, GH_HOST: action.githubHost ?? 'github.com' } },
           );
           observation = { tag: release.tagName, commit: commitResult.stdout.trim(), releaseUrl: release.url };
+        } else if (action.actionType === ActionType.SET_DEFAULT_BRANCH) {
+          validateDefaultBranchAction(action);
+          const { stdout: current } = await exec('gh', ['api', `repos/${action.repo}`, '--jq', '.default_branch'], {
+            cwd: context.root,
+            shell: false,
+            env: { ...process.env, GH_HOST: action.githubHost ?? 'github.com' },
+          });
+          observation = {
+            defaultBranch: current.trim(),
+            newBranchCommit: await readRemoteBranchCommit(action, exec),
+          };
         } else {
           throw new Error(`unsupported action type: ${action.actionType}`);
         }

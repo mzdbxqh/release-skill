@@ -169,14 +169,32 @@ export async function verifyFrozenDirectoryStructure(directory, label = 'frozen 
   await walk(directory);
 }
 
-export async function verifyFrozenGitRepository({ root, gitObjectDir, commit, tree, exec = execFile }) {
+export async function verifyFrozenGitRepository({ root, gitObjectDir, commit, tree, parentCommit, exec = execFile }) {
   const gitDir = await resolveFrozenPath(root, gitObjectDir, 'frozen git object directory');
   await verifyFrozenDirectoryStructure(gitDir, 'frozen git object directory');
   const { stdout } = await exec('git', ['--git-dir', gitDir, 'rev-parse', `${commit}^{tree}`], { shell: false });
   if (stdout.trim() !== tree) {
     throw frozenError('frozen git object tree mismatch', { commit, expectedTree: tree, observedTree: stdout.trim() });
   }
-  return { gitDir, commit, tree };
+  if (parentCommit) {
+    if (!/^[a-f0-9]{40,64}$/.test(parentCommit)) {
+      throw frozenError('frozen Git parent must be a full hexadecimal object id');
+    }
+    const { stdout: parentsOut } = await exec(
+      'git',
+      ['--git-dir', gitDir, 'rev-list', '--parents', '-n', '1', commit],
+      { shell: false },
+    );
+    const [observedCommit, ...parents] = parentsOut.trim().split(/\s+/);
+    if (observedCommit !== commit || parents.length !== 1 || parents[0] !== parentCommit) {
+      throw frozenError('frozen Git commit parent mismatch', {
+        commit,
+        expectedParent: parentCommit,
+        observedParents: parents,
+      });
+    }
+  }
+  return { gitDir, commit, tree, ...(parentCommit ? { parentCommit } : {}) };
 }
 
 async function verifyGitTreeContent({ snapshotDir, repositoryDir, commit, expectedSnapshotDigest, exec }) {
@@ -224,10 +242,58 @@ async function verifyGitTreeContent({ snapshotDir, repositoryDir, commit, expect
   }
 }
 
-export async function buildFrozenGitRepository({ snapshotDir, repositoryDir, version, expectedSnapshotDigest, exec = execFile }) {
+function publicGitRemote({ repo, githubHost = 'github.com' }) {
+  if (typeof repo !== 'string' || !/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repo)) {
+    throw frozenError('Git parent repo must use owner/name format');
+  }
+  if (
+    typeof githubHost !== 'string' || !/^[A-Za-z0-9.-]+$/.test(githubHost) ||
+    githubHost.startsWith('.') || githubHost.endsWith('.') || githubHost.includes('..')
+  ) {
+    throw frozenError('Git parent githubHost must be a valid hostname');
+  }
+  return `https://${githubHost}/${repo}.git`;
+}
+
+export async function buildFrozenGitRepository({
+  snapshotDir,
+  repositoryDir,
+  version,
+  expectedSnapshotDigest,
+  parent,
+  exec = execFile,
+}) {
   if (!expectedSnapshotDigest) throw frozenError('Git object build requires the sealed snapshot digest');
   await mkdir(repositoryDir, { recursive: true });
   await exec('git', ['init', '--bare', repositoryDir], { shell: false });
+  let parentCommit = null;
+  if (parent) {
+    if (!parent.ref || typeof parent.ref !== 'string') {
+      throw frozenError('Git parent ref must be a non-empty string');
+    }
+    if (!parent.commit || !/^[a-f0-9]{40,64}$/.test(parent.commit)) {
+      throw frozenError('Git parent commit must be a full hexadecimal object id');
+    }
+    const remoteUrl = publicGitRemote(parent);
+    await exec(
+      'git',
+      ['--git-dir', repositoryDir, 'fetch', '--no-tags', remoteUrl, parent.ref],
+      { shell: false },
+    );
+    const { stdout: fetchedOut } = await exec(
+      'git',
+      ['--git-dir', repositoryDir, 'rev-parse', 'FETCH_HEAD^{commit}'],
+      { shell: false },
+    );
+    if (fetchedOut.trim() !== parent.commit) {
+      throw frozenError('fetched Git parent does not match the observed public baseline', {
+        expectedCommit: parent.commit,
+        observedCommit: fetchedOut.trim(),
+        ref: parent.ref,
+      });
+    }
+    parentCommit = parent.commit;
+  }
   const indexPath = join(repositoryDir, 'release-index');
   const env = { ...process.env, GIT_INDEX_FILE: indexPath };
   await exec('git', [
@@ -249,14 +315,32 @@ export async function buildFrozenGitRepository({ snapshotDir, repositoryDir, ver
     GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z',
     GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z',
   };
+  const commitArgs = ['--git-dir', repositoryDir, 'commit-tree', tree];
+  if (parentCommit) commitArgs.push('-p', parentCommit);
+  commitArgs.push('-m', `Release ${version}`);
   const { stdout: commitOut } = await exec(
     'git',
-    ['--git-dir', repositoryDir, 'commit-tree', tree, '-m', `Release ${version}`],
+    commitArgs,
     { env: commitEnv, shell: false },
   );
   const commit = commitOut.trim();
   await verifyGitTreeContent({ snapshotDir, repositoryDir, commit, expectedSnapshotDigest, exec });
-  return { tree, commit };
+  if (parentCommit) {
+    const { stdout: parentsOut } = await exec(
+      'git',
+      ['--git-dir', repositoryDir, 'rev-list', '--parents', '-n', '1', commit],
+      { shell: false },
+    );
+    const [observedCommit, ...parents] = parentsOut.trim().split(/\s+/);
+    if (observedCommit !== commit || parents.length !== 1 || parents[0] !== parentCommit) {
+      throw frozenError('derived Git commit does not have the exact planned parent', {
+        commit,
+        parentCommit,
+        observedParents: parents,
+      });
+    }
+  }
+  return { tree, commit, ...(parentCommit ? { parentCommit } : {}) };
 }
 
 function contentEntries(entries) {

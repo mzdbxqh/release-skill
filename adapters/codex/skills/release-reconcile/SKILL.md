@@ -47,7 +47,7 @@ marketplace 隔离消费者 checkpoint，但只恢复到 `PUBLISHED`；最终 np
 
 ## 幂等跳过逻辑
 
-对每个 action: observe 远端状态 → 完全一致则跳过 → 不存在且在 approval 范围内则重试 → 不一致则 REMOTE_CONFLICT 错误停止。
+对每个 action: observe 远端状态 → 完全一致则跳过 → 不存在且在 approval 范围内则重试 → 不一致则 REMOTE_CONFLICT 错误停止。`advance-existing-branch` 额外区分“冻结旧 commit”（可重试）、“计划新 commit”（已推进）和第三方 commit（冲突）；不得把自己已成功的推进误判为前序基线漂移。
 
 ## 故障路由
 

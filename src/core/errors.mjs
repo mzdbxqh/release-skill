@@ -33,6 +33,8 @@ const EXIT_CODE_MAP = Object.freeze({
   SENSITIVE_CONFLICT: 37,
   TRANSACTION_INCOMPLETE: 38,
   SAFE_WRITE_UNAVAILABLE: 39,
+  SETUP_DIGEST_MISMATCH: 40,
+  CONFIG_EXISTS: 41,
 });
 
 // ---- Error code constants ----
@@ -67,6 +69,8 @@ export const PLAN_STALE = 'PLAN_STALE';
 export const SENSITIVE_CONFLICT = 'SENSITIVE_CONFLICT';
 export const TRANSACTION_INCOMPLETE = 'TRANSACTION_INCOMPLETE';
 export const SAFE_WRITE_UNAVAILABLE = 'SAFE_WRITE_UNAVAILABLE';
+export const SETUP_DIGEST_MISMATCH = 'SETUP_DIGEST_MISMATCH';
+export const CONFIG_EXISTS = 'CONFIG_EXISTS';
 
 /**
  * Typed error for release-skill operations.

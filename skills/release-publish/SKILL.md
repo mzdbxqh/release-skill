@@ -18,7 +18,8 @@ description: 从已批准且摘要确认的生产计划发布冻结 Git branch/t
 
 只发布 `prepare --production` 封存的 Git object 和 npm tarball，不从活动工作区重新
 打包，不生成或覆盖 README。远端 branch/tag/Release/npm version 已存在、查询不确定、
-认证失败或摘要漂移时，在全局预检阶段停止并交给人工。禁止 force、删除和自动回滚。
+认证失败或摘要漂移时，在全局预检阶段停止并交给人工。禁止覆盖、删除和自动回滚；
+新建 ref 的 create-only CAS（`--force-with-lease=<ref>:`）只断言目标不存在，不授权覆盖。
 
 ## 授权门
 
@@ -37,8 +38,10 @@ description: 从已批准且摘要确认的生产计划发布冻结 Git branch/t
 `CLI` 必须复用 `release-help` 已解析的入口：registry 已有受支持版本且 PATH 可用时
 为 `CLI=(release-skill)`；否则为源码 checkout 的 node 数组。
 
-执行顺序：全局只读预检 → `release/<tag>` 公开分支 → tag → npm tarball →
+执行顺序：全局只读预检 → 配置的公开分支（按三种 `branchStrategy` 执行）→ 必要时
+单独切换默认分支 → tag → npm tarball →
 GitHub Release → Claude/Codex marketplace 隔离安装。每步 execute 后立即 observe；
+默认分支 action 同时绑定名称和目标精确 commit；末尾再次核对分支/默认分支一致性。
 失败停止后续动作并记录 PARTIAL。PUBLISHED 后运行 verify 复核全新消费者安装。
 
 ## 故障路由
@@ -47,7 +50,7 @@ GitHub Release → Claude/Codex marketplace 隔离安装。每步 execute 后立
 |---|---|
 | `BASELINE_CHANGED` | 保留人工修改，重新 prepare、审阅和 approve；不要覆盖修改。 |
 | 摘要/制品不匹配 | 停止；重新 prepare，不修补冻结目录。 |
-| 远端对象已存在 | 人工判断版本或远端状态；不得 force 或覆盖。 |
+| 远端对象已存在 | 人工判断版本或远端状态；不得覆盖。create-only CAS 也必须失败关闭。 |
 | 认证/网络/未知查询错误 | 失败关闭，修复环境后基于同一证据判断是否 reconcile。 |
 | `PARTIAL` | 检查 `release-run.json`，不重跑整套发布、不删除成功对象。 |
 

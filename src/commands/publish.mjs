@@ -75,6 +75,7 @@ const ACTION_NOT_ALLOWED = 'ACTION_NOT_ALLOWED';
 const CHECKPOINT_ORDER = [
   'push-commit',
   'push-snapshot',
+  'set-default-branch',
   'create-tag',
   'npm-publish',
   'github-release',
@@ -92,6 +93,7 @@ const CHECKPOINT_ORDER = [
 const ADAPTER_ACTION_TYPE_MAP = {
   'push-commit': 'git-push',
   'push-snapshot': 'push-snapshot',
+  'set-default-branch': 'set-default-branch',
   'create-tag': 'git-tag',
   'npm-publish': 'npm-publish',
   'github-release': 'github-release',
@@ -810,6 +812,49 @@ export async function publishRelease(options) {
 
       stateSequence += 1;
       latestState = await appendRunState(runDir, stateSequence, buildPersistedState(PARTIAL));
+    }
+
+    // Close the push -> default-branch TOCTOU window with a final read-only
+    // consistency pass. Both the branch tip and default-branch name are bound
+    // in the frozen action expectations. A late change keeps the saga PARTIAL
+    // and must be resolved by reconcile/human review.
+    if (checkpoints.every((cp) => cp.status === 'SUCCEEDED')) {
+      await evidence.append({ phase: 'safety-gate', gate: 'final-branch-consistency', status: 'started' });
+      for (let index = 0; index < orderedActions.length; index += 1) {
+        const action = orderedActions[index];
+        if (!['push-snapshot', 'set-default-branch'].includes(action.type)) continue;
+        const adapterActionType = ADAPTER_ACTION_TYPE_MAP[action.type];
+        const adapter = adapterRegistry.getAdapter(adapterActionType);
+        let observed;
+        try {
+          observed = await adapter.observe(
+            { actionType: adapterActionType, ...action.parameters, expected: action.expected },
+            { externalWritesAuthorized: false, plan: publishingPlan, baseline: plan.baseline, root, runDir },
+          );
+        } catch (error) {
+          observed = { observation: null, error: error.message };
+        }
+        const observation = observed?.observation;
+        const observable = observation && !(observed.error && Object.keys(observation).length === 0);
+        const comparison = observable ? matchObservation(action.expected ?? {}, observation) : { matches: false, mismatches: [] };
+        if (!comparison.matches) {
+          checkpoints[index].status = observable ? 'FAILED' : 'UNCERTAIN';
+          checkpoints[index].error = observable
+            ? `final branch consistency mismatch: ${comparison.mismatches.join('; ')}`
+            : `final branch consistency unobservable: ${observed?.error ?? 'empty observation'}`;
+          await evidence.append({
+            phase: 'safety-gate',
+            gate: 'final-branch-consistency',
+            status: 'failed',
+            actionId: action.id,
+            error: checkpoints[index].error,
+          });
+          break;
+        }
+      }
+      if (checkpoints.every((cp) => cp.status === 'SUCCEEDED')) {
+        await evidence.append({ phase: 'safety-gate', gate: 'final-branch-consistency', status: 'passed' });
+      }
     }
 
     // Determine overall status

@@ -88,7 +88,7 @@ export async function observePreviousPublicBaseline({ baseline, observeFn, evide
  *   Evidence collector for audit trail.
  * @returns {Promise<{ consistent: true } | { consistent: false, error: string, detail?: Record<string, unknown> }>}
  */
-export async function reObservePreviousPublicBaseline({ baseline, observeFn, evidence }) {
+export async function reObservePreviousPublicBaseline({ baseline, observeFn, evidence, acceptedSuccessorCommits = [] }) {
   if (!baseline || typeof baseline !== 'object') {
     return { consistent: true };
   }
@@ -112,6 +112,26 @@ export async function reObservePreviousPublicBaseline({ baseline, observeFn, evi
         commit,
       });
       return { consistent: true };
+    }
+
+    if (
+      result.status === 'drifted' &&
+      typeof result.actual === 'string' &&
+      acceptedSuccessorCommits.includes(result.actual)
+    ) {
+      evidence?.append({
+        phase: 're-observe-previous-public-baseline',
+        status: 'consistent-planned-successor',
+        repo,
+        ref,
+        baselineCommit: commit,
+        observedCommit: result.actual,
+      });
+      return {
+        consistent: true,
+        observed: { ...result },
+        state: 'planned-successor',
+      };
     }
 
     // Drifted or unknown -- return soft failure for reconcile to handle

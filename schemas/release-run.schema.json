@@ -4,7 +4,14 @@
   "title": "Release Run",
   "description": "Schema for a release run record capturing execution checkpoints",
   "type": "object",
-  "required": ["runId", "command", "planDigest", "planPath", "status", "checkpoints"],
+  "required": [
+    "runId",
+    "command",
+    "planDigest",
+    "planPath",
+    "status",
+    "checkpoints"
+  ],
   "additionalProperties": false,
   "properties": {
     "runId": {
@@ -40,7 +47,13 @@
     },
     "command": {
       "type": "string",
-      "enum": ["assess", "prepare", "publish", "reconcile", "verify"],
+      "enum": [
+        "assess",
+        "prepare",
+        "publish",
+        "reconcile",
+        "verify"
+      ],
       "description": "The command that initiated this run"
     },
     "sourceRunId": {
@@ -91,7 +104,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["actionId", "actionType", "status"],
+        "required": [
+          "actionId",
+          "actionType",
+          "status"
+        ],
         "additionalProperties": false,
         "properties": {
           "actionId": {
@@ -108,23 +125,38 @@
               "npm-publish",
               "github-release",
               "claude-marketplace-install",
-              "codex-marketplace-install"
+              "codex-marketplace-install",
+              "set-default-branch"
             ],
             "description": "Type of external action"
           },
           "status": {
             "type": "string",
-            "enum": ["succeeded", "failed", "skipped", "pending", "uncertain"],
+            "enum": [
+              "succeeded",
+              "failed",
+              "skipped",
+              "pending",
+              "uncertain"
+            ],
             "description": "Result status of this checkpoint (uncertain = started, result unknown)"
           },
           "preObserve": {
             "type": "string",
-            "enum": ["CONSISTENT", "MISSING", "CONFLICTING"],
+            "enum": [
+              "CONSISTENT",
+              "MISSING",
+              "CONFLICTING"
+            ],
             "description": "Remote state before execution"
           },
           "postObserve": {
             "type": "string",
-            "enum": ["CONSISTENT", "MISSING", "CONFLICTING"],
+            "enum": [
+              "CONSISTENT",
+              "MISSING",
+              "CONFLICTING"
+            ],
             "description": "Remote state after execution"
           },
           "startedAt": {
@@ -140,10 +172,18 @@
             "description": "Remote resource identifiers (commit, tag, version, URL)",
             "additionalProperties": false,
             "properties": {
-              "commit": { "type": "string" },
-              "tag": { "type": "string" },
-              "version": { "type": "string" },
-              "url": { "type": "string" }
+              "commit": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
             }
           },
           "error": {
@@ -165,8 +205,94 @@
                   "POST_PUBLISH_VERIFY_FAILED"
                 ]
               },
-              "message": { "type": "string" }
+              "message": {
+                "type": "string"
+              }
             }
+          }
+        }
+      }
+    },
+    "gateResults": {
+      "type": "array",
+      "description": "Consumer verification gate results bound to this verify run",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "phase",
+          "unitId",
+          "distribution",
+          "gateDigest",
+          "inputDigest",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "exitCode",
+          "stdoutBytes",
+          "stdoutSha256",
+          "stderrBytes",
+          "stderrSha256"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "phase": {
+            "const": "consumer-verify"
+          },
+          "unitId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "distribution": {
+            "type": "string",
+            "enum": [
+              "npm",
+              "claude-plugin",
+              "codex-plugin"
+            ]
+          },
+          "gateDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "inputDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA-256 digest of the exact installed consumer tree immediately before gate execution"
+          },
+          "status": {
+            "const": "passed"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "exitCode": {
+            "const": 0
+          },
+          "stdoutBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stdoutSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "stderrBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stderrSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
           }
         }
       }
@@ -175,20 +301,41 @@
   "allOf": [
     {
       "if": {
-        "properties": { "command": { "enum": ["reconcile", "verify"] } },
-        "required": ["command"]
+        "properties": {
+          "command": {
+            "enum": [
+              "reconcile",
+              "verify"
+            ]
+          }
+        },
+        "required": [
+          "command"
+        ]
       },
       "then": {
-        "required": ["sourceRunId", "sourceRunDigest", "sourceRunPath"]
+        "required": [
+          "sourceRunId",
+          "sourceRunDigest",
+          "sourceRunPath"
+        ]
       }
     },
     {
       "if": {
-        "properties": { "stateSequence": { "minimum": 1 } },
-        "required": ["stateSequence"]
+        "properties": {
+          "stateSequence": {
+            "minimum": 1
+          }
+        },
+        "required": [
+          "stateSequence"
+        ]
       },
       "then": {
-        "required": ["previousStateDigest"]
+        "required": [
+          "previousStateDigest"
+        ]
       }
     }
   ]

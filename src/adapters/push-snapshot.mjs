@@ -54,6 +54,37 @@ function validateAction(action) {
   validateOid(action.commit, 'commit');
   validateOid(action.tree, 'tree');
   githubRepositoryUrl(action.repo, action.githubHost);
+
+  const validStrategies = ['create-release-branch', 'advance-existing-branch', 'initialize-default-branch'];
+  const strategy = action.branchStrategy ?? 'create-release-branch';
+  if (typeof strategy !== 'string' || !validStrategies.includes(strategy)) {
+    throw new Error(`branchStrategy must be one of: ${validStrategies.join(', ')}`);
+  }
+  if (strategy === 'advance-existing-branch' || strategy === 'initialize-default-branch') {
+    if (!action.parentCommit || typeof action.parentCommit !== 'string') {
+      throw new Error(`${strategy} requires parentCommit`);
+    }
+    validateOid(action.parentCommit, 'parentCommit');
+  }
+  if (strategy === 'advance-existing-branch') {
+    if (!action.expectedBaselineCommit || typeof action.expectedBaselineCommit !== 'string') {
+      throw new Error('advance-existing-branch requires expectedBaselineCommit');
+    }
+    validateOid(action.expectedBaselineCommit, 'expectedBaselineCommit');
+    if (action.expectedBaselineCommit !== action.parentCommit) {
+      throw new Error('advance-existing-branch expectedBaselineCommit must equal parentCommit');
+    }
+  }
+  if (strategy === 'create-release-branch' && (action.parentCommit || action.expectedBaselineCommit)) {
+    throw new Error('create-release-branch must not declare parentCommit or expectedBaselineCommit');
+  }
+
+  if (action.parentCommit != null && typeof action.parentCommit === 'string') {
+    validateOid(action.parentCommit, 'parentCommit');
+  }
+  if (action.expectedBaselineCommit != null && typeof action.expectedBaselineCommit === 'string') {
+    validateOid(action.expectedBaselineCommit, 'expectedBaselineCommit');
+  }
 }
 
 async function inspectLocalObjects(action, context, exec) {
@@ -62,6 +93,7 @@ async function inspectLocalObjects(action, context, exec) {
     gitObjectDir: action.gitObjectDir,
     commit: action.commit,
     tree: action.tree,
+    parentCommit: action.parentCommit,
     exec,
   });
   await exec('git', ['check-ref-format', `refs/heads/${action.branch}`], { shell: false });
@@ -91,12 +123,32 @@ export function createPushSnapshotAdapter(deps = {}) {
           ['ls-remote', '--heads', remoteUrl, `refs/heads/${action.branch}`],
           { shell: false },
         );
-        if (stdout.trim()) {
-          return createResult({
-            actionType: action.actionType,
-            status: ActionStatus.PREFLIGHT_FAILED,
-            error: `remote branch already exists: ${action.branch}; human intervention required`,
-          });
+        const remoteTip = stdout.trim().split(/\s+/)[0] ?? '';
+        const strategy = action.branchStrategy ?? 'create-release-branch';
+
+        if (strategy === 'advance-existing-branch') {
+          if (!remoteTip) {
+            return createResult({
+              actionType: action.actionType,
+              status: ActionStatus.PREFLIGHT_FAILED,
+              error: `advance-existing-branch requires remote branch to exist: ${action.branch}`,
+            });
+          }
+          if (remoteTip !== action.expectedBaselineCommit) {
+            return createResult({
+              actionType: action.actionType,
+              status: ActionStatus.PREFLIGHT_FAILED,
+              error: `remote branch tip mismatch: expected ${action.expectedBaselineCommit} but found ${remoteTip}`,
+            });
+          }
+        } else if (strategy === 'initialize-default-branch' || strategy === 'create-release-branch') {
+          if (remoteTip) {
+            return createResult({
+              actionType: action.actionType,
+              status: ActionStatus.PREFLIGHT_FAILED,
+              error: `remote branch already exists: ${action.branch}; human intervention required`,
+            });
+          }
         }
         return createResult({ actionType: action.actionType, status: ActionStatus.PREFLIGHT_PASSED });
       } catch (err) {
@@ -119,17 +171,32 @@ export function createPushSnapshotAdapter(deps = {}) {
         });
         const gitDir = await inspectLocalObjects(action, context, exec);
         const remoteUrl = githubRepositoryUrl(action.repo, action.githubHost);
-        await exec(
-          'git',
-          [
-            '--git-dir', gitDir,
-            'push',
-            `--force-with-lease=refs/heads/${action.branch}:`,
-            remoteUrl,
-            `${action.commit}:refs/heads/${action.branch}`,
-          ],
-          { shell: false },
-        );
+        const strategy = action.branchStrategy ?? 'create-release-branch';
+
+        if (strategy === 'advance-existing-branch') {
+          await exec(
+            'git',
+            [
+              '--git-dir', gitDir,
+              'push',
+              remoteUrl,
+              `${action.commit}:refs/heads/${action.branch}`,
+            ],
+            { shell: false },
+          );
+        } else {
+          await exec(
+            'git',
+            [
+              '--git-dir', gitDir,
+              'push',
+              `--force-with-lease=refs/heads/${action.branch}:`,
+              remoteUrl,
+              `${action.commit}:refs/heads/${action.branch}`,
+            ],
+            { shell: false },
+          );
+        }
         return createResult({ actionType: action.actionType, status: ActionStatus.EXECUTED });
       } catch (err) {
         return createResult({

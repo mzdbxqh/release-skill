@@ -33,6 +33,43 @@ const execFile = promisify(execFileCb);
 
 const NAME = 'plugin-marketplace';
 
+function transportPayload(entries) {
+  return entries.map(({ path, type, mode, size, contentDigest }) => ({
+    path,
+    type,
+    // The local authority removes write bits when sealing. Git checkout and
+    // plugin installation restore owner-write permission, while preserving
+    // executable intent. Ignore only write bits; retain every other mode bit.
+    mode: mode & ~0o222,
+    size,
+    contentDigest,
+  }));
+}
+
+async function verifyInstalledMarketplacePayload(action, context, installPath, consumer) {
+  const sourcePath = await resolveFrozenPath(
+    context.root,
+    action.snapshotPath,
+    'frozen marketplace snapshot',
+  );
+  const sourceSnapshot = await computeFrozenSnapshot(sourcePath);
+  if (sourceSnapshot.digest !== action.manifestDigest) {
+    throw new Error('frozen marketplace snapshot digest no longer matches the plan');
+  }
+  const installedSnapshot = await computeFrozenSnapshot(installPath, {
+    excludeRootEntries: consumer === 'codex' ? ['.git'] : [],
+  });
+  if (
+    JSON.stringify(transportPayload(sourceSnapshot.entries))
+    !== JSON.stringify(transportPayload(installedSnapshot.entries))
+  ) {
+    throw new Error('installed marketplace payload differs in path, bytes, size, or non-write mode bits');
+  }
+  // This is not an expected-value backfill: the sealed authority digest was
+  // revalidated above and the installed payload was independently compared.
+  return action.manifestDigest;
+}
+
 async function writeEvidenceAtomic(filePath, value) {
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   try {
@@ -862,10 +899,12 @@ export function createPluginMarketplaceAdapter(deps = {}) {
           let executeManifestDigest = null;
           if (installPath) {
             try {
-              const { digest } = await computeFrozenSnapshot(installPath, {
-                excludeRootEntries: consumer === 'codex' ? ['.git'] : [],
-              });
-              executeManifestDigest = digest;
+              executeManifestDigest = await verifyInstalledMarketplacePayload(
+                action,
+                context,
+                installPath,
+                consumer,
+              );
             } catch {
               // Digest computation failure is caught at verify time
             }
@@ -1176,26 +1215,30 @@ export function createPluginMarketplaceAdapter(deps = {}) {
             });
           }
 
-          // Compute real manifestDigest from installed content using frozen algorithm
+          // Bind the installed payload back to the sealed authority while
+          // normalizing only transport-restored write permission bits.
           let manifestDigest;
+          let manifestError = null;
           try {
-            // Codex retains a root .git checkout as consumer-owned transport
-            // metadata. It is not part of the published plugin payload.
-            const { digest } = await computeFrozenSnapshot(installPath, {
-              excludeRootEntries: consumer === 'codex' ? ['.git'] : [],
-            });
-            manifestDigest = digest;
+            manifestDigest = await verifyInstalledMarketplacePayload(
+              action,
+              context,
+              installPath,
+              consumer,
+            );
           } catch (digestErr) {
-            return createResult({
-              actionType,
-              status: ActionStatus.OBSERVED,
-              observation: {
-                installed: true,
-                installPath,
-                entrySkillFound: true,
-                error: `failed to compute manifestDigest: ${digestErr.message}`,
-              },
-            });
+            // Preserve independently observed fields for diagnostics. This
+            // raw digest is not accepted as plan authority because the error
+            // is returned and verify therefore fails closed.
+            try {
+              const installedSnapshot = await computeFrozenSnapshot(installPath, {
+                excludeRootEntries: consumer === 'codex' ? ['.git'] : [],
+              });
+              manifestDigest = installedSnapshot.digest;
+            } catch {
+              manifestDigest = undefined;
+            }
+            manifestError = `failed to bind manifestDigest to frozen authority: ${digestErr.message}`;
           }
 
           // Build observation with CLI-proven fields only (no action backfill)
@@ -1318,6 +1361,7 @@ export function createPluginMarketplaceAdapter(deps = {}) {
             actionType,
             status: ActionStatus.OBSERVED,
             observation,
+            error: manifestError,
           });
         }
 

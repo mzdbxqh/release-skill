@@ -4,7 +4,13 @@
   "title": "Release Plan",
   "description": "Schema for frozen release plan produced by the prepare phase",
   "type": "object",
-  "required": ["planVersion", "status", "baseline", "units", "externalActions"],
+  "required": [
+    "planVersion",
+    "status",
+    "baseline",
+    "units",
+    "externalActions"
+  ],
   "additionalProperties": false,
   "properties": {
     "planVersion": {
@@ -28,16 +34,26 @@
     },
     "production": {
       "type": "object",
-      "required": ["mode", "assetRoot"],
+      "required": [
+        "mode",
+        "assetRoot"
+      ],
       "additionalProperties": false,
       "properties": {
-        "mode": { "const": "github-npm-v1" },
-        "assetRoot": { "type": "string", "minLength": 1 }
+        "mode": {
+          "const": "github-npm-v1"
+        },
+        "assetRoot": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "baseline": {
       "type": "object",
-      "required": ["gitTreeHash"],
+      "required": [
+        "gitTreeHash"
+      ],
       "additionalProperties": false,
       "properties": {
         "gitTreeHash": {
@@ -59,7 +75,9 @@
         },
         "dirtyFiles": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "capturedAt": {
           "type": "string",
@@ -72,7 +90,11 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "targetVersion", "previousPublicBaseline"],
+        "required": [
+          "id",
+          "targetVersion",
+          "previousPublicBaseline"
+        ],
         "additionalProperties": false,
         "properties": {
           "id": {
@@ -99,53 +121,229 @@
           },
           "productionConfig": {
             "type": "object",
+            "required": [
+              "githubHost",
+              "branchTemplate",
+              "branchStrategy"
+            ],
             "additionalProperties": false,
             "properties": {
-              "githubHost": { "type": "string" },
-              "branchTemplate": { "type": "string" },
-              "releaseTitleTemplate": { "type": "string" },
-              "releaseNotes": { "type": "string" }
-            }
+              "githubHost": {
+                "type": "string"
+              },
+              "branchTemplate": {
+                "type": "string"
+              },
+              "releaseTitleTemplate": {
+                "type": "string"
+              },
+              "releaseNotes": {
+                "type": "string"
+              },
+              "branchStrategy": {
+                "type": "string",
+                "enum": [
+                  "create-release-branch",
+                  "advance-existing-branch",
+                  "initialize-default-branch"
+                ]
+              },
+              "setAsDefaultBranch": {
+                "type": "boolean"
+              },
+              "expectedCurrentDefaultBranch": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "branchStrategy": {
+                      "const": "initialize-default-branch"
+                    }
+                  },
+                  "required": [
+                    "branchStrategy"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "setAsDefaultBranch",
+                    "expectedCurrentDefaultBranch"
+                  ],
+                  "properties": {
+                    "setAsDefaultBranch": {
+                      "const": true
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "setAsDefaultBranch": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "setAsDefaultBranch"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "branchStrategy": {
+                      "const": "initialize-default-branch"
+                    }
+                  }
+                }
+              }
+            ]
           },
           "frozenSnapshot": {
             "type": "object",
-            "required": ["path", "manifestDigest", "gitObjectDir", "branch", "commit", "tree"],
+            "required": [
+              "path",
+              "manifestDigest",
+              "gitObjectDir",
+              "branch",
+              "branchStrategy",
+              "commit",
+              "tree"
+            ],
             "additionalProperties": false,
             "properties": {
-              "path": { "type": "string", "minLength": 1 },
-              "manifestDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-              "gitObjectDir": { "type": "string", "minLength": 1 },
-              "branch": { "type": "string", "minLength": 1 },
-              "commit": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
-              "tree": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "manifestDigest": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "gitObjectDir": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "commit": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40,64}$"
+              },
+              "tree": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40,64}$"
+              },
+              "parentCommit": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40,64}$"
+              },
+              "branchStrategy": {
+                "type": "string",
+                "enum": [
+                  "create-release-branch",
+                  "advance-existing-branch",
+                  "initialize-default-branch"
+                ]
+              },
               "npm": {
                 "anyOf": [
-                  { "type": "null" },
+                  {
+                    "type": "null"
+                  },
                   {
                     "type": "object",
-                    "required": ["tarballPath", "tarballSha256", "integrity", "size"],
+                    "required": [
+                      "tarballPath",
+                      "tarballSha256",
+                      "integrity",
+                      "size"
+                    ],
                     "additionalProperties": false,
                     "properties": {
-                      "tarballPath": { "type": "string", "minLength": 1 },
-                      "tarballSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-                      "integrity": { "type": "string", "minLength": 1 },
-                      "size": { "type": "integer", "minimum": 1 }
+                      "tarballPath": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "tarballSha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "integrity": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "size": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
                     }
                   }
                 ]
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "branchStrategy": {
+                      "enum": [
+                        "advance-existing-branch",
+                        "initialize-default-branch"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "branchStrategy"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "parentCommit"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "branchStrategy": {
+                      "const": "create-release-branch"
+                    }
+                  },
+                  "required": [
+                    "branchStrategy"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "parentCommit"
+                    ]
+                  }
+                }
+              }
+            ]
           },
           "distributions": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["type"],
+              "required": [
+                "type"
+              ],
               "additionalProperties": false,
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["npm", "claude-plugin", "codex-plugin"]
+                  "enum": [
+                    "npm",
+                    "claude-plugin",
+                    "codex-plugin"
+                  ]
                 },
                 "package": {
                   "type": "string",
@@ -154,7 +352,10 @@
                 },
                 "access": {
                   "type": "string",
-                  "enum": ["public", "restricted"]
+                  "enum": [
+                    "public",
+                    "restricted"
+                  ]
                 },
                 "provenance": {
                   "type": "boolean"
@@ -196,7 +397,9 @@
                 },
                 "smokeArgs": {
                   "type": "array",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "smokeExpectedJson": {
                   "type": "object"
@@ -205,61 +408,199 @@
               "allOf": [
                 {
                   "if": {
-                    "properties": { "type": { "const": "npm" } }
+                    "properties": {
+                      "type": {
+                        "const": "npm"
+                      }
+                    }
                   },
-                  "then": { "required": ["package", "registry", "publisher"] }
+                  "then": {
+                    "required": [
+                      "package",
+                      "registry",
+                      "publisher"
+                    ]
+                  }
                 },
                 {
                   "if": {
-                    "properties": { "type": { "enum": ["claude-plugin", "codex-plugin"] } }
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "claude-plugin",
+                          "codex-plugin"
+                        ]
+                      }
+                    }
                   },
-                  "then": { "required": ["plugin", "marketplace", "entrySkill"] }
+                  "then": {
+                    "required": [
+                      "plugin",
+                      "marketplace",
+                      "entrySkill"
+                    ]
+                  }
                 },
                 {
                   "if": {
-                    "required": ["smokeExpectedJson"],
-                    "properties": { "smokeBin": { "minLength": 1 } }
+                    "required": [
+                      "smokeExpectedJson"
+                    ],
+                    "properties": {
+                      "smokeBin": {
+                        "minLength": 1
+                      }
+                    }
                   },
-                  "then": { "required": ["smokeBin"] }
+                  "then": {
+                    "required": [
+                      "smokeBin"
+                    ]
+                  }
                 },
                 {
                   "if": {
-                    "required": ["smokeArgs"],
-                    "properties": { "smokeBin": { "minLength": 1 } }
+                    "required": [
+                      "smokeArgs"
+                    ],
+                    "properties": {
+                      "smokeBin": {
+                        "minLength": 1
+                      }
+                    }
                   },
-                  "then": { "required": ["smokeBin"] }
+                  "then": {
+                    "required": [
+                      "smokeBin"
+                    ]
+                  }
                 }
               ]
             }
           },
           "previousPublicBaseline": {
             "type": "object",
-            "required": ["mode", "status"],
+            "required": [
+              "mode",
+              "status"
+            ],
             "additionalProperties": false,
             "properties": {
-              "mode": { "type": "string", "enum": ["none", "bound"] },
-              "githubHost": { "type": "string" },
-              "repo": { "type": "string" },
-              "ref": { "type": "string" },
-              "commit": { "type": "string" },
-              "tree": { "type": "string" },
-              "manifestDigest": { "type": "string" },
-              "observedCommit": { "type": "string" },
-              "observedAt": { "type": "string", "format": "date-time" },
-              "status": { "type": "string", "enum": ["consistent", "drifted", "unknown", "unobserved-offline", "blocking"] }
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "bound"
+                ]
+              },
+              "githubHost": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              },
+              "commit": {
+                "type": "string"
+              },
+              "tree": {
+                "type": "string"
+              },
+              "manifestDigest": {
+                "type": "string"
+              },
+              "observedCommit": {
+                "type": "string"
+              },
+              "observedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "consistent",
+                  "drifted",
+                  "unknown",
+                  "unobserved-offline",
+                  "blocking"
+                ]
+              }
             },
-            "if": { "properties": { "mode": { "const": "bound" } } },
-            "then": { "required": ["repo", "ref", "commit"] },
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "bound"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "repo",
+                "ref",
+                "commit"
+              ]
+            },
             "else": {
               "allOf": [
-                { "not": { "required": ["repo"] } },
-                { "not": { "required": ["githubHost"] } },
-                { "not": { "required": ["ref"] } },
-                { "not": { "required": ["commit"] } },
-                { "not": { "required": ["tree"] } },
-                { "not": { "required": ["manifestDigest"] } },
-                { "not": { "required": ["observedCommit"] } },
-                { "not": { "required": ["observedAt"] } }
+                {
+                  "not": {
+                    "required": [
+                      "repo"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "githubHost"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "ref"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "commit"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "tree"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "manifestDigest"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "observedCommit"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "observedAt"
+                    ]
+                  }
+                }
               ]
             }
           }
@@ -271,12 +612,22 @@
       "minLength": 1,
       "description": "Digest of the project configuration at plan freeze time"
     },
+    "verificationGates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/verificationGate"
+      }
+    },
     "externalActions": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "type", "adapter"],
+        "required": [
+          "id",
+          "type",
+          "adapter"
+        ],
         "additionalProperties": false,
         "properties": {
           "id": {
@@ -292,7 +643,8 @@
               "npm-publish",
               "github-release",
               "claude-marketplace-install",
-              "codex-marketplace-install"
+              "codex-marketplace-install",
+              "set-default-branch"
             ]
           },
           "adapter": {
@@ -311,7 +663,12 @@
           },
           "status": {
             "type": "string",
-            "enum": ["PENDING", "SUCCEEDED", "FAILED", "SKIPPED"],
+            "enum": [
+              "PENDING",
+              "SUCCEEDED",
+              "FAILED",
+              "SKIPPED"
+            ],
             "description": "Action execution status"
           }
         }
@@ -343,7 +700,12 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["rule", "reason", "responsible", "expiresAt"],
+        "required": [
+          "rule",
+          "reason",
+          "responsible",
+          "expiresAt"
+        ],
         "additionalProperties": false,
         "properties": {
           "rule": {
@@ -364,6 +726,129 @@
           }
         }
       }
+    }
+  },
+  "definitions": {
+    "verificationGate": {
+      "type": "object",
+      "required": [
+        "id",
+        "phase",
+        "scope",
+        "command",
+        "cwd",
+        "timeoutMs",
+        "envAllowlist"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "snapshot-verify",
+            "consumer-verify"
+          ]
+        },
+        "scope": {
+          "type": "object",
+          "required": [
+            "unit"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "unit": {
+              "type": "string",
+              "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9][A-Za-z0-9._-]*$"
+            },
+            "distribution": {
+              "type": "string",
+              "enum": [
+                "npm",
+                "claude-plugin",
+                "codex-plugin"
+              ]
+            }
+          }
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string",
+          "pattern": "^(?:\\.$|(?!\\/)(?!\\.\\/)(?!.*\\\\)(?!.*:)(?!\\.\\.(?:\\/|$))(?!.*\\/\\.\\.\\/)(?!.*\\/\\.\\.$)(?!.*\\/\\.\\/)(?!.*\\/\\/)(?!.*\\0)(?!.*\\/\\.$)(?!.*\\/\\/$)(?!.*\\/$).*)$"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 7200000
+        },
+        "envAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]*$"
+          },
+          "uniqueItems": true
+        },
+        "expectedJson": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "consumer-verify"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "scope": {
+                "required": [
+                  "unit",
+                  "distribution"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "snapshot-verify"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "scope": {
+                "not": {
+                  "required": [
+                    "distribution"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

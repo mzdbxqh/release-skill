@@ -71,6 +71,7 @@ import { matchObservation } from '../adapters/contract.mjs';
 const CHECKPOINT_ORDER = [
   'push-commit',
   'push-snapshot',
+  'set-default-branch',
   'create-tag',
   'npm-publish',
   'github-release',
@@ -85,6 +86,7 @@ const CHECKPOINT_ORDER = [
 const ADAPTER_ACTION_TYPE_MAP = {
   'push-commit': 'git-push',
   'push-snapshot': 'push-snapshot',
+  'set-default-branch': 'set-default-branch',
   'create-tag': 'git-tag',
   'npm-publish': 'npm-publish',
   'github-release': 'github-release',
@@ -444,6 +446,13 @@ export async function reconcileRelease(options) {
         baseline,
         observeFn: ppbObserveFn,
         evidence,
+        acceptedSuccessorCommits: (plan.externalActions ?? [])
+          .filter((action) => (
+            action.unitId === unit.id &&
+            action.type === 'push-snapshot' &&
+            action.parameters?.branchStrategy === 'advance-existing-branch'
+          ))
+          .map((action) => action.parameters.commit),
       });
       if (!observed.consistent) {
         throw new ReleaseError(
@@ -667,6 +676,59 @@ export async function reconcileRelease(options) {
         continue;
       }
 
+      // An advancing push has two safe observable states during recovery:
+      // the exact frozen predecessor (retry is still possible) or the exact
+      // planned successor (the release already advanced it). Any third tip is
+      // a real remote conflict. Generic create-only logic cannot distinguish
+      // the predecessor from an unexpected pre-existing branch.
+      if (
+        action.type === 'push-snapshot' &&
+        action.parameters?.branchStrategy === 'advance-existing-branch'
+      ) {
+        const observeResult = await adapter.observe(
+          { actionType: adapterActionType, ...action.parameters },
+          context,
+        );
+        const observation = observeResult?.observation;
+        if (!observation || (observeResult.error && Object.keys(observation).length === 0)) {
+          throw new ReleaseError(
+            REMOTE_CONFLICT,
+            `advancing action "${action.id}" remote state is unobservable`,
+            { actionId: action.id, observeError: observeResult?.error },
+          );
+        }
+        const actual = observation.commit ?? observation.remoteCommit ?? '';
+        const predecessor = action.parameters.expectedBaselineCommit;
+        const successor = action.parameters.commit;
+        if (actual === successor) {
+          actionResults.set(action.id, sourceCp.status === 'succeeded' ? 'succeeded' : 'skipped');
+          await evidence.append({
+            phase: 'reconcile-observe',
+            actionId: action.id,
+            actionType: action.type,
+            decision: 'advance-already-at-planned-successor',
+            sourceStatus: sourceCp.status,
+          });
+          continue;
+        }
+        if (actual === predecessor && sourceCp.status !== 'succeeded') {
+          actionsToRetry.push(action);
+          await evidence.append({
+            phase: 'reconcile-observe',
+            actionId: action.id,
+            actionType: action.type,
+            decision: 'retry-advance-from-frozen-predecessor',
+            sourceStatus: sourceCp.status,
+          });
+          continue;
+        }
+        throw new ReleaseError(
+          REMOTE_CONFLICT,
+          `Remote branch conflict for advancing action "${action.id}": expected predecessor ${predecessor} or planned successor ${successor}, got ${actual || 'missing'}`,
+          { actionId: action.id, predecessor, successor, actual, sourceStatus: sourceCp.status },
+        );
+      }
+
       // -------------------------------------------------------------------
       // Non-marketplace actions: observe-based consistency checks
       // -------------------------------------------------------------------
@@ -758,6 +820,57 @@ export async function reconcileRelease(options) {
           REMOTE_CONFLICT,
           `action "${action.id}" cannot be retried because remote state is unobservable`,
           { actionId: action.id, observeError: observeResult.error },
+        );
+      }
+
+      if (action.type === 'set-default-branch') {
+        const current = observeResult.observation.defaultBranch;
+        const observedNewBranchCommit = observeResult.observation.newBranchCommit;
+        if (observedNewBranchCommit !== action.parameters.expectedNewBranchCommit) {
+          await evidence.append({
+            phase: 'reconcile-observe',
+            actionId: action.id,
+            actionType: action.type,
+            decision: 'remote-conflict',
+            expectedNewBranchCommit: action.parameters.expectedNewBranchCommit,
+            observedNewBranchCommit: observedNewBranchCommit ?? null,
+          });
+          throw new ReleaseError(
+            REMOTE_CONFLICT,
+            `Remote target branch commit conflict for action "${action.id}": expected ` +
+              `"${action.parameters.expectedNewBranchCommit}", got "${observedNewBranchCommit ?? 'missing'}"`,
+            {
+              actionId: action.id,
+              expectedNewBranchCommit: action.parameters.expectedNewBranchCommit,
+              observedNewBranchCommit: observedNewBranchCommit ?? null,
+            },
+          );
+        }
+        if (current === action.parameters.newBranch) {
+          actionResults.set(action.id, 'skipped');
+          await evidence.append({
+            phase: 'reconcile-observe',
+            actionId: action.id,
+            actionType: action.type,
+            decision: 'skip-remote-consistent',
+          });
+          continue;
+        }
+        if (current === action.parameters.oldBranch) {
+          actionsToRetry.push(action);
+          await evidence.append({
+            phase: 'reconcile-observe',
+            actionId: action.id,
+            actionType: action.type,
+            decision: 'retry-default-branch-still-old',
+          });
+          continue;
+        }
+        throw new ReleaseError(
+          REMOTE_CONFLICT,
+          `Remote default branch conflict for action "${action.id}": expected old ` +
+            `"${action.parameters.oldBranch}" or new "${action.parameters.newBranch}", got "${current}"`,
+          { actionId: action.id, observedDefaultBranch: current },
         );
       }
 
@@ -1134,6 +1247,45 @@ export async function reconcileRelease(options) {
         if (foundFailed) {
           actionResults.set(action.id, 'pending');
         }
+      }
+    }
+
+    // Final branch/default-branch consistency closes late drift after a retry
+    // or after the first observation pass. The set-default action expectation
+    // includes both the branch name and its exact planned commit.
+    if (!retryFailed && planActions.every((action) => ['succeeded', 'skipped'].includes(actionResults.get(action.id)))) {
+      await evidence.append({ phase: 'safety-gate', gate: 'final-branch-consistency', status: 'started' });
+      for (const action of planActions) {
+        if (!['push-snapshot', 'set-default-branch'].includes(action.type)) continue;
+        const adapterActionType = ADAPTER_ACTION_TYPE_MAP[action.type];
+        const adapter = adapterRegistry.getAdapter(adapterActionType);
+        let observed;
+        try {
+          observed = await adapter.observe(
+            { actionType: adapterActionType, ...action.parameters, expected: action.expected },
+            context,
+          );
+        } catch (error) {
+          observed = { observation: null, error: error.message };
+        }
+        const observation = observed?.observation;
+        const observable = observation && !(observed.error && Object.keys(observation).length === 0);
+        const comparison = observable ? matchObservation(action.expected ?? {}, observation) : { matches: false, mismatches: [] };
+        if (!comparison.matches) {
+          actionResults.set(action.id, observable ? 'failed' : 'uncertain');
+          retryFailed = true;
+          await evidence.append({
+            phase: 'safety-gate',
+            gate: 'final-branch-consistency',
+            status: 'failed',
+            actionId: action.id,
+            error: observable ? comparison.mismatches.join('; ') : observed?.error ?? 'empty observation',
+          });
+          break;
+        }
+      }
+      if (!retryFailed) {
+        await evidence.append({ phase: 'safety-gate', gate: 'final-branch-consistency', status: 'passed' });
       }
     }
 

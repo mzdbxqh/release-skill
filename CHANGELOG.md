@@ -3,6 +3,66 @@
 All notable changes to the `release-skill` plugin will be documented in this
 file. The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.3] - 2026-07-19
+
+> `0.1.2` was an internal release candidate and was never published to npm or
+> GitHub Releases. Its fixes are included here; `0.1.3` is the next public
+> release after `0.1.1`.
+
+### Added
+
+- **Create-once first-use setup**: `release-skill setup` performs deterministic,
+  read-only discovery of packages, plugin manifests, Git remotes, legacy
+  `public-release.json`, public-file hints, and project quality scripts. It
+  reports `NEEDS_INPUT` or `LOCAL_ONLY_DETECTED` honestly and writes only an
+  absent `.release-skill/project.yaml` after answers and the exact
+  `setupDigest` are confirmed.
+- **Discoverable `release-setup` skill**: Claude and Codex adapters now guide
+  users through candidate review, explicit gate selection, fact-drift handling,
+  and the safe handoff to `release-assess` without regenerating human content.
+- **Project verification gates**: `snapshot-verify` runs selected commands in a
+  disposable writable copy of the frozen public snapshot;
+  `consumer-verify` runs after an exact isolated npm/Claude/Codex installation.
+  Gate definitions, exact execution-input digests, and bounded output digests
+  are frozen into plan/run evidence.
+- **Identity-bound create-once setup**: the final facts/answers digest and
+  config bytes are bound immediately before a directory-handle-relative,
+  no-follow create. v0.1.3 ships a digest-registered `darwin-arm64` prebuild;
+  unsupported platforms fail closed instead of using pathname writes.
+- **Explicit production branch strategies**: projects can create an immutable
+  release branch, fast-forward an existing branch from an exact bound baseline,
+  or initialize an absent standard branch and make a separately approved,
+  observable, reconcilable default-branch change.
+
+### Changed
+
+- Existing `public-release.json` snapshot commands are surfaced only as
+  migration candidates. Discovery never grants execution authority; gate and
+  legacy-hook side effects still require separate explicit acknowledgements.
+- Compatibility configurations for artifact-graph, flow-architect, loop-agent,
+  and agent-method-registry now bind real tag/channel/baseline semantics and
+  project-owned verification behavior. glaf4-test is represented as local-only
+  instead of receiving an invented remote channel.
+- README and installation guidance now begin with safe setup, explain the three
+  branch strategies, and distinguish pre-freeze hooks from frozen-snapshot and
+  installed-consumer gates.
+
+### Fixed
+
+- **GitHub CLI Release-missing plain text compatibility**: `gh release view`
+  returns plain text `release not found` when the target release does not
+  exist; the previous implementation only recognized an HTTP 404 exit code.
+  The adapter now maps that specific plain text to a missing-release
+  decision without misclassifying `repository not found` or permission
+  errors as a target release absence.
+- **Plugin consumer install verification transport semantics**: frozen
+  snapshots are sealed as read-only, but Git and plugin installation
+  transport restores owner write permission on extraction. Verification
+  now normalizes ordinary write permission from transport semantics and
+  continues to strictly verify path, type, content, size, and executable
+  intent. The frozen source digest is still compared against the plan and
+  must not be back-filled from observed results.
+
 ## [0.1.1] - 2026-07-18
 
 ### Fixed

@@ -437,6 +437,40 @@ export async function loadProjectConfig({ root, configPath } = {}) {
     }
   }
 
+  // Verification gates are deliberately cross-referenced here instead of
+  // inferred at execution time. A gate must name one existing unit and, for
+  // consumer verification, one distribution that the unit actually ships.
+  const unitsById = new Map(config.releaseUnits.map((unit) => [unit.id, unit]));
+  const gateIds = new Set();
+  for (const gate of config.verificationGates ?? []) {
+    if (gateIds.has(gate.id)) {
+      throw new ReleaseError(
+        CONFIG_INVALID,
+        `duplicate verification gate id: "${gate.id}"`,
+        { gateId: gate.id },
+      );
+    }
+    gateIds.add(gate.id);
+    const unit = unitsById.get(gate.scope.unit);
+    if (!unit) {
+      throw new ReleaseError(
+        CONFIG_INVALID,
+        `verification gate "${gate.id}" references unknown unit "${gate.scope.unit}"`,
+        { gateId: gate.id, unitId: gate.scope.unit },
+      );
+    }
+    if (
+      gate.phase === 'consumer-verify' &&
+      !(unit.distributions ?? []).some((distribution) => distribution.type === gate.scope.distribution)
+    ) {
+      throw new ReleaseError(
+        CONFIG_INVALID,
+        `verification gate "${gate.id}" references undeclared distribution "${gate.scope.distribution}"`,
+        { gateId: gate.id, unitId: gate.scope.unit, distribution: gate.scope.distribution },
+      );
+    }
+  }
+
   // --- Compute deterministic digest ---
   const configDigest = sha256Hex(canonicalJson(config));
 

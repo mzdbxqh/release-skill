@@ -28,7 +28,7 @@ verify 只接受 `PUBLISHED` 状态的源 run；`VERIFIED` 是终态，不会再
 ## 正向执行路径
 
 1. 确认有 `--run` 路径（必需），且源 run 状态为 PUBLISHED
-2. 复用 `release-help` 已解析的 `CLI` 数组，运行 `"${CLI[@]}" verify --root <path> --plan <plan-path> --run <run-path> --json`
+2. 复用 `release-help` 已解析的 `CLI` 数组；若存在 consumer gate 或 npm `smokeBin`，先逐项审阅并增加 `--acknowledge-gate-side-effects`
 3. 检查 exit code 和结构化状态：`VERIFIED`（全部通过）/ 失败（具体错误）
 4. 只有 `VERIFIED` 才是 happy end
 
@@ -37,6 +37,8 @@ verify 只接受 `PUBLISHED` 状态的源 run；`VERIFIED` 是终态，不会再
 ```bash
 # 从 npm 全局安装
 "${CLI[@]}" verify --root <path> --plan <plan-path> --run <run-path> --json
+# 计划含 consumer gate 或 smokeBin 时：
+"${CLI[@]}" verify --root <path> --plan <plan-path> --run <run-path> --acknowledge-gate-side-effects --json
 
 # 从源码运行
 node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" verify --root <path> --plan <plan-path> --run <run-path> --json
@@ -56,7 +58,7 @@ node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" verify -
 - 在 `os.tmpdir()` 创建隔离目录
 - 执行 `npm install <package>@<version>` 带安全标志
 - 验证安装的 `package.json` name 和 version 精确匹配
-- 若配置了 `smokeBin`：验证 bin 路径安全（无逃逸、无 symlink），执行并验证输出
+- 若配置了 `smokeBin`：验证 bin 路径安全（无逃逸、无 symlink），从精确安装根、隔离 HOME 和最小环境执行并验证输出；这会运行已安装代码，必须显式授权
 - 若未配置 `smokeBin`：仅安装 + name/version 检查即通过
 
 ## 常见错误
@@ -68,3 +70,4 @@ node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" verify -
 | 远端状态不匹配 | POST_PUBLISH_VERIFY_FAILED | 停止 |
 | npm 安装失败 | POST_PUBLISH_VERIFY_FAILED | 停止 |
 | CLI 烟雾输出不匹配 | POST_PUBLISH_VERIFY_FAILED | 停止 |
+| consumer gate / smokeBin 未授权 | GATE_FAILED | 展示命令和副作用，人工确认后加 `--acknowledge-gate-side-effects` |

@@ -1,6 +1,6 @@
 # release-skill
 
-[简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md) · Installation: [English](INSTALL.md) / [简体中文](INSTALL.zh-CN.md)
 
 Release preparation for Claude Code and Codex, with human-edited files kept intact.
 
@@ -10,28 +10,25 @@ reviewed artifacts first and publishes those same artifacts later; it does not
 regenerate a README or re-pack the live workspace at the last step.
 
 <!-- release-skill:capability:external-write-boundary -->
-> **Current boundary:** read-only `assess`, offline `prepare`, frozen Git
-> branch/tag, GitHub Release, npm tarball, and Claude/Codex marketplace consumer
-> installation verification have passed a local production-equivalent protocol
-> sandbox using the real release-skill CLI and frozen artifacts, local bare Git
-> remotes, and protocol fakes for `gh`, `npm`, Claude, and Codex. Separate
-> isolated local probes have exercised the installed Claude/Codex CLIs; no real
-> marketplace or production API was contacted. The tests do not provide
-> OS-level network isolation. We
-> have not run a real production canary for you; treat the first real release as
-> a monitored canary. Real APIs, auth, permissions, rate limits, and eventual
-> consistency are outside this sandbox claim. `prepare --online` observes previous
-> public baselines (bound mode) and fails closed on drift; remote uniqueness checks
-> are deferred to publish global preflight.
+> **Current boundary:** v0.1.1 completed a real production release to GitHub and
+> npm, followed by exact npm installation and Claude/Codex consumer installation
+> verification from the frozen Git ref. The same workflow also has a local
+> production-equivalent protocol suite using the real release-skill CLI and
+> frozen artifacts, local bare Git remotes, and protocol fakes for `gh`, `npm`,
+> Claude, and Codex. The suite does not provide OS-level network isolation, and
+> it does not prove that another project's credentials, permissions, rate limits,
+> or eventual-consistency behavior will match this release. Treat each project's
+> first production run as a monitored canary. `prepare --online` observes bound
+> previous-public baselines and fails closed on drift; remote uniqueness checks
+> run during publish global preflight.
 
 <!-- release-skill:capability:safe-first-command -->
-> **v0.1.1 release candidate:** until `npm view release-skill version` returns
-> `0.1.1`, use the source-checkout command below; do not assume the npm command
-> already exists.
+> **v0.1.1 production verified.** The npm-installed CLI is the supported user
+> entry. Source checkout is the development/contributor fallback.
 >
 > **Start here:**
-> - published package: `release-skill help`
-> - current release candidate: `node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" help`
+> - npm install: `npm install -g release-skill` → `release-skill help`
+> - source checkout: `node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" help`
 
 <!-- release-skill:maturity:v0.1-boundary -->
 <!-- release-skill:maturity:boundary -->
@@ -70,12 +67,7 @@ truth, and never rewrite human truth.**
 - Git 2.30+
 - A target Git repository with at least one commit
 
-> **v0.1.1 release candidate:** before the production release completes, the
-> npm registry may return 404. Use the source-checkout path below for review.
-> After `npm view release-skill version` returns `0.1.1`, the npm-installed CLI
-> is the supported user entry and the source checkout is a development fallback.
-
-**Install from npm (supported after v0.1.1 publication):**
+**Install from npm (recommended):**
 
 ```bash
 npm install -g release-skill
@@ -93,7 +85,7 @@ npx release-skill help
 release-skill help
 ```
 
-**Development install (from source checkout):**
+**Development install (contributor fallback, from source checkout):**
 
 Set the checkout location and install dependencies:
 
@@ -105,8 +97,6 @@ npm exec --yes pnpm@10.17.1 -- install --frozen-lockfile
 
 Then use the CLI via `node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs"`.
 
-Create `.release-skill/project.yaml` in the target project:
-
 First keep local plans, approvals, and frozen artifacts out of Git:
 
 ```gitignore
@@ -114,7 +104,142 @@ First keep local plans, approvals, and frozen artifacts out of Git:
 !.release-skill/project.yaml
 ```
 
-Then create the configuration. npm visibility must be explicit:
+### First use: discover, then let a human finalize
+
+When the project has no configuration, start with read-only setup. It scans
+packages, plugin manifests, Git remotes, legacy `public-release.json`, and
+quality scripts. It reports release-unit, tag, branch, previous-baseline, and
+verification-gate candidates, but never treats README prose as instructions or
+automatically selects or executes a script:
+
+```bash
+release-skill setup --root /absolute/path/to/my-project --json
+```
+
+`NEEDS_INPUT` and `LOCAL_ONLY_DETECTED` intentionally exit with code 2. They
+are unresolved decision states, not a crash. Automation should inspect the JSON
+`status` instead of treating every nonzero setup result as an internal failure.
+
+After review, create an answers JSON containing the complete `projectConfig`.
+Its `selectedGateIds` must exactly match `projectConfig.verificationGates[].id`;
+use an explicit empty array when no project-specific gate is selected. Dry-run
+again with those answers, review the new `setupDigest`, then create the config:
+
+```json
+{
+  "projectConfig": {
+    "apiVersion": "release-skill/v1",
+    "kind": "ReleaseProject",
+    "project": { "name": "my-project", "defaultBranch": "main" },
+    "releaseUnits": [{
+      "id": "my-project",
+      "source": ".",
+      "publicRepo": "owner/my-project",
+      "version": { "source": "package.json", "tagTemplate": "v{version}" },
+      "distributions": [{
+        "type": "npm",
+        "package": "my-project",
+        "access": "public",
+        "provenance": false,
+        "tag": "latest",
+        "registry": "https://registry.npmjs.org",
+        "publisher": "my-npm-username"
+      }],
+      "publicFiles": [
+        { "from": "README.md", "to": "README.md", "mode": "preserve" },
+        { "from": "package.json", "to": "package.json", "mode": "preserve" }
+      ],
+      "requiredPublicFiles": ["README.md", "package.json"],
+      "previousPublicBaseline": { "mode": "none" },
+      "production": {
+        "branchTemplate": "release/{tag}",
+        "branchStrategy": "create-release-branch"
+      }
+    }]
+  },
+  "selectedGateIds": []
+}
+```
+
+This is a complete schema-shaped wrapper, not authoritative project data.
+Replace every repository, channel, baseline, and public-file decision with the
+reviewed facts from your project; use `mode: none` only when no public version
+exists.
+
+To select one reported gate, keep the same complete `projectConfig`, add a
+top-level `verificationGates` array inside it, and make the wrapper's
+`selectedGateIds` identical. For example, when dry-run reported
+`my-project-script-test`:
+
+```json
+{
+  "projectConfig": {
+    "apiVersion": "release-skill/v1",
+    "kind": "ReleaseProject",
+    "project": { "name": "my-project", "defaultBranch": "main" },
+    "releaseUnits": [{
+      "id": "my-project",
+      "source": ".",
+      "publicRepo": "owner/my-project",
+      "version": { "source": "package.json", "tagTemplate": "v{version}" },
+      "distributions": [{
+        "type": "npm",
+        "package": "my-project",
+        "access": "public",
+        "provenance": false,
+        "tag": "latest",
+        "registry": "https://registry.npmjs.org",
+        "publisher": "my-npm-username"
+      }],
+      "publicFiles": [
+        { "from": "package.json", "to": "package.json", "mode": "preserve" }
+      ],
+      "requiredPublicFiles": ["package.json"],
+      "previousPublicBaseline": { "mode": "none" },
+      "production": {
+        "branchTemplate": "release/{tag}",
+        "branchStrategy": "create-release-branch"
+      }
+    }],
+    "verificationGates": [{
+      "id": "my-project-script-test",
+      "phase": "snapshot-verify",
+      "scope": { "unit": "my-project" },
+      "command": ["node", "-e", "const p=require('./package.json');if(!p.name)process.exit(1)"],
+      "cwd": ".",
+      "timeoutMs": 30000,
+      "envAllowlist": []
+    }]
+  },
+  "selectedGateIds": ["my-project-script-test"]
+}
+```
+
+The id must be copied from the current `gateCandidates`; do not invent one.
+The example command is self-contained in the public snapshot. A project script
+is valid only when the script and every dependency it needs are included in
+`publicFiles`; a snapshot gate cannot see the parent workspace's tests,
+development dependencies, or `node_modules` unless they are explicitly public.
+
+```bash
+release-skill setup --root /absolute/path/to/my-project \
+  --answers /absolute/path/to/setup-answers.json --json
+release-skill setup --root /absolute/path/to/my-project \
+  --answers /absolute/path/to/setup-answers.json \
+  --write --confirm-setup <setupDigest> --json
+```
+
+Setup atomically creates only an absent `.release-skill/project.yaml`.
+That create-once step uses the digest-registered `darwin-arm64` native
+prebuild shipped in v0.1.3; unsupported platforms fail closed with
+`SAFE_WRITE_UNAVAILABLE` instead of falling back to path-based writes.
+`ALREADY_CONFIGURED`/`CONFIG_EXISTS` means the existing file remains
+human-owned and must be edited incrementally. README, slogans, CHANGELOG, and
+business scripts are never generated or overwritten. A project with no remote
+channel reports `LOCAL_ONLY_DETECTED` instead of inventing production support.
+
+The following is a minimal human-authored configuration. npm visibility,
+public-file boundaries, and remote targets must be explicit:
 
 ```yaml
 apiVersion: release-skill/v1
@@ -162,6 +287,7 @@ releaseUnits:
         #   status: READY
     production:
       branchTemplate: release/{tag}
+      branchStrategy: create-release-branch
       releaseTitleTemplate: "{unit} {version}"
       releaseNotes: "Human-maintained release notes"
 ```
@@ -192,6 +318,58 @@ After `merge` or `adopt`, rebind `previousPublicBaseline` to the accepted
 immutable `repo`/`ref`/`commit`, then run a new `prepare --online --production`,
 review, and approval.
 
+Choose a branch strategy that matches the real repository:
+
+- `create-release-branch` creates an absent immutable release branch and stops
+  if the name already exists.
+- `advance-existing-branch` creates a single-parent commit on the exact
+  `previousPublicBaseline` commit and permits only an ordinary fast-forward
+  push; concurrent drift requires human intervention.
+- `initialize-default-branch` creates an absent standard branch under control.
+  Only explicit `setAsDefaultBranch` and `expectedCurrentDefaultBranch` values
+  add a separately approved, observed, and reconcilable default-branch action.
+
+Minimal configurations for the three strategies are:
+
+```yaml
+# New immutable release branch; the target must not exist.
+previousPublicBaseline: { mode: none } # only for a true first public release
+production:
+  branchTemplate: release/{tag}
+  branchStrategy: create-release-branch
+```
+
+```yaml
+# Advance main; the bound ref must be exactly the target branch.
+previousPublicBaseline:
+  mode: bound
+  repo: owner/my-project
+  ref: refs/heads/main
+  commit: 0123456789abcdef0123456789abcdef01234567
+production:
+  branchTemplate: main
+  branchStrategy: advance-existing-branch
+```
+
+```yaml
+# One-time creation of an absent main and an explicit default-branch switch.
+previousPublicBaseline:
+  mode: bound
+  repo: owner/my-project
+  ref: refs/heads/old-public-branch
+  commit: 0123456789abcdef0123456789abcdef01234567
+production:
+  branchTemplate: main
+  branchStrategy: initialize-default-branch
+  setAsDefaultBranch: true
+  expectedCurrentDefaultBranch: old-public-branch
+```
+
+The latter two require `prepare --online --production`. If the observed branch,
+commit, target absence, or current default branch differs, stop and update the
+human-owned source/config only after reviewing the real remote state; never
+force-push or weaken the baseline.
+
 This is a mechanics-only local example, not a complete npm publication map.
 Before a real release, enumerate every public runtime file, executable, type
 declaration, image, and linked document. In a monorepo, set `source` to a path
@@ -206,48 +384,71 @@ causes baseline validation to stop.
 
 ### Main workflow
 
-Run these steps in order. Steps 1–3 are safe default (read-only or local-only);
-steps 4–8 are production publishing with explicit human gates.
+Run these steps in order. Steps 1–4 are safe default (read-only or local-only);
+steps 5–9 are production publishing with explicit human gates.
 
 ```bash
-# Current v0.1.1 release candidate:
-CLI=(node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs")
+# npm-installed CLI (recommended):
+CLI=(release-skill)
 PROJECT=/absolute/path/to/my-project
-# After npm view reports 0.1.1 and the package is installed:
-# CLI=(release-skill)
+ACTOR=your-name
+# Development fallback (source checkout):
+# CLI=(node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs")
 ```
 
-The source-checkout entry remains the candidate default until npm publication is
-verified; after that, the installed npm entry is the supported user default.
+The npm-installed CLI is the supported user entry after v0.1.1 production
+publication. The source checkout remains the development/contributor fallback.
 
 1. **Environment check:**
    ```bash
    "${CLI[@]}" help
    ```
-2. **Readiness assessment (read-only):**
+2. **First-use setup (only when config is absent; read-only):**
+   ```bash
+   "${CLI[@]}" setup --root "$PROJECT" --json
+   ```
+   Complete the answers and exact `setupDigest` confirmation described above;
+   skip this step when configuration already exists.
+3. **Readiness assessment (read-only):**
    ```bash
    "${CLI[@]}" assess --root "$PROJECT" --offline --json
    ```
-3. **Local snapshot and plan freeze:**
+4. **Local snapshot and plan freeze:**
    ```bash
-   "${CLI[@]}" prepare --root "$PROJECT" --offline --json
+   "${CLI[@]}" prepare --root "$PROJECT" --offline \
+     --acknowledge-hook-side-effects \
+     --acknowledge-gate-side-effects --json
    ```
-4. **Human review:** inspect the returned `planPath`, `externalActions`,
+   Omit an acknowledgement only when that project config has no corresponding
+   hook or snapshot gate. Never grant either acknowledgement before reviewing
+   the configured executable, arguments, working directory, and side effects.
+5. **Human review:** inspect the returned `planPath`, `externalActions`,
    `units[].targetVersion`, and `planDigest`. Each unit's snapshot is under
-   `<evidenceDir>/snapshots/<unit-id>/`. The command writes only local release
-   data under `.release-skill/`.
-5. **Production plan freeze:**
+   `<evidenceDir>/snapshots/<unit-id>/`. The release-skill pipeline writes its
+   own data under `.release-skill/`; acknowledged project hooks and gates are
+   unsandboxed processes and may write elsewhere or access the network.
+6. **Production plan freeze:**
    ```bash
-   "${CLI[@]}" prepare --root "$PROJECT" --online --production --json
+   PRODUCTION_JSON=$("${CLI[@]}" prepare --root "$PROJECT" --online --production \
+     --acknowledge-hook-side-effects \
+     --acknowledge-gate-side-effects --json)
+   printf '%s\n' "$PRODUCTION_JSON" | jq .
+   PLAN_PATH=$(printf '%s\n' "$PRODUCTION_JSON" | jq -r '.planPath')
+   PLAN_DIGEST=$(printf '%s\n' "$PRODUCTION_JSON" | jq -r '.planDigest')
    ```
+   As above, omit only acknowledgements that are not required by the project
+   config, and review every configured process before granting them.
    Review the new plan's externalActions, npm policy, branch/tag, and frozen
    digests. `prepare --json` returns the immutable production authority as
    `<project>/.release-skill/plans/<planDigest>.json`; always carry that returned
    `planPath` forward. `.release-skill/release-plan.json` is only a mutable
    convenience alias and must not be passed to production approve/publish/reconcile.
-6. **Approval:**
+7. **Approval:**
    ```bash
-   "${CLI[@]}" approve --plan <planPath> --digest <planDigest> --actor <name> --json
+   APPROVAL_JSON=$("${CLI[@]}" approve --plan "$PLAN_PATH" \
+     --digest "$PLAN_DIGEST" --actor "$ACTOR" --json)
+   printf '%s\n' "$APPROVAL_JSON" | jq .
+   APPROVAL_PATH=$(printf '%s\n' "$APPROVAL_JSON" | jq -r '.approvalPath')
    ```
    Returns the immutable production authority as `approvalPath` at
    `<project>/.release-skill/approvals/<planDigest>/<approvalDigest>.json`.
@@ -257,18 +458,28 @@ verified; after that, the installed npm entry is the supported user default.
    hours; a PARTIAL recovery may create a new approval for the same plan while
    preserving every earlier approval byte-for-byte. Use the returned
    `approvalPath` and `expiresAt` as authority.
-7. **Publish (remote writes start here):**
+8. **Publish (remote writes start here):**
    ```bash
-   "${CLI[@]}" publish --root "$PROJECT" \
-     --plan <planPath> --approval <approvalPath> \
-     --confirm-production <planDigest> --json
+   PUBLISH_JSON=$("${CLI[@]}" publish --root "$PROJECT" \
+     --plan "$PLAN_PATH" --approval "$APPROVAL_PATH" \
+     --confirm-production "$PLAN_DIGEST" --json)
+   printf '%s\n' "$PUBLISH_JSON" | jq .
+   PUBLISH_RUN_PATH=$(printf '%s\n' "$PUBLISH_JSON" | jq -r '.runPath')
    ```
    Save the returned `runPath`. `PUBLISHED` is **not** the terminal state.
-8. **Verify (consumer install check):**
+9. **Verify (consumer install check):**
    ```bash
    "${CLI[@]}" verify --root "$PROJECT" \
-     --plan <planPath> --run <publishRunPath> --json
+     --plan "$PLAN_PATH" --run "$PUBLISH_RUN_PATH" \
+     --acknowledge-gate-side-effects --json
    ```
+   Omit the acknowledgement only when the plan has neither consumer gates nor
+   a configured npm `smokeBin`. Both execute installed project code without an
+   OS or network sandbox.
+
+The handoff example requires `jq`. Without it, copy the same four returned JSON
+fields exactly; do not pass the angle-bracket labels shown elsewhere as shell
+syntax.
 
 Production prepare seals a standalone Git commit/tree for every public snapshot
 and creates a fixed tarball for every npm unit. Publish globally preflights all
@@ -411,16 +622,23 @@ Instead, use `reconcile` to inspect actual remote state, skip already-consistent
 steps, and safely retry incomplete actions:
 
 ```bash
-"${CLI[@]}" reconcile --root "$PROJECT" \
-  --run <publishRunPath> \
-  --plan <planPath> \
-  --approval <approvalPath> \
-  --confirm-production <planDigest> \
-  --json
+RECONCILE_JSON=$("${CLI[@]}" reconcile --root "$PROJECT" \
+  --run "$PUBLISH_RUN_PATH" \
+  --plan "$PLAN_PATH" \
+  --approval "$APPROVAL_PATH" \
+  --confirm-production "$PLAN_DIGEST" --json)
+printf '%s\n' "$RECONCILE_JSON" | jq .
+RECONCILE_RUN_PATH=$(printf '%s\n' "$RECONCILE_JSON" | jq -r '.runPath')
 # Save reconcile's new runPath, then perform the fresh install verification.
 "${CLI[@]}" verify --root "$PROJECT" \
-  --plan <planPath> --run <reconcileRunPath> --json
+  --plan "$PLAN_PATH" --run "$RECONCILE_RUN_PATH" \
+  --acknowledge-gate-side-effects --json
 ```
+
+Omit the verify acknowledgement only when the frozen plan has neither consumer
+gates nor an npm `smokeBin`. The variables above are the exact values captured
+by the main flow; if approval expired during recovery, create a fresh approval
+for the same immutable plan and replace `APPROVAL_PATH` before reconcile.
 
 `reconcile` queries the actual remote state (Git refs, npm version, GitHub
 Release, marketplace install), skips any step whose evidence already matches
@@ -435,6 +653,10 @@ Successful reconcile returns `PUBLISHED`, not `VERIFIED`; only the fresh
 - validates project configuration and release units;
 - reports readiness without changing the project during `assess`;
 - copies configured public files into an isolated snapshot;
+- discovers first-use candidates read-only and creates a config only once after
+  exact `setupDigest` confirmation;
+- runs human-selected project gates in frozen-snapshot copies and exact
+  consumer installation roots;
 - checks required files, path safety, exact bytes/modes, and obvious leaks;
 - records Git/workspace identity and freezes a digest-bound release plan;
 - binds approval to the plan digest, expiry, and explicit action allowlist;
@@ -447,6 +669,52 @@ Successful reconcile returns `PUBLISHED`, not `VERIFIED`; only the fresh
 - stops subsequent checkpoints on failure and writes a separate run record
   without mutating the frozen plan or undoing successful remote actions.
 
+## Project-specific verification: hooks and gates
+
+`hooks.docs/build/test/typecheck/lint` run before the snapshot is frozen. Use
+them only for work that genuinely needs the parent workspace or generates
+source files. They can modify files or access the network, so prepare requires
+`--acknowledge-hook-side-effects`.
+
+`verificationGates` are the controlled extension point for release calibration:
+
+```yaml
+verificationGates:
+  - id: package-contract
+    phase: snapshot-verify
+    scope: { unit: my-project }
+    command:
+      - node
+      - -e
+      - "const p=require('./package.json'); if (!p.name) process.exit(1)"
+    cwd: .
+    timeoutMs: 120000
+    envAllowlist: [CI]
+  - id: installed-help
+    phase: consumer-verify
+    scope: { unit: my-project, distribution: npm }
+    command: [node, scripts/check-installed-help.mjs]
+    cwd: .
+    timeoutMs: 30000
+    envAllowlist: []
+    expectedJson: { status: READY }
+```
+
+The snapshot example is deliberately self-contained and reads only a mapped
+public file. Any replacement script and every dependency it needs must exist
+in the frozen public snapshot. The consumer script must likewise be present in
+the exact installed distribution; gates cannot borrow tests, development
+dependencies, or `node_modules` from the parent workspace.
+
+`snapshot-verify` runs in a disposable writable copy of the frozen public
+snapshot. `consumer-verify` runs from an exact isolated npm/Claude/Codex install
+root. Both use executable arrays instead of shell strings; definitions and
+results enter digest-bound evidence, and prepare/verify require
+`--acknowledge-gate-side-effects`. Gates are still project processes without a
+network sandbox, so release-skill cannot promise that they will not write files
+or access the network. Push, tag, default-branch changes, GitHub Releases, and
+npm publish may never be hooks/gates; they remain controlled plan actions.
+
 ## What it does not do yet
 
 <!-- release-skill:capability:unsupported-scope -->
@@ -455,17 +723,22 @@ Successful reconcile returns `PUBLISHED`, not `VERIFIED`; only the fresh
 - no claim that a real production canary has run for marketplace verification;
 - `prepare --online` observes previous public baselines (bound mode) and defers
   remote uniqueness checks to publish global preflight;
-- no force push, overwrite of branches/tags/releases, or npm unpublish;
+- no overwrite of branches/tags/releases or npm unpublish; create-only refs use
+  `--force-with-lease=<ref>:` solely as an atomic compare-and-set assertion that
+  the ref is absent, while existing branches use an ordinary non-force push;
 - no promise of Windows or broad multi-platform native write support;
 - no hidden commit, push, tag, release, or package publication.
 
 ### Write Safety
 
-`assess` is read-only unless an explicit report output is requested. `prepare`
+`setup` is read-only by default and may create a config only once after exact
+digest confirmation. `assess` is read-only unless an explicit report output is requested. `prepare`
 writes local files under `.release-skill/`; it does not write project source
 files or remote services. If hooks are configured, they are arbitrary local
 processes and require `--acknowledge-hook-side-effects`; hooks may have their
-own filesystem or network side effects. `publish` is the production write entry
+own filesystem or network side effects. Gates are also project processes and
+require `--acknowledge-gate-side-effects`; they may have the same side effects.
+`publish` is the production write entry
 and requires both approval and the current plan digest. Omit hooks and use local
 sandbox targets for the smallest safe rehearsal.
 
@@ -473,12 +746,18 @@ sandbox targets for the smallest safe rehearsal.
 
 | Result | What to do |
 |---|---|
+| `NEEDS_INPUT` | Complete setup's repository, tag, channel, baseline, and gate decisions. |
+| `LOCAL_ONLY_DETECTED` | Establish a remote channel or keep only a local configuration design; do not claim production readiness. |
+| `SETUP_DIGEST_MISMATCH` | Facts or answers changed; rerun dry-run, review, and confirm the new digest. |
+| `CONFIG_EXISTS` | Setup never overwrites the existing config; assess it and edit incrementally. |
+| `SAFE_WRITE_UNAVAILABLE` | Automatic create-once setup is unsupported on this platform; keep the dry-run report and create the reviewed config manually without overwriting an existing file. |
 | `CONFIG_INVALID` | Correct `.release-skill/project.yaml`, then rerun `assess`. |
 | `PUBLIC_FILE_MISSING` | Add or correct the configured public file. |
 | `FORBIDDEN_CONTENT_DETECTED` | Remove the leaked/private content, then prepare again. |
 | `SNAPSHOT_FIDELITY_FAILED` | Inspect the source/snapshot path and rerun `prepare`. |
 | `BASELINE_CHANGED` | Keep the human edit, then prepare, review, and approve again. |
-| `GATE_FAILED` | Inspect frozen artifacts, auth, remote uniqueness, and digest confirmation. |
+| `GATE_FAILED` during `prepare` | Fix the snapshot gate or frozen public artifact, then run a new `prepare`; the failed plan cannot be approved. |
+| `GATE_FAILED` during `verify` | If the consumer environment failed, repair it and rerun `verify` from the same `PUBLISHED` run. If the published artifact is defective, release a new patch version; never overwrite it. |
 | `PARTIAL` | Do not restart or delete remote state; review the returned `runPath` and run `reconcile` (see above). |
 | `PUBLISHED` | Run `verify --plan <planPath> --run <publishRunPath>`; this is not terminal success. |
 | `VERIFIED` | Remote state, exact npm install, and configured plugin consumer installs all matched the frozen plan. |
@@ -486,15 +765,16 @@ sandbox targets for the smallest safe rehearsal.
 ## Skills
 
 - `release-help`: environment check and next-step guidance.
+- `release-setup`: read-only discovery, human calibration, and create-once first-use configuration.
 - `release-assess`: read-only release readiness report.
 - `release-prepare`: local snapshot and reviewable release plan.
 - `release-publish`: approved, digest-confirmed frozen GitHub+npm publishing.
 - `release-reconcile`: evidence-based PARTIAL recovery with human intervention on conflicts.
 - `release-verify`: post-publish verification; only `VERIFIED` is the happy end.
 
-Conflicts still default to human intervention. Before v0.1.1 is published, use
-the source CLI shown above; after registry verification, the supported user
-entry is the npm-installed `release-skill` CLI.
+Conflicts still default to human intervention. The npm-installed `release-skill`
+CLI is the supported user entry after v0.1.1 production publication; source
+checkout remains the development/contributor fallback.
 
 ## License
 

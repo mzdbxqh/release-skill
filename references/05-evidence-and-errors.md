@@ -1,12 +1,12 @@
 # 05 -- 证据与错误
 
-本文档定义 release-skill 的 9 类稳定错误码、JSON/JSONL 事件格式、脱敏规则和证据目录结构。状态机见 `01-state-machine.md`，配置约束见 `02-project-config.md`。
+本文档定义 release-skill 的稳定错误码、JSON/JSONL 事件格式、脱敏规则和证据目录结构。状态机见 `01-state-machine.md`，配置约束见 `02-project-config.md`。
 
 ---
 
 ## 1. 稳定错误码
 
-以下 9 个错误码覆盖 release-skill 全部可恢复和不可恢复错误场景。错误码在所有版本间保持稳定，不得重命名或删除。
+以下列出用户最常遇到的稳定错误码。实现中的完整列表由 `src/core/errors.mjs` 维护；已发布错误码不得重命名或删除。
 
 | 错误码 | 含义 | 触发场景 | 典型恢复 |
 |---|---|---|---|
@@ -19,6 +19,8 @@
 | `HOOK_TIMEOUT` | 项目 hook 执行超时 | hook 运行时间超过 `timeoutMs` 配置 | 增加超时值或优化 hook 执行效率 |
 | `PARTIAL_RELEASE` | 发布部分成功 | 至少一个外部检查点成功但后续检查点失败 | 使用 `reconcile` 从检查点恢复 |
 | `POST_PUBLISH_VERIFY_FAILED` | 发布后验证未通过 | 安装测试失败、泄漏审计未通过、provenance 验证失败 | 检查失败原因，可能需要人工干预 |
+| `SETUP_DIGEST_MISMATCH` | setup 事实或答案已漂移 | dry-run 后 README/package/manifest/remote/answers 发生变化，或确认摘要错误 | 重新运行 setup dry-run、审阅并确认新摘要 |
+| `CONFIG_EXISTS` | setup 目标配置已经存在 | 写入模式试图创建已有 `.release-skill/project.yaml` | 不覆盖；运行 assess 并人工增量编辑 |
 
 ---
 
@@ -85,6 +87,8 @@
 | `exitCode` | 退出码 |
 | `stdout` | 标准输出引用（脱敏后存储，见第 4 节） |
 | `stderr` | 标准错误引用（脱敏后存储，见第 4 节） |
+
+验证 gate 不保存原始 stdout/stderr；证据仅记录命令数组、相对 cwd、时间、exit code、字节数、SHA-256 摘要和结构化裁决，避免把项目命令输出中的凭证复制进证据。
 
 ---
 

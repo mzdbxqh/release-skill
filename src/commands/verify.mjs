@@ -13,7 +13,7 @@
  */
 
 import { readFile, writeFile, mkdtemp, rm, mkdir, lstat, realpath } from 'node:fs/promises';
-import { join, relative, isAbsolute, resolve } from 'node:path';
+import { dirname, join, relative, isAbsolute, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -30,6 +30,7 @@ import {
   writeRunAtomic,
   computeRunDigest,
   resolveDefaultRunDir,
+  createProductionRunDir,
 } from '../core/run.mjs';
 import {
   assertImmutableApprovalAuthority,
@@ -48,6 +49,7 @@ import {
   registryTokenKey,
   resolveNpmRegistryAuthToken,
 } from '../adapters/npm.mjs';
+import { runConsumerVerificationGates } from '../core/verification-gates.mjs';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -60,6 +62,7 @@ import {
 const ADAPTER_ACTION_TYPE_MAP = {
   'push-commit': 'git-push',
   'push-snapshot': 'push-snapshot',
+  'set-default-branch': 'set-default-branch',
   'create-tag': 'git-tag',
   'npm-publish': 'npm-publish',
   'github-release': 'github-release',
@@ -170,10 +173,12 @@ export async function runSmokeTest(plan, root, options = {}) {
         passed: true,
         skipped: true,
         details: { message: 'No npm distributions in plan; smoke test skipped' },
+        gateResults: [],
       };
     }
 
     const results = [];
+    const gateResults = [];
 
     for (const { package: pkgName, registry, targetVersion, unitId, smokeBin, smokeArgs, smokeExpectedJson } of npmDistributions) {
       const packageAtVersion = `${pkgName}@${targetVersion}`;
@@ -237,6 +242,17 @@ export async function runSmokeTest(plan, root, options = {}) {
         };
       }
 
+      const pkgRoot = join(installDir, 'node_modules', pkgName);
+      gateResults.push(...await runConsumerVerificationGates({
+        plan,
+        unitId,
+        distribution: 'npm',
+        executionRoot: pkgRoot,
+        evidence: options.evidence,
+        env: options.gateEnv ?? process.env,
+        fixedEnv: { HOME: installDir },
+      }));
+
       // If smokeBin is not configured, install + name/version check is sufficient
       if (!smokeBin) {
         results.push({
@@ -277,7 +293,6 @@ export async function runSmokeTest(plan, root, options = {}) {
       }
 
       // Verify bin path does not escape the installed package root
-      const pkgRoot = join(installDir, 'node_modules', pkgName);
       const binPath = resolve(pkgRoot, binRelative);
       const relBin = relative(pkgRoot, binPath);
       const sep = process.platform === 'win32' ? '\\' : '/';
@@ -321,7 +336,17 @@ export async function runSmokeTest(plan, root, options = {}) {
       const cliArgs = smokeArgs.length > 0 ? smokeArgs : [];
       let binResult;
       try {
-        binResult = await npmExec.runBin(binPath, cliArgs);
+        binResult = await npmExec.runBin(binPath, cliArgs, {
+          cwd: pkgRoot,
+          env: {
+            HOME: installDir,
+            TMPDIR: installDir,
+            TEMP: installDir,
+            TMP: installDir,
+            PATH: dirname(process.execPath),
+            CI: '1',
+          },
+        });
       } catch (binErr) {
         return {
           passed: false,
@@ -403,6 +428,7 @@ export async function runSmokeTest(plan, root, options = {}) {
         distributions: results,
         count: results.length,
       },
+      gateResults,
     };
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -451,10 +477,14 @@ const defaultNpmExecutor = {
       return { success: true };
     } catch (err) {
       return { success: false, error: err.message };
+    } finally {
+      await rm(userConfig, { force: true }).catch(() => {});
     }
   },
-  async runBin(binPath, args = []) {
+  async runBin(binPath, args = [], options = {}) {
     return execFile(process.execPath, [binPath, ...args], {
+      cwd: options.cwd,
+      env: options.env,
       shell: false,
       encoding: 'utf8',
       timeout: 30_000,
@@ -491,6 +521,8 @@ export async function verifyRelease(options) {
     runDir: runDirOpt,
     clock: clockOpt,
     npmExecutor,
+    verificationGatesAuthorized,
+    gateEnv,
   } = options ?? {};
 
   const clockFn = typeof clockOpt === 'function' ? clockOpt : defaultClock;
@@ -504,10 +536,39 @@ export async function verifyRelease(options) {
     );
   }
 
+  // Load and validate the plan before creating any evidence directory. A
+  // production plan grants authority only to a fresh direct child of its
+  // sibling .release-skill/runs directory.
+  let planRaw;
+  try {
+    planRaw = await readFile(planPath, 'utf8');
+  } catch (err) {
+    throw new ReleaseError(
+      GATE_FAILED,
+      `cannot read release plan: ${err.message}`,
+      { planPath, cause: err.code },
+    );
+  }
+
+  let plan;
+  try {
+    plan = JSON.parse(planRaw);
+  } catch (err) {
+    throw new ReleaseError(
+      GATE_FAILED,
+      `release plan is not valid JSON: ${err.message}`,
+      { planPath },
+    );
+  }
+  validatePlan(plan);
+
   // --- Set up directories ---
   const runId = `verify-${Date.now()}`;
-  const runDir = runDirOpt ?? resolveDefaultRunDir(planPath, 'verify', runId);
-  await mkdir(runDir, { recursive: true });
+  const requestedRunDir = runDirOpt ?? resolveDefaultRunDir(planPath, 'verify', runId);
+  const runDir = plan.production
+    ? await createProductionRunDir(requestedRunDir, planPath)
+    : requestedRunDir;
+  if (!plan.production) await mkdir(runDir, { recursive: true });
 
   const evidence = createEvidenceWriter({ runDir, command: 'verify', clock: clockFn });
 
@@ -517,29 +578,22 @@ export async function verifyRelease(options) {
     // =======================================================================
     await evidence.append({ phase: 'verify', step: 'plan-load', status: 'started' });
 
-    let planRaw;
-    try {
-      planRaw = await readFile(planPath, 'utf8');
-    } catch (err) {
+    const consumerGates = (plan.verificationGates ?? []).filter((gate) => gate.phase === 'consumer-verify');
+    const configuredSmokeBins = (plan.units ?? []).flatMap((unit) => (
+      (unit.distributions ?? [])
+        .filter((distribution) => distribution.type === 'npm' && distribution.smokeBin)
+        .map((distribution) => ({ unitId: unit.id, smokeBin: distribution.smokeBin }))
+    ));
+    if ((consumerGates.length > 0 || configuredSmokeBins.length > 0) && verificationGatesAuthorized !== true) {
       throw new ReleaseError(
         GATE_FAILED,
-        `cannot read release plan: ${err.message}`,
-        { planPath, cause: err.code },
+        `plan declares ${consumerGates.length} consumer verification gate(s) and ` +
+        `${configuredSmokeBins.length} npm CLI smoke process(es). ` +
+        'They execute installed project code without an OS or network sandbox. ' +
+        'To proceed, pass --acknowledge-gate-side-effects (CLI) or verificationGatesAuthorized=true (API).',
+        { gateIds: consumerGates.map((gate) => gate.id), configuredSmokeBins },
       );
     }
-
-    let plan;
-    try {
-      plan = JSON.parse(planRaw);
-    } catch (err) {
-      throw new ReleaseError(
-        GATE_FAILED,
-        `release plan is not valid JSON: ${err.message}`,
-        { planPath },
-      );
-    }
-
-    validatePlan(plan);
 
     await evidence.append({ phase: 'verify', step: 'plan-load', status: 'passed' });
 
@@ -659,6 +713,7 @@ export async function verifyRelease(options) {
     await evidence.append({ phase: 'verify', step: 'adapter-verify', status: 'started' });
 
     const adapterChecks = [];
+    const consumerGateResults = [];
     const actions = plan.externalActions ?? [];
     const MARKETPLACE_TYPES = new Set([
       'claude-marketplace-install',
@@ -770,6 +825,28 @@ export async function verifyRelease(options) {
             { actionId: action.id, observation: verifyResult.observation },
           );
         }
+
+        const distribution = action.type === 'claude-marketplace-install'
+          ? 'claude-plugin'
+          : 'codex-plugin';
+        const installPath = verifyResult.observation?.installPath;
+        consumerGateResults.push(...await runConsumerVerificationGates({
+          plan,
+          unitId: action.unitId,
+          distribution,
+          executionRoot: installPath,
+          evidence,
+          env: gateEnv ?? process.env,
+          fixedEnv: action.type === 'claude-marketplace-install'
+            ? {
+                HOME: resolve(runDir, 'consumers', `claude-${action.parameters.plugin}`),
+                CLAUDE_CONFIG_DIR: resolve(runDir, 'consumers', `claude-${action.parameters.plugin}`, '.claude'),
+              }
+            : {
+                HOME: resolve(runDir, 'consumers', `codex-${action.parameters.plugin}`),
+                CODEX_HOME: resolve(runDir, 'consumers', `codex-${action.parameters.plugin}`),
+              },
+        }));
       } else {
         // --- Non-marketplace: read-only adapter.verify() ---
         const context = {
@@ -825,7 +902,12 @@ export async function verifyRelease(options) {
 
     let smokeTest;
     try {
-      smokeTest = await runSmokeTest(plan, root, { npmExecutor, baseDir: runDir });
+      smokeTest = await runSmokeTest(plan, root, {
+        npmExecutor,
+        baseDir: runDir,
+        evidence,
+        gateEnv: gateEnv ?? process.env,
+      });
     } catch (err) {
       smokeTest = { passed: false, details: { error: err.message } };
     }
@@ -842,6 +924,17 @@ export async function verifyRelease(options) {
         POST_PUBLISH_VERIFY_FAILED,
         `installation smoke test failed: ${smokeTest.details.error}`,
         { smokeTest: smokeTest.details },
+      );
+    }
+
+    consumerGateResults.push(...(smokeTest.gateResults ?? []));
+    const expectedGateIds = consumerGates.map((gate) => gate.id).sort();
+    const observedGateIds = consumerGateResults.map((result) => result.id).sort();
+    if (JSON.stringify(expectedGateIds) !== JSON.stringify(observedGateIds)) {
+      throw new ReleaseError(
+        POST_PUBLISH_VERIFY_FAILED,
+        'consumer verification gate execution set does not match the frozen plan',
+        { expectedGateIds, observedGateIds },
       );
     }
 
@@ -875,6 +968,7 @@ export async function verifyRelease(options) {
           status: check?.status === 'SKIPPED' ? 'skipped' : 'succeeded',
         };
       }),
+      gateResults: consumerGateResults,
       startedAt: clockFn(),
       finishedAt: clockFn(),
     };
@@ -888,6 +982,7 @@ export async function verifyRelease(options) {
       runDigest: persistedVerifyRun.runDigest,
       adapterCheckCount: adapterChecks.length,
       smokeTestPassed: true,
+      consumerGateCount: consumerGateResults.length,
       completedAt: clockFn(),
     });
 
@@ -896,6 +991,7 @@ export async function verifyRelease(options) {
       status: VERIFIED,
       adapterChecks,
       smokeTest,
+      gateResults: consumerGateResults,
     };
   } catch (err) {
     await evidence.append({

@@ -637,7 +637,7 @@ static napi_value OpenDir(napi_env env, napi_callback_info info) {
 }
 
 // ---------------------------------------------------------------------------
-// readEntry(handle, name) -> { type, size, mode } | null
+// readEntry(handle, name) -> { type, size, mode, dev, ino, nlink } | null
 // ---------------------------------------------------------------------------
 
 static napi_value ReadEntry(napi_env env, napi_callback_info info) {
@@ -683,17 +683,26 @@ static napi_value ReadEntry(napi_env env, napi_callback_info info) {
   else if (S_ISCHR(st.st_mode)) type = "char-device";
   else if (S_ISSOCK(st.st_mode)) type = "socket";
 
-  napi_value type_val, size_val, mode_val;
+  napi_value type_val, size_val, mode_val, dev_val, ino_val, nlink_val;
   NAPI_CHECK(napi_create_string_utf8(env, type, NAPI_AUTO_LENGTH, &type_val));
   NAPI_CHECK(
       napi_create_int64(env, static_cast<int64_t>(st.st_size), &size_val));
   NAPI_CHECK(
       napi_create_int32(env, static_cast<int32_t>(st.st_mode & 07777),
                         &mode_val));
+  NAPI_CHECK(
+      napi_create_int64(env, static_cast<int64_t>(st.st_dev), &dev_val));
+  NAPI_CHECK(
+      napi_create_int64(env, static_cast<int64_t>(st.st_ino), &ino_val));
+  NAPI_CHECK(
+      napi_create_int64(env, static_cast<int64_t>(st.st_nlink), &nlink_val));
 
   NAPI_CHECK(napi_set_named_property(env, result, "type", type_val));
   NAPI_CHECK(napi_set_named_property(env, result, "size", size_val));
   NAPI_CHECK(napi_set_named_property(env, result, "mode", mode_val));
+  NAPI_CHECK(napi_set_named_property(env, result, "dev", dev_val));
+  NAPI_CHECK(napi_set_named_property(env, result, "ino", ino_val));
+  NAPI_CHECK(napi_set_named_property(env, result, "nlink", nlink_val));
   return result;
 }
 
