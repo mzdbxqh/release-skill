@@ -10,10 +10,10 @@
 
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { realpath } from 'node:fs/promises';
 import { readFileSync, realpathSync, lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 
 import {
   ReleaseError,
@@ -25,16 +25,70 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const DEFAULT_ADDON_REL = '../../native/safe-write/build/Release/safe_write.node';
-const PREBUILDS_REL = '../../native/safe-write/prebuilds.json';
+// Keep this internal loader self-contained. Besides making the native trust
+// boundary auditable, this lets isolated consumers test/copy it together with
+// errors.mjs only. In the bundle the banner supplies __bundlePkgRoot; in source
+// mode the module's own URL deterministically identifies the package root.
+const PKG_ROOT = typeof __bundlePkgRoot !== 'undefined'
+  ? __bundlePkgRoot
+  : resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const NATIVE_BASE = resolve(PKG_ROOT, 'native/safe-write');
+const PREBUILDS_PATH = resolve(NATIVE_BASE, 'prebuilds.json');
+const PREBUILDS_RESOURCE = 'native/safe-write/prebuilds.json';
+const DEFAULT_ADDON_PATH = resolve(NATIVE_BASE, 'build/Release/safe_write.node');
 
 const EXPECTED_EXPORTS = Object.freeze([
   'openRoot', 'openDir', 'readEntry', 'readFile',
   'createTemp', 'rename', 'abortTemp', 'mkdir', 'rmdir', 'unlink', 'chmod', 'fsync', 'close',
 ]);
+
+function failPrebuildManifest(reason, message = 'prebuilds manifest not readable') {
+  throw new ReleaseError(
+    SAFE_WRITE_UNAVAILABLE,
+    message,
+    { resource: PREBUILDS_RESOURCE, reason },
+  );
+}
+
+function readTrustedPrebuildManifest() {
+  let lexicalStat;
+  try {
+    lexicalStat = lstatSync(PREBUILDS_PATH, { bigint: true });
+  } catch {
+    failPrebuildManifest('MISSING');
+  }
+
+  if (lexicalStat.isSymbolicLink()) {
+    failPrebuildManifest('SYMLINK', 'prebuilds manifest must not be a symlink');
+  }
+  if (!lexicalStat.isFile()) {
+    failPrebuildManifest('NOT_REGULAR_FILE', 'prebuilds manifest is not a regular file');
+  }
+  if (lexicalStat.nlink !== 1n) {
+    failPrebuildManifest('UNEXPECTED_HARDLINK_COUNT', 'prebuilds manifest has invalid nlink count');
+  }
+
+  let physicalBase;
+  let physicalManifest;
+  try {
+    physicalBase = realpathSync(NATIVE_BASE);
+    physicalManifest = realpathSync(PREBUILDS_PATH);
+  } catch {
+    failPrebuildManifest('REALPATH_FAILED');
+  }
+  if (!physicalManifest.startsWith(physicalBase + '/') && physicalManifest !== physicalBase) {
+    failPrebuildManifest(
+      'PHYSICAL_PATH_ESCAPE',
+      'prebuilds manifest physical path escapes base directory',
+    );
+  }
+
+  try {
+    return JSON.parse(readFileSync(physicalManifest, 'utf8'));
+  } catch {
+    failPrebuildManifest('READ_FAILED');
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Error sanitization
@@ -58,7 +112,7 @@ function sanitizeError(err) {
  * Returns the verified physical path on success, or null on failure.
  */
 function isWithinPackageBuildDir(addonPath) {
-  const buildDir = resolve(__dirname, '../../native/safe-write/build/');
+  const buildDir = resolve(NATIVE_BASE, 'build/');
   const resolved = resolve(addonPath);
   if (!resolved.startsWith(buildDir + '/') && resolved !== buildDir) {
     return null;
@@ -106,8 +160,8 @@ function validateManifestEntry(entry, key) {
     throw new ReleaseError(SAFE_WRITE_UNAVAILABLE, `manifest entry missing exports for ${key}`);
   }
 
-  const resolved = resolve(__dirname, '../../native/safe-write', entry.path);
-  const baseDir = resolve(__dirname, '../../native/safe-write/');
+  const resolved = resolve(NATIVE_BASE, entry.path);
+  const baseDir = NATIVE_BASE;
   if (!resolved.startsWith(baseDir + '/') && resolved !== baseDir) {
     throw new ReleaseError(SAFE_WRITE_UNAVAILABLE, `manifest path escapes base directory for ${key}`);
   }
@@ -126,7 +180,8 @@ function validateManifestEntry(entry, key) {
 
 function requireAddon(addonPath) {
   try {
-    const require = createRequire(import.meta.url);
+    // Use PKG_ROOT-relative resolution so bundled mode can find the addon.
+    const require = createRequire(resolve(PKG_ROOT, 'package.json'));
     return require(addonPath);
   } catch (err) {
     throw new ReleaseError(SAFE_WRITE_UNAVAILABLE, sanitizeError(err));
@@ -149,14 +204,7 @@ function requireAddon(addonPath) {
 
 export function readStableAddon(options = {}) {
   const hooks = options._hooks || {};
-
-  const prebuildsPath = resolve(__dirname, PREBUILDS_REL);
-  let manifest;
-  try {
-    manifest = JSON.parse(readFileSync(prebuildsPath, 'utf8'));
-  } catch {
-    throw new ReleaseError(SAFE_WRITE_UNAVAILABLE, 'prebuilds manifest not readable');
-  }
+  const manifest = readTrustedPrebuildManifest();
 
   if (!manifest.prebuilds || typeof manifest.prebuilds !== 'object') {
     throw new ReleaseError(SAFE_WRITE_UNAVAILABLE, 'prebuilds manifest has invalid structure');
@@ -174,7 +222,7 @@ export function readStableAddon(options = {}) {
   validateManifestEntry(entry, key);
 
   // Resolve lexical candidate path
-  const addonFile = resolve(__dirname, '../../native/safe-write', entry.path);
+  const addonFile = resolve(NATIVE_BASE, entry.path);
 
   // Step 1: lstat LEXICAL path FIRST — reject symlink, non-regular, nlink!=1
   // Must lstat the original path to detect symlinks; lstat on a resolved path
@@ -207,7 +255,7 @@ export function readStableAddon(options = {}) {
     throw new ReleaseError(SAFE_WRITE_UNAVAILABLE, 'prebuilt addon not accessible');
   }
 
-  const nativeBaseDir = realpathSync(resolve(__dirname, '../../native/safe-write/'));
+  const nativeBaseDir = realpathSync(NATIVE_BASE);
   if (!physicalAddonFile.startsWith(nativeBaseDir + '/') && physicalAddonFile !== nativeBaseDir) {
     throw new ReleaseError(SAFE_WRITE_UNAVAILABLE, 'prebuilt addon physical path escapes base directory');
   }
@@ -305,7 +353,7 @@ export function loadNativeAddon(addonPath) {
 
   // 2. Development mode
   if (process.env.RELEASE_SKILL_NATIVE_DEV === '1') {
-    const devPath = resolve(__dirname, DEFAULT_ADDON_REL);
+    const devPath = DEFAULT_ADDON_PATH;
     const physicalPath = isWithinPackageBuildDir(devPath);
     if (!physicalPath) {
       throw new ReleaseError(SAFE_WRITE_UNAVAILABLE, 'dev addon path is outside build directory');

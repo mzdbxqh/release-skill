@@ -23,25 +23,18 @@ description: "Discoverable entry point for release-skill: dependency and environ
 
 ## 正向执行路径
 
-1. 若 `npm view release-skill version` 已返回当前支持版本，探测 PATH 全局安装并运行 `release-skill help --json`
-2. registry 尚未发布当前版本或 PATH 不可用时，回退到源码路径：设置 `RELEASE_SKILL_HOME` 并运行 `node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" help --json`
-3. 检查 `readiness.localPreparation`；需要生产发布时再检查 `readiness.productionPublish`
-4. 若环境就绪且缺少 `.release-skill/project.yaml`，先路由 `release-setup`；配置已存在才运行 `release-assess`
-5. 默认在审阅本地计划和快照后停止；只有用户明确要求且完成摘要审批时才路由到 `release-publish`
+1. 使用插件根相对路径运行 CLI：`node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" help --json`
+2. 检查 `readiness.localPreparation`；需要生产发布时再检查 `readiness.productionPublish`
+3. 若环境就绪且缺少 `.release-skill/project.yaml`，先路由 `release-setup`；配置已存在才运行 `release-assess`
+4. 默认在审阅本地计划和快照后停止；只有用户明确要求且完成摘要审批时才路由到 `release-publish`
 
 ## 确定性脚本调用
 
 ```bash
-# 已确认 registry 存在当前版本后，从 npm 全局安装（推荐）
-release-skill help --json  # PATH 全局安装
-release-skill setup --root <path> --json  # 首次接入，只读发现
-release-skill assess --root <path> --offline --json  # PATH 全局安装
-
-# 从源码 checkout 运行
-RELEASE_SKILL_HOME=/path/to/release-skill
-node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" help --json
-node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" setup --root <path> --json
-node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" assess --root <path> --offline --json
+# 从插件根运行（自包含 bundle，无需 node_modules）
+node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" help --json
+node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" setup --root <path> --json
+node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" assess --root <path> --offline --json
 ```
 
 ## 故障路由
@@ -53,11 +46,11 @@ node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" assess -
 | pnpm 未安装 | 不影响本地准备；仅出现在 recommendations 中 |
 | npm/gh 未安装 | 本地准备仍可就绪，但 `readiness.productionPublish.status` 为 `NOT_READY` |
 | npm/gh 已安装 | 生产状态仍为 `AUTH_CHECK_REQUIRED`；发布前验证 `gh auth`、Git HTTPS credential 和 npm auth |
-| CLI 入口不存在 | 安装 `npm install -g release-skill`；无法使用 npm 时设置 `RELEASE_SKILL_HOME` 使用源码路径 |
+| CLI 入口不存在 | 确认 `${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs` 存在；不存在时重新安装插件 |
 | 项目配置不存在 | 路由 `release-setup`，默认只读；不得直接生成或覆盖 README/配置 |
-| assess 失败 | 运行 `node "$RELEASE_SKILL_HOME/..." assess --offline --json` 获取详情 |
+| assess 失败 | 运行 `node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" assess --offline --json` 获取详情 |
 | 请求生产发布 | 已有公开版本先调用 `release-prepare --online --production` 观察 bound 基线；人工审阅后再路由 `release-publish` |
 
 ## 后续引导
 
-本地准备就绪后下一步运行 `release-assess`（npm 全局安装：`release-skill assess`；源码：`node "$RELEASE_SKILL_HOME/..." assess`）。生产发布还要求 npm、gh 可用，并在发布前另行完成认证检查。
+本地准备就绪后下一步运行 `release-assess`：`node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" assess`。生产发布还要求 npm、gh 可用，并在发布前另行完成认证检查。

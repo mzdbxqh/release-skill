@@ -28,20 +28,17 @@ verify 只接受 `PUBLISHED` 状态的源 run；`VERIFIED` 是终态，不会再
 ## 正向执行路径
 
 1. 确认有 `--run` 路径（必需），且源 run 状态为 PUBLISHED
-2. 复用 `release-help` 已解析的 `CLI` 数组；若存在 consumer gate 或 npm `smokeBin`，先逐项审阅并增加 `--acknowledge-gate-side-effects`
+2. 使用插件根相对路径运行 CLI；若存在 consumer gate 或 npm `smokeBin`，先逐项审阅并增加 `--acknowledge-gate-side-effects`
 3. 检查 exit code 和结构化状态：`VERIFIED`（全部通过）/ 失败（具体错误）
 4. 只有 `VERIFIED` 才是 happy end
 
 ## 确定性脚本调用
 
 ```bash
-# 从 npm 全局安装
-"${CLI[@]}" verify --root <path> --plan <plan-path> --run <run-path> --json
+# 从插件根运行
+node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" verify --root <path> --plan <plan-path> --run <run-path> --json
 # 计划含 consumer gate 或 smokeBin 时：
-"${CLI[@]}" verify --root <path> --plan <plan-path> --run <run-path> --acknowledge-gate-side-effects --json
-
-# 从源码运行
-node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" verify --root <path> --plan <plan-path> --run <run-path> --json
+node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" verify --root <path> --plan <plan-path> --run <run-path> --acknowledge-gate-side-effects --json
 ```
 
 ## 验证步骤

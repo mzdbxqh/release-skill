@@ -17,7 +17,6 @@ import {
   realpath,
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
@@ -30,6 +29,7 @@ import {
   ReleaseError,
   SETUP_DIGEST_MISMATCH,
 } from '../core/errors.mjs';
+import { readTrustedPackageResource } from '../core/trusted-resource.mjs';
 
 const execFile = promisify(execFileCb);
 const SKIP_DIRS = new Set([
@@ -39,8 +39,9 @@ const SKIP_DIRS = new Set([
   'runs', 'test', 'tests', 'test-fixtures', 'fixtures', 'examples',
 ]);
 const MAX_JSON_BYTES = 1024 * 1024;
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const schema = JSON.parse(await readFile(resolve(__dirname, '..', '..', 'schemas', 'release-project.schema.json'), 'utf8'));
+const schema = JSON.parse((await readTrustedPackageResource(
+  'schemas/release-project.schema.json',
+)).toString('utf8'));
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
 const validateProjectConfig = ajv.compile(schema);
@@ -66,7 +67,7 @@ async function readJsonBounded(path, label) {
   }
 }
 
-async function walkDiscoveryFiles(root, maxDepth = 5) {
+async function walkDiscoveryFiles(root, maxDepth = 8) {
   const found = [];
   async function walk(directory, depth) {
     if (depth > maxDepth) return;
@@ -81,6 +82,7 @@ async function walkDiscoveryFiles(root, maxDepth = 5) {
         child.isFile() &&
         (child.name === 'package.json' ||
           child.name === 'public-release.json' ||
+          child.name === 'SKILL.md' ||
           /^README(?:\.|$)/i.test(child.name) ||
           /^LICENSE(?:\.|$)/i.test(child.name) ||
           /^CHANGELOG(?:\.|$)/i.test(child.name) ||
@@ -213,15 +215,73 @@ function normalizeLegacyCommand(value) {
 }
 
 function classifyScript(name, command, unitId, distributionTypes) {
-  const normalized = `${name} ${command}`.toLowerCase();
-  const highCost = /(llm|real[-_: ]?smoke|end[-_: ]?to[-_: ]?end|\be2e\b|integration)/.test(normalized);
-  const mayWrite = /(build|generate|update|fix|format|codegen)/.test(normalized);
-  const networkLikely = /(llm|network|online|publish|release|deploy)/.test(normalized);
-  const isSmoke = /smoke/.test(normalized);
+  const normalizedName = name.toLowerCase();
+  const inspectedArgv = normalizeLegacyCommand(command);
+  const argv = inspectedArgv?.map((token) => token.toLowerCase()) ?? [];
+  const executable = basename(argv[0] ?? '');
+  const subcommand = argv[1] ?? '';
+
+  // Script names only express purpose/cost. Network and interactive behavior
+  // is derived from parsed argv so repository names such as "release-notes"
+  // and paths containing "development" cannot trigger false positives.
+  const isSmoke = /smoke/.test(normalizedName);
+  const llmLikely = /(?:^|[:_-])llm(?:$|[:_-])/.test(normalizedName) ||
+    argv.some((token) => /(?:^|[-_/])(?:llm|claude|openai)(?:[-_.\/]|$)/.test(token));
+  const highCost = /(?:^|[:_-])(integration|e2e|browser|real|self-iteration)(?:$|[:_-])/.test(normalizedName) || llmLikely;
+  const packagePublish = ['npm', 'pnpm', 'yarn'].includes(executable) && subcommand === 'publish';
+  const githubRelease = executable === 'gh' && subcommand === 'release';
+  const networkLikely = packagePublish || githubRelease || ['curl', 'wget', 'npx'].includes(executable) ||
+    (executable === 'git' && ['push', 'fetch', 'pull'].includes(subcommand)) || llmLikely;
+  const interactive = /(?:^|[:_-])(watch|dev|serve)(?:$|[:_-])/.test(normalizedName) ||
+    argv.some((token) => token === '--watch' || token.startsWith('--watch=')) ||
+    ['nodemon', 'vite'].includes(executable) ||
+    subcommand === 'serve' || (executable === 'next' && subcommand === 'dev');
+  const mayWrite = /(?:^|[:_-])(build|generate|update|fix|format|codegen)(?:$|[:_-])/.test(normalizedName) ||
+    argv.includes('--fix') || packagePublish || githubRelease;
   const distribution = distributionTypes.length === 1 ? distributionTypes[0] : null;
+  const consumerContextUnproven = isSmoke;
+
+  // Indirect execution: script interpreters with local script paths, or
+  // package manager run/test commands. Their actual behavior cannot be
+  // proven from argv alone, so they must fail closed.
+  // For node/python/python3/bash/sh: detect when an argument looks like a
+  // script path (contains / or .) or when node is invoked as a test runner
+  // (--test flag). Exclude pure flags (starting with -) for non-node interpreters.
+  // A package script is an indirection boundary regardless of its first argv.
+  // It may execute a relative shebang file, load plugins, source another file,
+  // or delegate through an unrecognised interpreter. Discovery therefore never
+  // proves side effects; only explicit human selection may register it as a gate.
+  const sideEffectsUnproven = inspectedArgv !== null &&
+    !networkLikely && !interactive && !highCost && !mayWrite;
+
+  const eligibleForRecommendation =
+    inspectedArgv !== null &&
+    !networkLikely &&
+    !interactive &&
+    !highCost &&
+    !mayWrite &&
+    !consumerContextUnproven &&
+    !sideEffectsUnproven;
+  const ineligibilityReason = networkLikely
+    ? 'NETWORK_LIKELY'
+    : interactive
+      ? 'INTERACTIVE'
+      : highCost
+        ? 'HIGH_COST'
+        : mayWrite
+          ? 'MAY_WRITE_FILES'
+          : inspectedArgv === null
+            ? 'UNPARSEABLE_COMMAND'
+            : sideEffectsUnproven
+              ? 'SIDE_EFFECTS_UNPROVEN'
+              : consumerContextUnproven
+                ? 'CONSUMER_CONTEXT_UNPROVEN'
+                : null;
+
   return {
     id: `${unitId}-script-${name.toLowerCase().replace(/[^a-z0-9._-]+/g, '-')}`,
     script: name,
+    inspectedArgv,
     command: ['npm', 'run', name],
     recommendedPhase: isSmoke ? 'consumer-verify' : 'snapshot-verify',
     scope: {
@@ -233,12 +293,15 @@ function classifyScript(name, command, unitId, distributionTypes) {
         ? { distributionCandidates: [...distributionTypes] }
         : {}
     ),
-    cost: highCost ? 'high' : /test|smoke/.test(normalized) ? 'medium' : 'low',
+    cost: highCost ? 'high' : /test|smoke/.test(normalizedName) ? 'medium' : 'low',
     sideEffects: {
       mayWriteFiles: mayWrite,
       networkLikely,
+      interactive,
       unsandboxed: true,
     },
+    eligibleForRecommendation,
+    ...(ineligibilityReason ? { ineligibilityReason } : {}),
     reason: isSmoke
       ? '脚本名称表明它可能验证安装后的实际使用；必须人工确认后才能注册。'
       : '项目已声明质量脚本，可在冻结快照副本上复用；不会自动注册。',
@@ -272,6 +335,86 @@ async function discoverGit(root) {
     head: await run(['rev-parse', 'HEAD']) || null,
     tags: (await run(['tag', '--list'])).split('\n').filter(Boolean).sort(),
     remotes,
+    trackedFiles: (await run(['ls-files'])).split('\n').filter(Boolean).sort(),
+  };
+}
+
+/**
+ * Discover Git information for a release unit's source directory.
+ *
+ * Returns a JSON-serializable evidence object per unit including git root,
+ * independence status, remotes, branch, HEAD, tags, and tracked files within
+ * the unit directory. For independent sub-repos, branch/head/tags come from
+ * the sub-repo; for shared-repo units they come from the parent.
+ *
+ * @param {string} unitAbsDir - Absolute path to the unit source directory.
+ * @param {string} parentRoot - Absolute path to the parent workspace root.
+ * @param {string} unitRelDir - Relative directory of the unit (for tracked files filtering).
+ * @returns {Promise<object>} JSON-serializable per-unit Git evidence.
+ */
+async function discoverUnitGit(unitAbsDir, parentRoot) {
+  const run = async (cwd, args) => {
+    try {
+      const { stdout } = await execFile('git', args, { cwd, shell: false, encoding: 'utf8', timeout: 5000 });
+      return stdout.trim();
+    } catch {
+      return '';
+    }
+  };
+  // Check if this unit's source dir has its own Git root
+  const unitGitRoot = await run(unitAbsDir, ['rev-parse', '--show-toplevel']);
+  if (!unitGitRoot) {
+    return { gitRoot: null, ownRepo: false, ownRemotes: [], branch: null, head: null, tags: [], trackedFiles: [] };
+  }
+
+  const parentGitRoot = await run(parentRoot, ['rev-parse', '--show-toplevel']);
+  const isIndependent = unitGitRoot !== parentGitRoot;
+
+  // Run from the unit directory. Git selects the correct enclosing repo and
+  // `ls-files -- .` then returns paths relative to the unit, for both nested
+  // independent repositories and monorepo subdirectories.
+  const branch = await run(unitAbsDir, ['branch', '--show-current']) || null;
+  const head = await run(unitAbsDir, ['rev-parse', 'HEAD']) || null;
+  const tags = (await run(unitAbsDir, ['tag', '--list'])).split('\n').filter(Boolean).sort();
+
+  // Discover remotes from the effective git directory
+  const remoteLines = (await run(unitAbsDir, ['remote', '-v'])).split('\n').filter(Boolean);
+  const ownRemotes = [];
+  const seen = new Set();
+  for (const line of remoteLines) {
+    const match = line.match(/^(\S+)\s+(\S+)\s+\((fetch|push)\)$/);
+    if (!match) continue;
+    const key = `${match[1]}\0${match[2]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ownRemotes.push({ name: match[1], url: match[2], repo: parseGithubRepo(match[2]) });
+  }
+  ownRemotes.sort((a, b) => canonicalJson(a).localeCompare(canonicalJson(b)));
+
+  // Tracked files within the unit directory
+  const lsOutput = await run(unitAbsDir, ['ls-files', '--', '.']);
+  const trackedFiles = lsOutput ? lsOutput.split('\n').filter(Boolean).sort() : [];
+  const upstream = await run(unitAbsDir, ['rev-parse', '--abbrev-ref', '@{upstream}']) || null;
+  const aheadBehind = upstream
+    ? (await run(unitAbsDir, ['rev-list', '--left-right', '--count', `HEAD...${upstream}`]))
+      .split(/\s+/).map(Number)
+    : [];
+
+  return {
+    gitRoot: safeRelative(parentRoot, unitGitRoot),
+    ownRepo: isIndependent,
+    ownRemotes,
+    branch,
+    head,
+    tags,
+    trackedFiles,
+    remoteTracking: {
+      upstream,
+      ahead: Number.isFinite(aheadBehind[0]) ? aheadBehind[0] : null,
+      behind: Number.isFinite(aheadBehind[1]) ? aheadBehind[1] : null,
+      provenance: 'local-git-observation',
+      networkFreshness: 'not-checked',
+    },
   };
 }
 
@@ -328,12 +471,181 @@ async function discoverFacts(root) {
     legacyReleaseConfigs.push(summarizeLegacyReleaseConfig(value, safeRelative(root, path)));
   }
 
-  return { git: await discoverGit(root), packages, manifests, legacyReleaseConfigs, fileDigests };
+  const git = await discoverGit(root);
+  const skills = files
+    .filter((path) => basename(path) === 'SKILL.md')
+    .map((path) => {
+      const relPath = safeRelative(root, path);
+      const segments = relPath.split('/');
+      const skillIndex = segments.lastIndexOf('skills');
+      return {
+        path: relPath,
+        name: skillIndex >= 0 ? segments[skillIndex + 1] ?? null : null,
+        host: relPath.includes('/adapters/claude/') ? 'claude'
+          : relPath.includes('/adapters/codex/') ? 'codex'
+            : 'shared',
+      };
+    })
+    .filter((item) => item.name)
+    .sort((a, b) => canonicalJson(a).localeCompare(canonicalJson(b)));
+
+  // Per-unit Git discovery: detect independent sub-repos for each package
+  const unitGit = {};
+  for (const pkg of packages) {
+    const unitAbsDir = resolve(root, pkg.directory);
+    unitGit[pkg.directory] = await discoverUnitGit(unitAbsDir, root);
+  }
+
+  return { git, packages, manifests, skills, legacyReleaseConfigs, fileDigests, unitGit };
+}
+
+/**
+ * Build publicFileMappingCandidates for a unit, merging from all sources.
+ *
+ * Each mapping is { from, to, mode: 'preserve', sources: string[] }.
+ * When multiple sources map to the same `to`, all sources are merged into a
+ * single entry. If two different `from` paths map to the same `to`, that
+ * is a conflict and must be reported.
+ */
+function packagePatternMatches(pattern, relativePath) {
+  const normalized = pattern.replace(/^\.\//, '').replace(/\/$/, '');
+  if (!normalized) return false;
+  if (!/[?*]/.test(normalized)) {
+    return relativePath === normalized || relativePath.startsWith(`${normalized}/`);
+  }
+  const escaped = normalized.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const regexSource = escaped
+    .replace(/\*\*/g, '\u0000')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\?/g, '[^/]')
+    .replace(/\u0000/g, '.*');
+  return new RegExp(`^${regexSource}(?:/.*)?$`).test(relativePath);
+}
+
+function buildPublicFileMappingCandidates(pkg, matchingLegacyUnits, manifestOwners, facts, knownFiles) {
+  const unitDir = pkg.directory;
+  const prefix = unitDir === '.' ? '' : `${unitDir}/`;
+  const toFromMap = new Map();
+  const unitTrackedFiles = facts.unitGit?.[unitDir]?.trackedFiles ?? [];
+  const availableFiles = new Set([
+    ...knownFiles,
+    ...(facts.git.trackedFiles ?? []),
+    ...unitTrackedFiles.map((path) => `${prefix}${path}`),
+  ]);
+
+  function addMapping(from, to, source, priority = 1) {
+    if (!availableFiles.has(from)) return;
+    const existing = toFromMap.get(to);
+    if (existing) {
+      if (existing.from === from) {
+        existing.sources.add(source);
+      } else if (priority > existing.priority) {
+        toFromMap.set(to, {
+          from,
+          priority,
+          sources: new Set([source, ...existing.sources]),
+        });
+      } else if (priority === existing.priority) {
+        existing.conflictingFrom = from;
+        existing.sources.add(source);
+      } else {
+        existing.sources.add(`${source}:superseded`);
+      }
+    } else {
+      toFromMap.set(to, { from, priority, sources: new Set([source]) });
+    }
+  }
+
+  // Explicit legacy sources are authoritative over generic package inference.
+  for (const config of facts.legacyReleaseConfigs) {
+    for (const shared of config.sharedFileCandidates) {
+      addMapping(shared.source, shared.target, 'legacy-shared-file', 3);
+    }
+  }
+  for (const legacy of matchingLegacyUnits) {
+    if (legacy.docsSource) {
+      const config = facts.legacyReleaseConfigs.find((item) => item.releaseUnits.includes(legacy));
+      for (const name of config?.docFileCandidates ?? []) {
+        addMapping(`${legacy.docsSource}/${name}`, name, 'legacy-doc-source', 3);
+      }
+    }
+  }
+
+  addMapping(pkg.path, 'package.json', 'package-manifest', 2);
+
+  const STANDARD_NAMES = [
+    'README.md', 'README.zh-CN.md', 'LICENSE', 'NOTICE', 'CHANGELOG.md',
+    'INSTALL.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md',
+  ];
+  for (const name of STANDARD_NAMES) {
+    addMapping(`${prefix}${name}`, name, 'standard-human-file', 1);
+  }
+
+  for (const manifest of facts.manifests) {
+    if (manifestOwners.get(manifest.path) === pkg.path) {
+      const to = manifest.path.startsWith(prefix) ? manifest.path.slice(prefix.length) : manifest.path;
+      addMapping(manifest.path, to, 'plugin-manifest', 2);
+    }
+  }
+
+  for (const legacy of matchingLegacyUnits) {
+    for (const reqPath of legacy.requiredPathCandidates) {
+      addMapping(`${prefix}${reqPath}`, reqPath, 'legacy-required-path', 2);
+    }
+  }
+
+  for (const pattern of pkg.files) {
+    for (const tracked of unitTrackedFiles) {
+      if (packagePatternMatches(pattern, tracked)) {
+        addMapping(`${prefix}${tracked}`, tracked, 'package-files', 1);
+      }
+    }
+  }
+
+  const mappings = [];
+  const conflicts = [];
+  for (const [to, entry] of toFromMap) {
+    if (entry.conflictingFrom) {
+      conflicts.push({
+        to,
+        from: entry.from,
+        conflictingFrom: entry.conflictingFrom,
+        sources: [...entry.sources].sort(),
+      });
+    } else {
+      mappings.push({
+        from: entry.from,
+        to,
+        mode: 'preserve',
+        sourceScope: unitDir === '.' || entry.from.startsWith(prefix) ? 'unit' : 'workspace',
+        sources: [...entry.sources].sort(),
+      });
+    }
+  }
+  mappings.sort((a, b) => a.to.localeCompare(b.to));
+  conflicts.sort((a, b) => a.to.localeCompare(b.to));
+  return { mappings, conflicts };
+}
+
+function entrySkillCandidatesForUnit(facts, pkg, id) {
+  const prefix = pkg.directory === '.' ? '' : `${pkg.directory}/`;
+  const names = [...new Set((facts.skills ?? [])
+    .filter((skill) => skill.path.startsWith(prefix))
+    .map((skill) => skill.name))];
+  const priority = (name) => {
+    if (/(?:^|-)help$/.test(name)) return 0;
+    if (/(?:^|-)initial$/.test(name)) return 1;
+    if (/(?:^|-)setup$/.test(name)) return 2;
+    if (name === id) return 3;
+    return 4;
+  };
+  return names.sort((a, b) => priority(a) - priority(b) || a.localeCompare(b));
 }
 
 function buildCandidates(facts) {
   const gitRepos = facts.git.remotes.map((remote) => remote.repo).filter(Boolean);
   const uniqueGitRepos = [...new Set(gitRepos)];
+  const unitGit = facts.unitGit ?? {};
   const units = [];
   const gates = [];
   const ids = new Set();
@@ -376,28 +688,76 @@ function buildCandidates(facts) {
     const npmExplicitlyForbidden = matchingLegacyUnits.some((unit) => (
       unit.npmPackageDeclared && unit.npmPackage === null
     ));
+    // npm channel rule: only suppress npm when the legacy config explicitly
+    // sets npmPackage: null. Field absence must not override package.json
+    // metadata that proves the package is publishable.
     if (
       !pkg.private &&
       pkg.name &&
-      !npmExplicitlyForbidden &&
-      (!legacyChannelsAreAuthoritative || npmExplicitlyDeclared)
+      !npmExplicitlyForbidden
     ) distributions.push('npm');
     if (pluginHosts.includes('claude')) distributions.push('claude-plugin');
     if (pluginHosts.includes('codex')) distributions.push('codex-plugin');
     if (pkg.private && matchingLegacyUnits.length === 0 && facts.legacyReleaseConfigs.length > 0) continue;
     if (pkg.private && distributions.length === 0) continue;
+
+    // Per-unit Git: if this unit's source directory is inside a separate Git
+    // repo, use that repo's remotes instead of the parent workspace remotes.
+    const unitGitEntry = unitGit[pkg.directory];
+    // The root package's Git remote is unit-level evidence even though its Git
+    // root is also the workspace root. Nested shared-repo packages still use
+    // the parent remote only as a fallback.
+    const unitOwnRemotes = ((pkg.directory === '.' || unitGitEntry?.ownRepo)
+      ? unitGitEntry?.ownRemotes ?? []
+      : [])
+      .map((r) => r.repo)
+      .filter(Boolean);
+    // Authority-priority collapsing: package.json repository and legacy
+    // publicRepo are authoritative. Parent workspace remotes are only a
+    // fallback when no unit-level repo evidence exists.
+    const legacyRepos = matchingLegacyUnits.map((unit) => unit.publicRepo).filter(Boolean);
+    const packageRepos = pkg.repository ? [pkg.repository] : [];
+    // Collect all non-fallback authority sources for conflict detection.
+    // Each source is { source: string, repos: string[] }.
+    const authoritySources = [];
+    if (legacyRepos.length > 0) authoritySources.push({ source: 'legacy-publicRepo', repos: [...new Set(legacyRepos)] });
+    if (packageRepos.length > 0) authoritySources.push({ source: 'package.json-repository', repos: [...new Set(packageRepos)] });
+    if (unitOwnRemotes.length > 0) authoritySources.push({ source: 'git-remote', repos: [...new Set(unitOwnRemotes)] });
+    const unitLevelRepos = legacyRepos.length > 0
+      ? legacyRepos
+      : packageRepos.length > 0
+        ? packageRepos
+        : unitOwnRemotes;
+    const hasUnitLevelRepo = unitLevelRepos.length > 0;
+    // Only include parent workspace Git repos when the unit has no repo
+    // candidates from package.json, legacy config, or independent remotes.
+    const fallbackGitRepos = hasUnitLevelRepo ? [] : uniqueGitRepos;
+    // Detect authority conflict: when two or more non-fallback sources
+    // give different repos, all unique candidates are preserved and a
+    // PUBLIC_REPO_AUTHORITY_CONFLICT is recorded.
+    const allAuthorityRepos = [...new Set(authoritySources.flatMap((s) => s.repos))];
+    const hasAuthorityConflict = authoritySources.length >= 2 && allAuthorityRepos.length >= 2;
     const repositoryCandidates = [...new Set([
-      pkg.repository,
-      ...matchingLegacyUnits.map((unit) => unit.publicRepo),
-      ...uniqueGitRepos,
+      ...allAuthorityRepos,
+      ...fallbackGitRepos,
     ].filter(Boolean))];
     const legacyTagTemplates = matchingLegacyUnits
       .map((unit) => unit.tagPrefix ? `${unit.tagPrefix}{version}` : null)
       .filter(Boolean);
     const branchCandidates = [...new Set([
       ...legacyDefaultBranches,
-      facts.git.branch,
+      unitGitEntry?.branch,
     ].filter(Boolean))];
+    const unitTags = unitGitEntry?.tags ?? [];
+    const mappingResult = buildPublicFileMappingCandidates(
+      pkg, matchingLegacyUnits, manifestOwners, facts, knownFiles,
+    );
+    const requiredPublicFileCandidates = [...new Set([
+      ...matchingLegacyUnits.flatMap((unit) => unit.requiredPathCandidates),
+      ...mappingResult.mappings
+        .map((mapping) => mapping.to)
+        .filter((path) => /^(?:package\.json|README(?:\.|$)|LICENSE(?:\.|$))/i.test(path)),
+    ])].filter((path) => mappingResult.mappings.some((mapping) => mapping.to === path)).sort();
     units.push({
       id,
       source: pkg.directory,
@@ -407,8 +767,8 @@ function buildCandidates(facts) {
       distributionCandidates: distributions,
       tagTemplateCandidates: [...new Set([
         ...legacyTagTemplates,
-        ...(facts.git.tags.some((tag) => pkg.version && tag === `v${pkg.version}`) ? ['v{version}'] : []),
-        ...(facts.git.tags.some((tag) => pkg.version && tag === `${id}-v${pkg.version}`)
+        ...(unitTags.some((tag) => pkg.version && tag === `v${pkg.version}`) ? ['v{version}'] : []),
+        ...(unitTags.some((tag) => pkg.version && tag === `${id}-v${pkg.version}`)
           ? [`${id}-v{version}`]
           : []),
       ])],
@@ -418,7 +778,7 @@ function buildCandidates(facts) {
         : [],
       previousPublicBaselineStatus: repositoryCandidates.length === 0
         ? 'CHANNEL_MISSING'
-        : facts.git.tags.length > 0
+        : unitTags.length > 0
           ? 'BOUND_REQUIRES_ONLINE_OBSERVATION'
           : 'FIRST_RELEASE_OR_BOUND_REQUIRES_HUMAN_DECISION',
       publicFileCandidates: [
@@ -432,6 +792,18 @@ function buildCandidates(facts) {
       ].filter((value, index, array) => array.indexOf(value) === index && knownFiles.has(value)).sort(),
       legacyPublicFileHints: matchingLegacyUnits.flatMap((unit) => unit.requiredPathCandidates).sort(),
       packageFilePatternCandidates: [...pkg.files],
+      publicFileMappingCandidates: mappingResult.mappings,
+      publicFileMappingConflicts: mappingResult.conflicts,
+      requiredPublicFileCandidates,
+      entrySkillCandidates: entrySkillCandidatesForUnit(facts, pkg, id),
+      ...(hasAuthorityConflict ? {
+        authorityConflict: {
+          code: 'PUBLIC_REPO_AUTHORITY_CONFLICT',
+          unit: id,
+          evidence: authoritySources.map((s) => ({ source: s.source, repos: s.repos.sort() }))
+            .sort((a, b) => a.source.localeCompare(b.source)),
+        },
+      } : {}),
     });
     for (const [script, command] of Object.entries(pkg.scripts)) {
       if (/^(docs|build|test|typecheck|lint|check|validate|verify|smoke)(?:$|[:_-])/.test(script)) {
@@ -450,6 +822,10 @@ function buildCandidates(facts) {
           cost: 'medium',
           sideEffects: { mayWriteFiles: true, networkLikely: false, unsandboxed: true },
           requiresManualCommandArray: !command,
+          // Legacy snapshot commands are never auto-recommended: their
+          // side-effect profile has not been independently verified.
+          eligibleForRecommendation: false,
+          ineligibilityReason: command === null ? 'UNPARSEABLE_COMMAND' : 'SIDE_EFFECTS_UNPROVEN',
           reason: '旧发布配置声明了快照校验；迁移为 gate 前必须人工确认命令数组、副作用和耗时。',
         });
       });
@@ -469,6 +845,11 @@ function buildCandidates(facts) {
     let suffix = 2;
     while (ids.has(id)) id = `${baseId}-${suffix++}`;
     ids.add(id);
+    const publicFileCandidates = [...knownFiles]
+      .filter((path) => pluginRoot === '.' || path.startsWith(`${pluginRoot}/`))
+      .filter((path) => /(?:README|LICENSE|CHANGELOG|plugin\.json|marketplace\.json)/i.test(path))
+      .sort();
+    const pluginPrefix = pluginRoot === '.' ? '' : `${pluginRoot}/`;
     units.push({
       id,
       source: pluginRoot,
@@ -486,15 +867,202 @@ function buildCandidates(facts) {
           ? 'BOUND_REQUIRES_ONLINE_OBSERVATION'
           : 'FIRST_RELEASE_OR_BOUND_REQUIRES_HUMAN_DECISION')
         : 'CHANNEL_MISSING',
-      publicFileCandidates: [...knownFiles]
-        .filter((path) => pluginRoot === '.' || path.startsWith(`${pluginRoot}/`))
-        .filter((path) => /(?:README|LICENSE|CHANGELOG|plugin\.json|marketplace\.json)/i.test(path))
-        .sort(),
+      publicFileCandidates,
+      publicFileMappingCandidates: publicFileCandidates.map((path) => ({
+        from: path,
+        to: path.startsWith(pluginPrefix) ? path.slice(pluginPrefix.length) : path,
+        mode: 'preserve',
+        sources: ['plugin-only-discovery'],
+      })),
+      publicFileMappingConflicts: [],
+      requiredPublicFileCandidates: publicFileCandidates
+        .map((path) => path.startsWith(pluginPrefix) ? path.slice(pluginPrefix.length) : path)
+        .filter((path) => /^(?:README(?:\.|$)|LICENSE(?:\.|$))/i.test(path)),
+      entrySkillCandidates: [...new Set((facts.skills ?? [])
+        .filter((skill) => skill.path.startsWith(pluginPrefix))
+        .map((skill) => skill.name))].sort(),
     });
   }
   units.sort((a, b) => a.id.localeCompare(b.id));
   gates.sort((a, b) => a.id.localeCompare(b.id));
   return { units, gates };
+}
+
+/**
+ * Build a complete recommendedAnswers from candidates, or null when
+ * conflicts prevent safe automatic recommendation.
+ *
+ * The recommendedAnswers is explicitly a proposal pending human confirmation.
+ * It only includes gates with eligibleForRecommendation=true.
+ */
+function buildRecommendedProposal(facts, candidates) {
+  const assumptions = [];
+  const legacyOwner = facts.legacyReleaseConfigs
+    .map((c) => c.owner)
+    .find(Boolean);
+
+  const units = [];
+  for (const unit of candidates.units) {
+    // Authority conflict: multiple non-fallback sources disagree on repo
+    if (unit.authorityConflict) {
+      return {
+        answers: null,
+        conflicts: [unit.authorityConflict],
+        assumptions,
+      };
+    }
+    // Require exactly one public repo candidate for auto-recommendation
+    if (unit.publicRepoCandidates.length !== 1) {
+      return {
+        answers: null,
+        conflicts: [{ code: 'PUBLIC_REPO_AMBIGUOUS', unit: unit.id, candidates: unit.publicRepoCandidates }],
+        assumptions,
+      };
+    }
+    const publicRepo = unit.publicRepoCandidates[0];
+
+    // Mapping conflicts prevent auto-recommendation
+    if ((unit.publicFileMappingConflicts ?? []).length > 0) {
+      return {
+        answers: null,
+        conflicts: [{ code: 'PUBLIC_FILE_MAPPING_CONFLICT', unit: unit.id, conflicts: unit.publicFileMappingConflicts }],
+        assumptions,
+      };
+    }
+    if ((unit.publicFileMappingCandidates ?? []).length === 0) {
+      return {
+        answers: null,
+        conflicts: [{ code: 'PUBLIC_FILE_BOUNDARY_EMPTY', unit: unit.id }],
+        assumptions,
+      };
+    }
+
+    // Infer npm publisher: prefer legacy owner, then parse from repo slug
+    const repoOwner = publicRepo.includes('/') ? publicRepo.split('/')[0] : null;
+    const npmPublisher = legacyOwner ?? repoOwner ?? null;
+    const pkg = facts.packages.find((item) => item.directory === unit.source);
+    if (unit.distributionCandidates.includes('npm') && (!pkg?.name || !npmPublisher)) {
+      return {
+        answers: null,
+        conflicts: [{ code: 'NPM_IDENTITY_INCOMPLETE', unit: unit.id }],
+        assumptions,
+      };
+    }
+    if (
+      unit.distributionCandidates.some((type) => type.endsWith('-plugin')) &&
+      !unit.entrySkillCandidates?.[0]
+    ) {
+      return {
+        answers: null,
+        conflicts: [{ code: 'PLUGIN_ENTRY_SKILL_MISSING', unit: unit.id }],
+        assumptions,
+      };
+    }
+
+    const distributions = unit.distributionCandidates.map((type) => {
+      if (type === 'npm') {
+        return {
+          type: 'npm',
+          package: pkg.name,
+          registry: pkg.publishRegistry ?? 'https://registry.npmjs.org',
+          ...(npmPublisher ? { publisher: npmPublisher } : {}),
+        };
+      }
+      const entrySkill = unit.entrySkillCandidates?.[0];
+      return {
+        type,
+        plugin: unit.id,
+        marketplace: unit.id,
+        entrySkill,
+      };
+    }).filter(Boolean);
+
+    // If any distribution failed to construct, bail
+    if (distributions.length !== unit.distributionCandidates.length) return null;
+
+    const tagTemplate = unit.tagTemplateCandidates[0] ?? 'v{version}';
+    const unitPrefix = unit.source === '.' ? '' : `${unit.source}/`;
+    const versionSource = unit.packagePath?.startsWith(unitPrefix)
+      ? unit.packagePath.slice(unitPrefix.length)
+      : unit.packagePath;
+
+    units.push({
+      id: unit.id,
+      source: unit.source,
+      publicRepo,
+      version: { source: versionSource, tagTemplate },
+      distributions,
+      publicFiles: unit.publicFileMappingCandidates.map((m) => ({
+        from: m.from,
+        to: m.to,
+        mode: m.mode,
+        ...(m.sourceScope === 'workspace' ? { sourceScope: 'workspace' } : {}),
+      })),
+      requiredPublicFiles: unit.requiredPublicFileCandidates ?? [],
+      previousPublicBaseline: { mode: 'none' },
+    });
+    assumptions.push({
+      code: 'PREVIOUS_PUBLIC_BASELINE_REQUIRES_CONFIRMATION',
+      unit: unit.id,
+      proposedMode: 'none',
+      observedStatus: unit.previousPublicBaselineStatus,
+    });
+  }
+
+  const selectedGateIds = candidates.gates
+    .filter((gate) => gate.eligibleForRecommendation)
+    .map((gate) => gate.id);
+
+  const projectConfig = {
+    apiVersion: 'release-skill/v1',
+    kind: 'ReleaseProject',
+    project: {
+      name: facts.packages[0]?.name ?? 'project',
+      defaultBranch: facts.legacyReleaseConfigs[0]?.defaultBranch ?? facts.git.branch ?? 'main',
+    },
+    releaseUnits: units,
+    ...(selectedGateIds.length > 0 ? {
+      verificationGates: candidates.gates
+        .filter((gate) => gate.eligibleForRecommendation)
+        .map((gate) => ({
+          id: gate.id,
+          phase: gate.recommendedPhase,
+          scope: gate.scope,
+          command: gate.command,
+          cwd: candidates.units.find((unit) => unit.id === gate.scope.unit)?.source ?? '.',
+          timeoutMs: gate.cost === 'medium' ? 600_000 : 120_000,
+          envAllowlist: [],
+        })),
+    } : {}),
+  };
+
+  const forbiddenPaths = [...new Set(facts.legacyReleaseConfigs
+    .flatMap((config) => config.forbiddenPathCandidates))].sort();
+  const forbiddenContentPatterns = [...new Set(facts.legacyReleaseConfigs
+    .flatMap((config) => config.forbiddenContentPatternCandidates))].sort();
+  if (forbiddenPaths.length > 0 || forbiddenContentPatterns.length > 0) {
+    projectConfig.policy = { forbiddenPaths, forbiddenContentPatterns };
+  }
+  if (!validateProjectConfig(projectConfig)) {
+    return {
+      answers: null,
+      conflicts: [{
+        code: 'RECOMMENDED_CONFIG_SCHEMA_INVALID',
+        validationErrors: (validateProjectConfig.errors ?? []).map((error) => ({
+          instancePath: error.instancePath,
+          keyword: error.keyword,
+          message: error.message,
+        })),
+      }],
+      assumptions,
+    };
+  }
+
+  return {
+    answers: { projectConfig, selectedGateIds },
+    conflicts: [],
+    assumptions,
+  };
 }
 
 function buildDecisionsRequired(candidates, localOnly) {
@@ -530,6 +1098,50 @@ function buildDecisionsRequired(candidates, localOnly) {
     description: '逐项选择要注册的 gate；发现脚本不等于授权，未选择时必须显式使用 selectedGateIds: []。',
   });
   return decisions;
+}
+
+/**
+ * Build a deterministic compact summary from the final report.
+ *
+ * Only includes fields needed for human review. Does not repeat
+ * facts.fileDigests, full mapping arrays, or full answers.
+ */
+function buildCompactSummary(report) {
+  return {
+    status: report.status,
+    setupDigest: report.setupDigest ?? null,
+    releaseUnitCandidates: (report.releaseUnitCandidates ?? []).map((unit) => ({
+      id: unit.id,
+      source: unit.source,
+      publicRepoCandidates: [...unit.publicRepoCandidates].sort(),
+      branchCandidates: [...unit.branchCandidates].sort(),
+      distributionCandidates: [...unit.distributionCandidates].sort(),
+      publicFileMappingCount: (unit.publicFileMappingCandidates ?? []).length,
+      requiredPublicFileCount: (unit.requiredPublicFileCandidates ?? []).length,
+    })),
+    gateCandidates: (report.gateCandidates ?? []).map((gate) => ({
+      id: gate.id,
+      script: gate.script ?? null,
+      command: gate.command ?? null,
+      eligibleForRecommendation: gate.eligibleForRecommendation,
+      ineligibilityReason: gate.ineligibilityReason ?? null,
+      sideEffects: gate.sideEffects ?? null,
+    })),
+    recommendedGateIds: [...(report.recommendedGateIds ?? [])].sort(),
+    proposalConflicts: report.proposalConflicts ?? [],
+    proposalAssumptions: report.proposalAssumptions ?? [],
+    productionReadiness: report.productionReadiness ?? null,
+    ...(report.audit ? {
+      audit: {
+        configuredUnitIds: [...(report.audit.configuredUnitIds ?? [])].sort(),
+        discoveredUnitIds: [...(report.audit.discoveredUnitIds ?? [])].sort(),
+        configuredGateIds: [...(report.audit.configuredGateIds ?? [])].sort(),
+        unconfiguredGateCandidateIds: [...(report.audit.unconfiguredGateCandidateIds ?? [])].sort(),
+        ...(report.audit.parseError ? { parseError: report.audit.parseError } : {}),
+        validationErrorCount: (report.audit.validationErrors ?? []).length,
+      },
+    } : {}),
+  };
 }
 
 function validateAnswers(answers, gateCandidates) {
@@ -728,7 +1340,7 @@ export async function setupProject({ root, answersPath, write = false, confirmSe
       .map((gate) => gate.id)
       .filter((id) => !configuredGateIds.includes(id))
       .sort();
-    return {
+    const existingReport = {
       setupVersion: 1,
       status: 'ALREADY_CONFIGURED',
       configPath,
@@ -756,8 +1368,14 @@ export async function setupProject({ root, answersPath, write = false, confirmSe
             : []),
         ],
       },
+      recommendedGateIds: [],
+      proposalConflicts: [],
+      proposalAssumptions: [],
+      productionReadiness: 'ASSESS_REQUIRED',
       next: '运行 release-skill assess 审计已有配置；需要调整时依据建议人工增量编辑。',
     };
+    existingReport.compactSummary = buildCompactSummary(existingReport);
+    return existingReport;
   }
 
   const facts = await discoverFacts(rootReal);
@@ -778,18 +1396,33 @@ export async function setupProject({ root, answersPath, write = false, confirmSe
     projectConfig: answers?.projectConfig ?? null,
   };
   const setupDigest = sha256Hex(canonicalJson(digestAuthority));
-  const hasDiscoveredRemoteChannel = facts.git.remotes.some((remote) => remote.repo) ||
-    facts.packages.some((pkg) => pkg.publishRegistry);
+  const hasDiscoveredRemoteChannel = candidates.units.some((unit) => (
+    unit.publicRepoCandidates.length > 0
+  )) || facts.packages.some((pkg) => pkg.publishRegistry);
   const status = answers
     ? 'READY_TO_WRITE'
     : hasDiscoveredRemoteChannel
       ? 'NEEDS_INPUT'
       : 'LOCAL_ONLY_DETECTED';
   const localOnly = status === 'LOCAL_ONLY_DETECTED';
+  // Deterministic recommendation: gates eligible for automatic inclusion
+  // without human review. Agents use this to build recommendedAnswers.
+  const recommendedGateIds = candidates.gates
+    .filter((gate) => gate.eligibleForRecommendation)
+    .map((gate) => gate.id);
+  // Build recommendedAnswers: a complete proposal for human review,
+  // or null when conflicts prevent safe automatic recommendation.
+  const recommendedProposal = answers
+    ? { answers: null, conflicts: [], assumptions: [] }
+    : buildRecommendedProposal(facts, candidates);
   const report = {
     ...digestAuthority,
     status,
     setupDigest,
+    recommendedGateIds,
+    recommendedAnswers: recommendedProposal.answers,
+    proposalConflicts: recommendedProposal.conflicts,
+    proposalAssumptions: recommendedProposal.assumptions,
     productionReadiness: status === 'LOCAL_ONLY_DETECTED'
       ? 'LOCAL_ONLY'
       : answers
@@ -803,6 +1436,9 @@ export async function setupProject({ root, answersPath, write = false, confirmSe
       overwrite: false,
     },
   };
+  // Derive compact summary from the final report to avoid state/digest/conflict
+  // inconsistencies. Must not read or execute project scripts.
+  report.compactSummary = buildCompactSummary(report);
 
   if (!write) return report;
   if (!answers) throw setupError(CONFIG_INVALID, 'setup --write requires --answers <json>');
@@ -873,9 +1509,10 @@ export async function setupProject({ root, answersPath, write = false, confirmSe
   } finally {
     await lock.release();
   }
-  return {
+  const createdReport = {
     ...report,
     status: 'CONFIG_CREATED',
+    productionReadiness: 'ASSESS_REQUIRED',
     configPath: committedConfig.path,
     configSha256: committedConfig.configSha256,
     committedSetupDigest: committedConfig.commitAuthority.setupDigest,
@@ -883,4 +1520,6 @@ export async function setupProject({ root, answersPath, write = false, confirmSe
     committedAnswersDigest: committedConfig.commitAuthority.answersDigest,
     next: '运行 release-skill assess；再根据 gate 副作用决定 prepare/verify 的显式授权。',
   };
+  createdReport.compactSummary = buildCompactSummary(createdReport);
+  return createdReport;
 }

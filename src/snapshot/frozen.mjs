@@ -169,12 +169,46 @@ export async function verifyFrozenDirectoryStructure(directory, label = 'frozen 
   await walk(directory);
 }
 
-export async function verifyFrozenGitRepository({ root, gitObjectDir, commit, tree, parentCommit, exec = execFile }) {
+/**
+ * Verify an already-frozen Git object directory against the plan.
+ *
+ * Consumption only: this never rebuilds objects and never reads the wall
+ * clock. When `commitTimestamp` (the plan's `frozenSnapshot.commitTimestamp`)
+ * is provided, the frozen commit's real `%aI`/`%cI` dates must match it
+ * exactly, so a commit carrying any other author/committer time can never
+ * pass pre-publish verification.
+ */
+export async function verifyFrozenGitRepository({
+  root,
+  gitObjectDir,
+  commit,
+  tree,
+  parentCommit,
+  commitTimestamp,
+  exec = execFile,
+}) {
   const gitDir = await resolveFrozenPath(root, gitObjectDir, 'frozen git object directory');
   await verifyFrozenDirectoryStructure(gitDir, 'frozen git object directory');
   const { stdout } = await exec('git', ['--git-dir', gitDir, 'rev-parse', `${commit}^{tree}`], { shell: false });
   if (stdout.trim() !== tree) {
     throw frozenError('frozen git object tree mismatch', { commit, expectedTree: tree, observedTree: stdout.trim() });
+  }
+  if (commitTimestamp !== undefined) {
+    const expectedTimestamp = normalizeGitTimestamp(commitTimestamp, 'frozen commit timestamp');
+    const { stdout: datesOut } = await exec(
+      'git',
+      ['--git-dir', gitDir, 'show', '-s', '--format=%aI%n%cI', commit],
+      { shell: false },
+    );
+    const [authorDate, committerDate] = datesOut.trim().split('\n');
+    if (authorDate !== expectedTimestamp || committerDate !== expectedTimestamp) {
+      throw frozenError('frozen git commit dates do not match the plan freeze timestamp', {
+        commit,
+        expectedTimestamp,
+        observedAuthorDate: authorDate,
+        observedCommitterDate: committerDate,
+      });
+    }
   }
   if (parentCommit) {
     if (!/^[a-f0-9]{40,64}$/.test(parentCommit)) {
@@ -242,6 +276,85 @@ async function verifyGitTreeContent({ snapshotDir, repositoryDir, commit, expect
   }
 }
 
+/**
+ * Strict ISO 8601 timestamp with an explicit UTC offset (Z or ±HH:MM),
+ * optional fractional seconds. Naive/local timestamps (no offset) are rejected
+ * so the frozen commit time is never interpreted in the builder's local zone.
+ */
+const GIT_ISO8601_STRICT_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * Validate and canonicalize a plan freeze timestamp.
+ *
+ * The value must be a non-empty, strict ISO 8601 timestamp with an explicit UTC
+ * offset and a parseable calendar date. It is normalized to UTC with second
+ * precision and a `+00:00` offset, which is exactly the form Git stores and
+ * re-emits via `%aI`/`%cI`. Missing, empty, malformed, or out-of-range values
+ * throw a closed `GATE_FAILED` error.
+ *
+ * Normalization is idempotent: re-normalizing an already-canonical value returns
+ * the identical string, so prepare and the Git builder always agree byte-for-byte.
+ *
+ * @param {unknown} value - Candidate timestamp.
+ * @param {string} [label] - Label used in error messages.
+ * @returns {string} Canonical `YYYY-MM-DDTHH:MM:SS+00:00` timestamp.
+ * @throws {ReleaseError} GATE_FAILED when the value is not a valid timestamp.
+ */
+export function normalizeGitTimestamp(value, label = 'freeze timestamp') {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw frozenError(`${label} must be a non-empty strict ISO 8601 timestamp string`, {
+      received: typeof value === 'string' ? value : typeof value,
+    });
+  }
+  const trimmed = value.trim();
+  const match = GIT_ISO8601_STRICT_RE.exec(trimmed);
+  if (!match) {
+    throw frozenError(`${label} must be strict ISO 8601 with an explicit UTC offset`, {
+      received: trimmed,
+    });
+  }
+  const [, yearStr, monthStr, dayStr, hourStr, minuteStr, secondStr, zone] = match;
+  const inputYear = Number(yearStr);
+  const inputMonth = Number(monthStr);
+  const inputDay = Number(dayStr);
+  const inputHour = Number(hourStr);
+  const inputMinute = Number(minuteStr);
+  const inputSecond = Number(secondStr);
+  if (inputYear < 1000 || inputYear > 9999) {
+    throw frozenError(`${label} year must be a four-digit ISO year`, { received: trimmed });
+  }
+  // Reject impossible calendar dates and out-of-range time fields. Date.UTC
+  // silently rolls values over (Feb 30 -> Mar 2), so compare the constructed
+  // UTC fields against the declared input fields instead of trusting parsing.
+  const probeMs = Date.UTC(inputYear, inputMonth - 1, inputDay, inputHour, inputMinute, inputSecond);
+  const probe = new Date(probeMs);
+  if (
+    probe.getUTCFullYear() !== inputYear || probe.getUTCMonth() !== inputMonth - 1 ||
+    probe.getUTCDate() !== inputDay || probe.getUTCHours() !== inputHour ||
+    probe.getUTCMinutes() !== inputMinute || probe.getUTCSeconds() !== inputSecond
+  ) {
+    throw frozenError(`${label} is not a valid calendar date`, { received: trimmed });
+  }
+  let offsetMs = 0;
+  if (zone !== 'Z') {
+    const sign = zone.startsWith('-') ? -1 : 1;
+    const zoneHours = Number(zone.slice(1, 3));
+    const zoneMinutes = Number(zone.slice(4, 6));
+    if (zoneHours > 23 || zoneMinutes > 59) {
+      throw frozenError(`${label} has an invalid UTC offset`, { received: trimmed });
+    }
+    offsetMs = sign * (zoneHours * 60 + zoneMinutes) * 60_000;
+  }
+  const date = new Date(probeMs - offsetMs);
+  if (date.getUTCFullYear() < 1000 || date.getUTCFullYear() > 9999) {
+    throw frozenError(`${label} normalizes outside the four-digit ISO year range`, { received: trimmed });
+  }
+  const pad = (num) => String(num).padStart(2, '0');
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}` +
+    `T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}+00:00`;
+}
+
 function publicGitRemote({ repo, githubHost = 'github.com' }) {
   if (typeof repo !== 'string' || !/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repo)) {
     throw frozenError('Git parent repo must use owner/name format');
@@ -255,14 +368,31 @@ function publicGitRemote({ repo, githubHost = 'github.com' }) {
   return `https://${githubHost}/${repo}.git`;
 }
 
+/**
+ * Build the frozen release Git objects for a sealed public snapshot.
+ *
+ * `commitTimestamp` is the plan freeze timestamp sampled exactly once during
+ * production prepare. It is strictly validated BEFORE any filesystem or Git
+ * write (missing, empty, malformed, or impossible values fail closed), then
+ * written verbatim to both GIT_AUTHOR_DATE and GIT_COMMITTER_DATE, so the
+ * frozen commit's `%aI` and `%cI` always equal the plan's
+ * `frozenSnapshot.commitTimestamp` byte-for-byte. Identical inputs therefore
+ * yield identical tree and commit identifiers, and a different freeze
+ * timestamp alone yields a different commit with an identical tree.
+ */
 export async function buildFrozenGitRepository({
   snapshotDir,
   repositoryDir,
   version,
   expectedSnapshotDigest,
   parent,
+  commitTimestamp,
   exec = execFile,
 }) {
+  // Fail closed before creating the object directory or running any Git
+  // command: a frozen release commit may never inherit the builder's wall
+  // clock, an ancient constant, or a value Git would reinterpret.
+  const canonicalTimestamp = normalizeGitTimestamp(commitTimestamp, 'frozen commit timestamp');
   if (!expectedSnapshotDigest) throw frozenError('Git object build requires the sealed snapshot digest');
   await mkdir(repositoryDir, { recursive: true });
   await exec('git', ['init', '--bare', repositoryDir], { shell: false });
@@ -312,8 +442,8 @@ export async function buildFrozenGitRepository({
     GIT_AUTHOR_EMAIL: 'release-skill@localhost',
     GIT_COMMITTER_NAME: 'release-skill',
     GIT_COMMITTER_EMAIL: 'release-skill@localhost',
-    GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z',
-    GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z',
+    GIT_AUTHOR_DATE: canonicalTimestamp,
+    GIT_COMMITTER_DATE: canonicalTimestamp,
   };
   const commitArgs = ['--git-dir', repositoryDir, 'commit-tree', tree];
   if (parentCommit) commitArgs.push('-p', parentCommit);

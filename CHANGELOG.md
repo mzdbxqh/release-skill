@@ -3,6 +3,35 @@
 All notable changes to the `release-skill` plugin will be documented in this
 file. The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.4] - 2026-07-19
+
+### Added
+
+- **Docs version hard gate**: the English and Chinese README and INSTALL each
+  carry a machine-readable `release-skill:release-version` marker that must
+  equal the `package.json` version, and the CHANGELOG must carry a formal
+  heading for the current version. Any drift fails closed in
+  `pnpm test:release` before prepare. A release freezes only the current
+  truth: human docs are never auto-refreshed and must be updated, reviewed,
+  and approved first.
+- **Auditable frozen commit timestamps**: production `prepare` samples the
+  plan freeze time once, validates it before any Git write, and binds it to
+  `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` and each unit's
+  `frozenSnapshot.commitTimestamp` (schema-required); plans missing the field
+  are rejected instead of silently rebuilt.
+
+### Fixed
+
+- **Self-contained installed CLI smoke**: the v0.1.3 self-release selected
+  `help --json`, which correctly treats Git as a required environment
+  dependency, while npm smoke intentionally exposes only the Node runtime.
+  The CLI now supports `--version --json`, and self-release verification uses
+  that dependency-free entry to bind the installed CLI name and exact version
+  without widening the isolated process `PATH`.
+- Added a real subprocess regression that runs the installed-style version
+  entry with the Node-only `PATH` and proves an unrelated injected path is not
+  inherited.
+
 ## [0.1.3] - 2026-07-19
 
 > `0.1.2` was an internal release candidate and was never published to npm or

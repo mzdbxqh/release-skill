@@ -49,7 +49,8 @@ const BINARY_PROBE_SIZE = 8192;
  */
 const ABSOLUTE_PATH_PATTERNS = [
   /\/(?:Users|home)\/[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[^\s"'`<>]*)?/,
-  /\/(?:root|tmp)\/[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[^\s"'`<>]*)?/,
+  /\/root\/[A-Za-z0-9_-][A-Za-z0-9._-]*(?:\/[^\s"'`<>]*)?/,
+  /\/tmp\/(?=[^\s"'`<>]*(?:secret|token|credential|password|private[-_]?key|id_rsa))[^\s"'`<>]+/i,
   /(?:^|[^A-Za-z0-9_])[A-Za-z]:\\[A-Za-z0-9_$-][A-Za-z0-9._$-]*(?:\\[^\s"'`<>]*)?/,
 ];
 

@@ -37,6 +37,7 @@ import {
   buildFrozenGitRepository,
   buildFrozenNpmTarball,
   computeFrozenSnapshot,
+  normalizeGitTimestamp,
   sealFrozenSnapshot,
 } from '../snapshot/frozen.mjs';
 import { ReleaseError, GATE_FAILED, CONFIG_INVALID, FORBIDDEN_CONTENT_DETECTED } from '../core/errors.mjs';
@@ -514,7 +515,11 @@ async function buildProductionAssets(
   runDir,
   unitBaselineResults,
   buildGitRepository = buildFrozenGitRepository,
+  freezeTimestamp,
 ) {
+  // The plan freeze timestamp is sampled exactly once by prepareRelease.
+  // Every unit reuses this single value; the wall clock is never re-read.
+  const canonicalFreezeTimestamp = normalizeGitTimestamp(freezeTimestamp, 'plan freeze timestamp');
   for (const { unit } of unitResults) {
     const npmDistribution = (unit.distributions ?? []).find((distribution) => distribution.type === 'npm');
     if (npmDistribution && !['public', 'restricted'].includes(npmDistribution.access)) {
@@ -561,6 +566,7 @@ async function buildProductionAssets(
       version,
       expectedSnapshotDigest: sealed.digest,
       parent,
+      commitTimestamp: canonicalFreezeTimestamp,
     });
 
     let npm = null;
@@ -586,6 +592,7 @@ async function buildProductionAssets(
       gitObjectDir: relative(root, repositoryDir),
       commit: git.commit,
       tree: git.tree,
+      commitTimestamp: canonicalFreezeTimestamp,
       branchStrategy,
       ...(git.parentCommit ? { parentCommit: git.parentCommit } : {}),
       branch,
@@ -1443,6 +1450,18 @@ export async function prepareRelease(options) {
     // --- Step 7: Build plan object ---
     await evidence.append({ phase: 'plan-assembly', status: 'started' });
 
+    // Production plans sample their freeze timestamp exactly once, before the
+    // first frozen Git object exists. This single canonical value becomes
+    // GIT_AUTHOR_DATE/GIT_COMMITTER_DATE for every unit's frozen commit,
+    // every unit's frozenSnapshot.commitTimestamp, and plan.createdAt. It is
+    // thereby bound by the plan digest and the approval record; publish,
+    // retry, and reconcile consume it from the frozen plan and never re-read
+    // the wall clock. A missing or invalid injected value fails closed here,
+    // before any Git write.
+    const freezeTimestamp = production
+      ? normalizeGitTimestamp(clock ? clock() : new Date().toISOString(), 'plan freeze timestamp')
+      : null;
+
     const productionAssets = production
       ? await buildProductionAssets(
           unitResults,
@@ -1451,6 +1470,7 @@ export async function prepareRelease(options) {
           runDir,
           unitBaselineResults,
           options.buildFrozenGitRepositoryFn ?? buildFrozenGitRepository,
+          freezeTimestamp,
         )
       : null;
 
@@ -1474,6 +1494,7 @@ export async function prepareRelease(options) {
             branchStrategy: productionAssets[idx].branchStrategy,
             commit: productionAssets[idx].commit,
             tree: productionAssets[idx].tree,
+            commitTimestamp: productionAssets[idx].commitTimestamp,
             ...(productionAssets[idx].parentCommit
               ? { parentCommit: productionAssets[idx].parentCommit }
               : {}),
@@ -1512,7 +1533,7 @@ export async function prepareRelease(options) {
       } : {}),
       units,
       externalActions,
-      createdAt: (clock ? clock() : new Date().toISOString()),
+      createdAt: production ? freezeTimestamp : (clock ? clock() : new Date().toISOString()),
     };
 
     await evidence.append({

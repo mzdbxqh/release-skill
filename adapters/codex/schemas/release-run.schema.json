@@ -1,0 +1,342 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://release-skill.dev/schemas/release-run/v1",
+  "title": "Release Run",
+  "description": "Schema for a release run record capturing execution checkpoints",
+  "type": "object",
+  "required": [
+    "runId",
+    "command",
+    "planDigest",
+    "planPath",
+    "status",
+    "checkpoints"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this run (UUID)"
+    },
+    "runDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 digest of the final run state, excluding this field"
+    },
+    "stateSequence": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic sequence of an immutable in-flight run state snapshot"
+    },
+    "previousStateDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Digest of the immediately preceding stateSequence snapshot"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PUBLISHING",
+        "PUBLISHED",
+        "VERIFIED",
+        "PARTIAL",
+        "BLOCKED"
+      ],
+      "description": "Current status of the run"
+    },
+    "command": {
+      "type": "string",
+      "enum": [
+        "assess",
+        "prepare",
+        "publish",
+        "reconcile",
+        "verify"
+      ],
+      "description": "The command that initiated this run"
+    },
+    "sourceRunId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Run ID of the source run (for reconcile runs)"
+    },
+    "sourceRunDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Digest of the immutable source run consumed by reconcile or verify"
+    },
+    "sourceRunPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path of the immutable source run authority consumed by reconcile or verify"
+    },
+    "planDigest": {
+      "type": "string",
+      "description": "SHA-256 digest of the release plan used"
+    },
+    "planPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Immutable digest-addressed plan authority used by this run"
+    },
+    "approvalDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Digest of the immutable approval authority consumed by publish/reconcile"
+    },
+    "approvalPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Immutable digest-addressed approval authority consumed by publish/reconcile"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the run started"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the run finished"
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "actionId",
+          "actionType",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "actionId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Identifier of the external action"
+          },
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "push-commit",
+              "push-snapshot",
+              "create-tag",
+              "npm-publish",
+              "github-release",
+              "claude-marketplace-install",
+              "codex-marketplace-install",
+              "set-default-branch"
+            ],
+            "description": "Type of external action"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed",
+              "skipped",
+              "pending",
+              "uncertain"
+            ],
+            "description": "Result status of this checkpoint (uncertain = started, result unknown)"
+          },
+          "preObserve": {
+            "type": "string",
+            "enum": [
+              "CONSISTENT",
+              "MISSING",
+              "CONFLICTING"
+            ],
+            "description": "Remote state before execution"
+          },
+          "postObserve": {
+            "type": "string",
+            "enum": [
+              "CONSISTENT",
+              "MISSING",
+              "CONFLICTING"
+            ],
+            "description": "Remote state after execution"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "remoteRef": {
+            "type": "object",
+            "description": "Remote resource identifiers (commit, tag, version, URL)",
+            "additionalProperties": false,
+            "properties": {
+              "commit": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "description": "Error details when status is failed",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "CONFIG_INVALID",
+                  "BASELINE_CHANGED",
+                  "DIRTY_SCOPE_CONFLICT",
+                  "GATE_FAILED",
+                  "AUTH_MISSING",
+                  "REMOTE_CONFLICT",
+                  "HOOK_TIMEOUT",
+                  "PARTIAL_RELEASE",
+                  "POST_PUBLISH_VERIFY_FAILED"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "gateResults": {
+      "type": "array",
+      "description": "Consumer verification gate results bound to this verify run",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "phase",
+          "unitId",
+          "distribution",
+          "gateDigest",
+          "inputDigest",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "exitCode",
+          "stdoutBytes",
+          "stdoutSha256",
+          "stderrBytes",
+          "stderrSha256"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "phase": {
+            "const": "consumer-verify"
+          },
+          "unitId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "distribution": {
+            "type": "string",
+            "enum": [
+              "npm",
+              "claude-plugin",
+              "codex-plugin"
+            ]
+          },
+          "gateDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "inputDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA-256 digest of the exact installed consumer tree immediately before gate execution"
+          },
+          "status": {
+            "const": "passed"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "exitCode": {
+            "const": 0
+          },
+          "stdoutBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stdoutSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "stderrBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stderrSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "command": {
+            "enum": [
+              "reconcile",
+              "verify"
+            ]
+          }
+        },
+        "required": [
+          "command"
+        ]
+      },
+      "then": {
+        "required": [
+          "sourceRunId",
+          "sourceRunDigest",
+          "sourceRunPath"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stateSequence": {
+            "minimum": 1
+          }
+        },
+        "required": [
+          "stateSequence"
+        ]
+      },
+      "then": {
+        "required": [
+          "previousStateDigest"
+        ]
+      }
+    }
+  ]
+}

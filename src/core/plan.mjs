@@ -17,19 +17,19 @@
 
 import { readFile, writeFile, rename, mkdir, open, link, unlink, lstat } from 'node:fs/promises';
 import { basename, dirname, join, resolve, parse, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { canonicalJson, sha256Hex } from './digest.mjs';
 import { ReleaseError, GATE_FAILED } from './errors.mjs';
+import { readTrustedPackageResource } from './trusted-resource.mjs';
 
 // ---------------------------------------------------------------------------
 // Schema loaded from the authoritative JSON file (single source of truth)
 // ---------------------------------------------------------------------------
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCHEMA_PATH = join(__dirname, '..', '..', 'schemas', 'release-plan.schema.json');
-const RELEASE_PLAN_SCHEMA = JSON.parse(await readFile(SCHEMA_PATH, 'utf8'));
+const RELEASE_PLAN_SCHEMA = JSON.parse((await readTrustedPackageResource(
+  'schemas/release-plan.schema.json',
+)).toString('utf8'));
 
 // ---------------------------------------------------------------------------
 // Schema validator (compiled once at module init)
@@ -385,6 +385,11 @@ export function validatePlanActionCompleteness(plan) {
       }
       if (frozen.branchStrategy !== branchStrategy) {
         failures.push(`unit "${unitId}" frozenSnapshot.branchStrategy does not match productionConfig.branchStrategy`);
+      }
+      if (!frozen.commitTimestamp || typeof frozen.commitTimestamp !== 'string') {
+        failures.push(`unit "${unitId}" frozenSnapshot.commitTimestamp is missing; legacy production plans without a freeze timestamp are rejected, never silently backfilled`);
+      } else if (plan.createdAt !== frozen.commitTimestamp) {
+        failures.push(`unit "${unitId}" frozenSnapshot.commitTimestamp must equal plan.createdAt`);
       }
       if (['advance-existing-branch', 'initialize-default-branch'].includes(branchStrategy)) {
         if (unit.previousPublicBaseline?.mode !== 'bound') {

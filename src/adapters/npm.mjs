@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile as execFileCb, spawn } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
-import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { constants as fsConstants } from 'node:fs';
 import { chmod, lstat, mkdtemp, open, readFile, realpath, rm } from 'node:fs/promises';
+
+import libnpmpublish from 'libnpmpublish';
+import npmRegistryFetch from 'npm-registry-fetch';
 
 import {
   ActionStatus,
@@ -67,20 +69,14 @@ async function run(command, args, options = {}) {
  * Authentication and registry options must be supplied explicitly by the
  * caller; errors are sanitized before they cross the adapter boundary.
  */
-let _libnpmpublish;
-let _npmRegistryFetch;
 async function defaultPublishTarballBuffer({ buffer, manifest, opts: publishOpts }) {
-  if (!_libnpmpublish) {
-    const require = createRequire(import.meta.url);
-    _libnpmpublish = require('libnpmpublish');
-  }
   const libOpts = {};
   if (publishOpts.registry) libOpts.registry = publishOpts.registry;
   if (publishOpts.token) libOpts.forceAuth = { token: publishOpts.token };
   if (publishOpts.access) libOpts.access = publishOpts.access;
   if (publishOpts.tag) libOpts.defaultTag = publishOpts.tag;
   if (publishOpts.provenance) libOpts.provenance = publishOpts.provenance;
-  return _libnpmpublish.publish(manifest, buffer, libOpts);
+  return libnpmpublish.publish(manifest, buffer, libOpts);
 }
 
 export function registryTokenKey(registry) {
@@ -144,11 +140,7 @@ export async function resolveNpmRegistryAuthToken(options) {
 
 async function defaultWhoamiWithToken({ registry, token, cwd, exec }) {
   try {
-    if (!_npmRegistryFetch) {
-      const require = createRequire(import.meta.url);
-      _npmRegistryFetch = require('npm-registry-fetch');
-    }
-    const result = await _npmRegistryFetch.json('/-/whoami', {
+    const result = await npmRegistryFetch.json('/-/whoami', {
       registry: `${normalizeRegistry(registry)}/`,
       forceAuth: { token },
       preferOnline: true,

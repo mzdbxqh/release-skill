@@ -3,6 +3,13 @@ name: release-reconcile
 description: Query remote actual state, handle partial publish successes, safe retries, and post-publish verification after release execution
 ---
 
+> **Codex 安装入口解析协议**：在调用 CLI 前，Agent 必须从宿主当前已加载技能的元数据中取得本 `SKILL.md` 的实际绝对路径，并将该字面量记为 `SKILL_FILE`。
+> `SKILL_FILE` 不是环境变量；禁止从工作目录、可执行搜索路径、源码仓库或 shell 调用上下文猜测。若宿主未提供该绝对路径，立即停止并报告安装定位失败。
+> 对 `SKILL_FILE` 执行 `realpath`，取其目录向上两级得到 `PLUGIN_ROOT`；校验真实技能路径匹配 `PLUGIN_ROOT/skills/*/SKILL.md`。
+> 令 `RELEASE_SKILL_ENTRY=PLUGIN_ROOT/bin/release-skill.mjs`，对入口执行 `realpath` containment、`lstat` 非符号链接且为普通文件校验。
+> 每一次 shell 工具调用都必须在同一个调用中用上述已验证绝对值设置 `RELEASE_SKILL_ENTRY`，然后执行 `node "$RELEASE_SKILL_ENTRY" ...`；不得依赖前一次 shell 的变量。
+>
+
 # release-reconcile
 
 ## 触发
@@ -29,8 +36,8 @@ marketplace 隔离消费者 checkpoint，但只恢复到 `PUBLISHED`；最终 np
 
 ## 正向执行路径
 
-1. 复用 `release-help` 已解析的 CLI 数组，并确认有 `--run` 路径（必需），且源 run 状态为 `PARTIAL`
-2. 运行 `"${CLI[@]}" reconcile --root <path> --plan <plan-path> --run <run-path> --json`
+1. 使用插件根相对路径运行 CLI，确认有 `--run` 路径（必需），且源 run 状态为 `PARTIAL`
+2. 运行 `node "$RELEASE_SKILL_ENTRY" reconcile --root <path> --plan <plan-path> --run <run-path> --json`
 3. 检查 exit code 和结构化状态：`PUBLISHED`（恢复完成，待 verify）/ `PARTIAL`（需重试）/ `BLOCKED`（需人工决策）
 4. 若 PARTIAL 且需重试，加 `--approval`；生产计划还必须加 `--confirm-production <planDigest>`
 
@@ -38,11 +45,11 @@ marketplace 隔离消费者 checkpoint，但只恢复到 `PUBLISHED`；最终 np
 
 ```bash
 # reconcile
-"${CLI[@]}" reconcile --root <path> --plan <plan-path> --run <run-path> --json
+node "$RELEASE_SKILL_ENTRY" reconcile --root <path> --plan <plan-path> --run <run-path> --json
 # verify
-"${CLI[@]}" verify --root <path> --plan <plan-path> --run <reconcile-run-path> --json
+node "$RELEASE_SKILL_ENTRY" verify --root <path> --plan <plan-path> --run <reconcile-run-path> --json
 # 重试（需 --approval）
-"${CLI[@]}" reconcile --root <path> --plan <plan-path> --run <run-path> --approval <approval-path> --confirm-production <planDigest> --json
+node "$RELEASE_SKILL_ENTRY" reconcile --root <path> --plan <plan-path> --run <run-path> --approval <approval-path> --confirm-production <planDigest> --json
 ```
 
 ## 幂等跳过逻辑

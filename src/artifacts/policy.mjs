@@ -10,7 +10,6 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import YAML from 'yaml';
@@ -22,21 +21,19 @@ import {
   PATH_UNSAFE,
 } from '../core/errors.mjs';
 import { canonicalArtifactPath } from './path-key.mjs';
+import { readTrustedPackageResourceSync } from '../core/trusted-resource.mjs';
 
 // ---------------------------------------------------------------------------
 // Schema validation
 // ---------------------------------------------------------------------------
 
-const POLICY_SCHEMA_PATH = new URL(
-  '../../schemas/artifact-policy.schema.json',
-  import.meta.url,
-);
-
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
 
 // Compile schema once at module load (synchronous).
-const _validate = ajv.compile(JSON.parse(readFileSync(POLICY_SCHEMA_PATH, 'utf8')));
+const _validate = ajv.compile(JSON.parse(readTrustedPackageResourceSync(
+  'schemas/artifact-policy.schema.json',
+).toString('utf8')));
 
 /**
  * Validate a policy object against the artifact-policy JSON Schema.

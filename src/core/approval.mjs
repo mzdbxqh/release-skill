@@ -19,16 +19,14 @@ import { computePlanDigest } from './plan.mjs';
 import { sha256Hex } from './digest.mjs';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { WORKSPACE_DIGEST_ALGORITHM } from './baseline.mjs';
+import { readTrustedPackageResource } from './trusted-resource.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const approvalSchema = JSON.parse(await readFile(
-  join(__dirname, '..', '..', 'schemas', 'approval-record.schema.json'),
-  'utf8',
-));
+const approvalSchema = JSON.parse((await readTrustedPackageResource(
+  'schemas/approval-record.schema.json',
+)).toString('utf8'));
 const approvalAjv = new Ajv({ allErrors: true, strict: false });
 addFormats(approvalAjv);
 const validateApprovalSchema = approvalAjv.compile(approvalSchema);

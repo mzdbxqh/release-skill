@@ -1,6 +1,6 @@
 {
   "name": "release-skill",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
   "repository": {
     "type": "git",
@@ -27,6 +27,7 @@
     "schemas/",
     "native/",
     "!native/safe-write/build/",
+    "scripts/build-bundle.mjs",
     "README.md",
     "README.zh-CN.md",
     "CHANGELOG.md",
@@ -39,7 +40,7 @@
     "SECURITY.md"
   ],
   "scripts": {
-    "build": "node --check src/**/*.mjs",
+    "build": "node --check src/**/*.mjs && node scripts/build-bundle.mjs",
     "test": "node --test test/*.test.mjs",
     "test:no-dogfood": "node --test $(ls test/*.test.mjs | grep -v -E 'dogfood|artifacts-safe-fs-native-seam')",
     "typecheck": "node --check src/**/*.mjs bin/*.mjs",
@@ -47,6 +48,8 @@
     "sync:skills:check": "node scripts/sync-skills.mjs --check",
     "build:adapters": "node scripts/build-adapters.mjs",
     "build:adapters:check": "node scripts/build-adapters.mjs --check",
+    "build:bundle": "node scripts/build-bundle.mjs",
+    "build:bundle:check": "node scripts/build-bundle.mjs --check",
     "native:build": "node-gyp rebuild --directory native/safe-write",
     "native:package-current": "node scripts/package-native-prebuild.mjs",
     "native:build:test": "GYP_DEFINES='test_seam=1' node-gyp rebuild --directory native/safe-write",
@@ -60,6 +63,7 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
+    "esbuild": "0.25.8",
     "node-gyp": "12.3.0"
   },
   "engines": {

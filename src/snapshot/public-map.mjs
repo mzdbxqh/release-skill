@@ -281,6 +281,7 @@ export function normalizePublicMappings({ unit } = {}) {
   return Object.freeze(
     unit.publicFiles.map((mapping) => {
       const from = canonicalPublicPath(mapping.from).path;
+      const sourceScope = mapping.sourceScope ?? 'unit';
       if (isReservedReleaseControlPath(from)) {
         throw new ReleaseError(
           PUBLIC_PATH_FORBIDDEN,
@@ -291,7 +292,7 @@ export function normalizePublicMappings({ unit } = {}) {
       const sourceRelative = posix.relative(sourcePrefix, from);
 
       // Reject `from` paths that escape `unit.source`.
-      if (sourceRelative.startsWith('../') || sourceRelative === '..') {
+      if (sourceScope === 'unit' && (sourceRelative.startsWith('../') || sourceRelative === '..')) {
         throw new ReleaseError(
           PUBLIC_PATH_FORBIDDEN,
           `public file "${mapping.from}" is outside unit source "${unit.source}"`,
@@ -301,6 +302,7 @@ export function normalizePublicMappings({ unit } = {}) {
 
       return Object.freeze({
         from,
+        sourceScope,
         sourceRelative,
         to: canonicalPublicPath(mapping.to).path,
         mode: mapping.mode,
@@ -576,7 +578,7 @@ export async function buildPublicStaging({
         continue;
       }
       // Also check real containment inside unit root
-      if (!isContained(realUnitRoot, realSrc)) {
+      if (mapping.sourceScope === 'unit' && !isContained(realUnitRoot, realSrc)) {
         preflightRecords.push({
           ok: false,
           err: new ReleaseError(
@@ -988,7 +990,8 @@ export async function buildPublicStaging({
         );
       }
 
-      // Verify realpath of the handle is inside both realSourceRoot and realUnitRoot.
+      // Verify realpath of the handle is inside the workspace and, for the
+      // default unit scope, inside the unit root as well.
       // This catches a race between preflight and open where a component
       // was replaced with a symlink.
       const handleRealPath = await fs.realpath(srcPath, { stage: 'source-open-realpath' });
@@ -999,7 +1002,7 @@ export async function buildPublicStaging({
           { from: mapping.from, realPath: handleRealPath },
         );
       }
-      if (!isContained(realUnitRoot, handleRealPath)) {
+      if (mapping.sourceScope === 'unit' && !isContained(realUnitRoot, handleRealPath)) {
         throw new ReleaseError(
           SNAPSHOT_FIDELITY_FAILED,
           `source escapes unitRoot containment after open: "${mapping.from}"`,

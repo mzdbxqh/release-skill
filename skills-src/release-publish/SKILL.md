@@ -31,12 +31,9 @@ description: 从已批准且摘要确认的生产计划发布冻结 Git branch/t
 ## 确定性执行
 
 ```bash
-"${CLI[@]}" publish --root <path> --plan <plan-path> \
+node "${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs" publish --root <path> --plan <plan-path> \
   --approval <approval-path> --confirm-production <planDigest> --json
 ```
-
-`CLI` 必须复用 `release-help` 已解析的入口：registry 已有受支持版本且 PATH 可用时
-为 `CLI=(release-skill)`；否则为源码 checkout 的 node 数组。
 
 执行顺序：全局只读预检 → 配置的公开分支（按三种 `branchStrategy` 执行）→ 必要时
 单独切换默认分支 → tag → npm tarball →

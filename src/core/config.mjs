@@ -17,8 +17,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { resolve, isAbsolute, relative, normalize, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve, isAbsolute, relative, normalize } from 'node:path';
 import YAML, { Alias } from 'yaml';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
@@ -26,6 +25,7 @@ import { canonicalJson, sha256Hex } from './digest.mjs';
 import { ReleaseError, CONFIG_INVALID } from './errors.mjs';
 import { canonicalPublicPath, publicPathCollisionKey } from '../snapshot/public-path.mjs';
 import { isReservedReleaseControlPath } from './baseline.mjs';
+import { readTrustedPackageResource } from './trusted-resource.mjs';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -38,19 +38,19 @@ const DEFAULT_CONFIG_REL = '.release-skill/project.yaml';
 // Load the formal release-project JSON Schema (single source of truth)
 // ---------------------------------------------------------------------------
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const FORMAL_SCHEMA_PATH = resolve(__dirname, '..', '..', 'schemas', 'release-project.schema.json');
-
 let RELEASE_PROJECT_SCHEMA;
 try {
-  const schemaRaw = await readFile(FORMAL_SCHEMA_PATH, 'utf8');
+  const schemaRaw = (await readTrustedPackageResource(
+    'schemas/release-project.schema.json',
+  )).toString('utf8');
   RELEASE_PROJECT_SCHEMA = JSON.parse(schemaRaw);
 } catch (err) {
+  if (err instanceof ReleaseError) throw err;
   // Fail closed: if the formal schema cannot be loaded, refuse to operate.
   throw new ReleaseError(
     CONFIG_INVALID,
-    `cannot load formal release-project schema: ${err.message}`,
-    { schemaPath: FORMAL_SCHEMA_PATH, cause: err.code },
+    'cannot parse formal release-project schema',
+    { resource: 'schemas/release-project.schema.json', cause: err.code ?? 'PARSE_FAILED' },
   );
 }
 

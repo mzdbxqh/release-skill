@@ -3,6 +3,13 @@ name: release-publish
 description: 从已批准且摘要确认的生产计划发布冻结 Git branch/tag、npm tarball 与 GitHub Release，并执行已配置的 Claude/Codex marketplace 隔离消费者安装检查以达到 PUBLISHED；随后必须路由 release-verify 才可能达到 VERIFIED；遇到冲突或不确定远端状态时失败关闭并要求人工介入
 ---
 
+> **Codex 安装入口解析协议**：在调用 CLI 前，Agent 必须从宿主当前已加载技能的元数据中取得本 `SKILL.md` 的实际绝对路径，并将该字面量记为 `SKILL_FILE`。
+> `SKILL_FILE` 不是环境变量；禁止从工作目录、可执行搜索路径、源码仓库或 shell 调用上下文猜测。若宿主未提供该绝对路径，立即停止并报告安装定位失败。
+> 对 `SKILL_FILE` 执行 `realpath`，取其目录向上两级得到 `PLUGIN_ROOT`；校验真实技能路径匹配 `PLUGIN_ROOT/skills/*/SKILL.md`。
+> 令 `RELEASE_SKILL_ENTRY=PLUGIN_ROOT/bin/release-skill.mjs`，对入口执行 `realpath` containment、`lstat` 非符号链接且为普通文件校验。
+> 每一次 shell 工具调用都必须在同一个调用中用上述已验证绝对值设置 `RELEASE_SKILL_ENTRY`，然后执行 `node "$RELEASE_SKILL_ENTRY" ...`；不得依赖前一次 shell 的变量。
+>
+
 # release-publish
 
 ## 触发
@@ -31,12 +38,9 @@ description: 从已批准且摘要确认的生产计划发布冻结 Git branch/t
 ## 确定性执行
 
 ```bash
-"${CLI[@]}" publish --root <path> --plan <plan-path> \
+node "$RELEASE_SKILL_ENTRY" publish --root <path> --plan <plan-path> \
   --approval <approval-path> --confirm-production <planDigest> --json
 ```
-
-`CLI` 必须复用 `release-help` 已解析的入口：registry 已有受支持版本且 PATH 可用时
-为 `CLI=(release-skill)`；否则为源码 checkout 的 node 数组。
 
 执行顺序：全局只读预检 → 配置的公开分支（按三种 `branchStrategy` 执行）→ 必要时
 单独切换默认分支 → tag → npm tarball →

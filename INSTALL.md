@@ -2,6 +2,7 @@
 
 [简体中文](INSTALL.zh-CN.md)
 
+<!-- release-skill:release-version: 0.1.4 -->
 ## Prerequisites
 
 - Node.js 22.0.0 or later
@@ -9,8 +10,9 @@
 
 ## Install from npm (recommended)
 
-v0.1.1 is published and verified. For a newer source candidate such as v0.1.3,
-use the npm path only after `npm view release-skill version` returns that exact
+A public version is complete only after its immutable production plan has been
+approved, published, and reached `VERIFIED`. For a newer source checkout, use
+the npm path only after `npm view release-skill version` returns that exact
 version; before then, use the source checkout instructions below.
 
 ```bash
@@ -63,22 +65,71 @@ instructions above; do not mix the two entry paths in one run.
 "${CLI[@]}" help
 ```
 
-If `.release-skill/project.yaml` is absent, discover first-use facts and
-candidates without writing files:
+If `.release-skill/project.yaml` is absent, keep the full read-only report in a
+temporary file and inspect only its deterministic `compactSummary`:
 
 ```bash
-"${CLI[@]}" setup --root /path/to/your/project --json
+PROJECT=/path/to/your/project
+SETUP_SESSION="$(mktemp -d "${TMPDIR:-/tmp}/release-setup.XXXXXX")"
+REPORT="$SETUP_SESSION/discovery.json"
+ANSWERS="$SETUP_SESSION/answers.json"
+BOUND_REPORT="$SETUP_SESSION/bound.json"
+printf 'SETUP_SESSION=%s\nPROJECT=%s\n' "$SETUP_SESSION" "$PROJECT"
+
+"${CLI[@]}" setup --root "$PROJECT" --json > "$REPORT" || test "$?" -eq 2
+node -e 'const fs=require("node:fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!r.compactSummary){console.error("compactSummary missing");process.exit(2)}process.stdout.write(JSON.stringify(r.compactSummary,null,2)+"\n")' "$REPORT"
 ```
 
-`NEEDS_INPUT` and `LOCAL_ONLY_DETECTED` intentionally return exit code 2. They
-are decision states, not an internal crash; automation should inspect the JSON
-`status`.
+The summary is a review view, not authorization; `setupDigest` binds the full
+facts, candidates, and answers. If `proposalConflicts` is non-empty, a human
+must correct the conflicting repository/mapping authority and rerun setup.
+Do not guess. With no conflicts, mechanically extract the proposal:
 
-Review release units, legacy `public-release.json` migration hints, tags,
-branch strategies, previous-public-baseline decisions, and gate candidates.
-Setup never executes a discovered script automatically. Provide a complete
-answers JSON, dry-run again to obtain the digest that binds current facts and
-answers, then create the configuration exactly once:
+```bash
+SETUP_SESSION='/session-directory-absolute-path-printed-above'
+PROJECT='/project-absolute-path-printed-above'
+REPORT="$SETUP_SESSION/discovery.json"
+ANSWERS="$SETUP_SESSION/answers.json"
+BOUND_REPORT="$SETUP_SESSION/bound.json"
+node -e 'const fs=require("node:fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if((r.proposalConflicts??[]).length){console.error("proposal conflicts require human resolution");process.exit(2)}if(!r.recommendedAnswers){console.error("recommendedAnswers missing");process.exit(2)}fs.writeFileSync(process.argv[2],JSON.stringify(r.recommendedAnswers,null,2)+"\n",{flag:"wx",mode:0o600})' "$REPORT" "$ANSWERS"
+"${CLI[@]}" setup --root "$PROJECT" --answers "$ANSWERS" --json > "$BOUND_REPORT"
+node -e 'const fs=require("node:fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!r.compactSummary||!r.setupDigest){console.error("bound setup report incomplete");process.exit(2)}process.stdout.write(JSON.stringify({compactSummary:r.compactSummary,setupDigest:r.setupDigest},null,2)+"\n")' "$BOUND_REPORT"
+printf 'SETUP_SESSION=%s\nPROJECT=%s\n' "$SETUP_SESSION" "$PROJECT"
+```
+
+After one explicit human confirmation of the bound summary and exact digest,
+create once with that confirmed digest literal. The result must be
+`CONFIG_CREATED`; a second setup must be `ALREADY_CONFIGURED`, then run assess.
+
+```bash
+SETUP_SESSION=<session-directory-absolute-path-printed-above>
+PROJECT=<project-absolute-path-printed-above>
+ANSWERS="$SETUP_SESSION/answers.json"
+CREATED_REPORT="$SETUP_SESSION/created.json"
+POST_REPORT="$SETUP_SESSION/post-setup.json"
+ASSESS_REPORT="$SETUP_SESSION/assess.json"
+"${CLI[@]}" setup --root "$PROJECT" --answers "$ANSWERS" \
+  --write --confirm-setup <confirmed-setupDigest> --json > "$CREATED_REPORT"
+"${CLI[@]}" setup --root "$PROJECT" --json > "$POST_REPORT"
+set +e
+"${CLI[@]}" assess --root "$PROJECT" --offline --json > "$ASSESS_REPORT"
+ASSESS_EXIT=$?
+set -e
+[ "$ASSESS_EXIT" -eq 0 ] || [ "$ASSESS_EXIT" -eq 1 ] || exit "$ASSESS_EXIT"
+node -e 'const fs=require("node:fs");const [c,p,a]=process.argv.slice(1).map(x=>JSON.parse(fs.readFileSync(x,"utf8")));if(c.status!=="CONFIG_CREATED"||p.status!=="ALREADY_CONFIGURED"||!["ASSESSED","NEEDS_INPUT","BLOCKED"].includes(a.status)){process.exit(2)}process.stdout.write(JSON.stringify({created:c.status,postSetup:p.status,assessment:{status:a.status,summary:a.summary,gapCount:(a.gaps??[]).length,blockingCodes:(a.gaps??[]).filter(g=>g.severity==="error").map(g=>g.code)}},null,2)+"\n")' "$CREATED_REPORT" "$POST_REPORT" "$ASSESS_REPORT"
+node -e 'require("node:fs").rmSync(process.argv[1],{recursive:true,force:false})' "$SETUP_SESSION"
+```
+
+Indirect interpreter/package-manager scripts are `SIDE_EFFECTS_UNPROVEN` and
+remain unselected. Register a project-specific hook/gate only through a reviewed
+incremental edit: edit `projectConfig.hooks`, or edit `verificationGates` and
+add the same id to `selectedGateIds`, then rerun the bound dry-run. Human files use `mode: preserve`; explicit cross-unit shared
+sources use `sourceScope: workspace`.
+
+### Advanced schema reference—not the first-run path
+
+The following wrapper documents the schema. Do not hand-write it during normal
+setup; use the mechanically extracted `recommendedAnswers`.
 
 ```json
 {
@@ -116,25 +167,11 @@ answers, then create the configuration exactly once:
 }
 ```
 
-The wrapper is complete, but its values are examples. Replace every repository,
-channel, baseline, and public-file decision with reviewed project facts; use
-`mode: none` only when no public version exists.
-
-When selecting a reported gate, add the complete gate definition to
-`projectConfig.verificationGates` and copy its id into `selectedGateIds`. The
-id must come from the current `gateCandidates`. A snapshot-gate command and all
-of its dependencies must be present in `publicFiles`; it cannot see tests,
-development dependencies, or `node_modules` that exist only in the parent
-workspace. The full [README setup section](README.md#first-use-discover-then-let-a-human-finalize)
-contains complete no-gate and one-gate answers examples.
-
-```bash
-"${CLI[@]}" setup --root /path/to/your/project \
-  --answers /path/to/setup-answers.json --json
-"${CLI[@]}" setup --root /path/to/your/project \
-  --answers /path/to/setup-answers.json \
-  --write --confirm-setup <setupDigest> --json
-```
+This wrapper is reference data only. Normal setup uses the machine proposal;
+`mode: none` is valid only when no public version exists. When a reviewed gate
+is added incrementally, its id must exactly match `selectedGateIds`, and a
+snapshot gate plus its dependencies must be present in `publicFiles`. See the
+[README setup section](README.md#first-use-deterministic-setup-without-loading-the-full-report).
 
 An existing config is never regenerated or overwritten. A project with no
 discoverable GitHub/npm channel reports `LOCAL_ONLY_DETECTED` rather than

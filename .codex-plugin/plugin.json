@@ -1,12 +1,12 @@
 {
   "name": "release-skill",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
   "author": {
     "name": "release-skill contributors"
   },
   "license": "MIT",
-  "skills": "./skills/",
+  "skills": "./adapters/codex/skills/",
   "interface": {
     "displayName": "Release Skill",
     "shortDescription": "Safe preparation and frozen GitHub/npm publishing",
@@ -19,7 +19,7 @@
     ],
     "defaultPrompt": [
       "Assess this project for release readiness.",
-      "Prepare a release plan for version 0.1.3.",
+      "Prepare a release plan for version 0.1.4.",
       "Help me understand the release workflow."
     ]
   }

@@ -3,6 +3,13 @@ name: release-verify
 description: Post-publish verification including remote state recheck, exact npm installation smoke, and consumer plugin install verification
 ---
 
+> **Codex 安装入口解析协议**：在调用 CLI 前，Agent 必须从宿主当前已加载技能的元数据中取得本 `SKILL.md` 的实际绝对路径，并将该字面量记为 `SKILL_FILE`。
+> `SKILL_FILE` 不是环境变量；禁止从工作目录、可执行搜索路径、源码仓库或 shell 调用上下文猜测。若宿主未提供该绝对路径，立即停止并报告安装定位失败。
+> 对 `SKILL_FILE` 执行 `realpath`，取其目录向上两级得到 `PLUGIN_ROOT`；校验真实技能路径匹配 `PLUGIN_ROOT/skills/*/SKILL.md`。
+> 令 `RELEASE_SKILL_ENTRY=PLUGIN_ROOT/bin/release-skill.mjs`，对入口执行 `realpath` containment、`lstat` 非符号链接且为普通文件校验。
+> 每一次 shell 工具调用都必须在同一个调用中用上述已验证绝对值设置 `RELEASE_SKILL_ENTRY`，然后执行 `node "$RELEASE_SKILL_ENTRY" ...`；不得依赖前一次 shell 的变量。
+>
+
 # release-verify
 
 ## 触发
@@ -28,20 +35,17 @@ verify 只接受 `PUBLISHED` 状态的源 run；`VERIFIED` 是终态，不会再
 ## 正向执行路径
 
 1. 确认有 `--run` 路径（必需），且源 run 状态为 PUBLISHED
-2. 复用 `release-help` 已解析的 `CLI` 数组；若存在 consumer gate 或 npm `smokeBin`，先逐项审阅并增加 `--acknowledge-gate-side-effects`
+2. 使用插件根相对路径运行 CLI；若存在 consumer gate 或 npm `smokeBin`，先逐项审阅并增加 `--acknowledge-gate-side-effects`
 3. 检查 exit code 和结构化状态：`VERIFIED`（全部通过）/ 失败（具体错误）
 4. 只有 `VERIFIED` 才是 happy end
 
 ## 确定性脚本调用
 
 ```bash
-# 从 npm 全局安装
-"${CLI[@]}" verify --root <path> --plan <plan-path> --run <run-path> --json
+# 从插件根运行
+node "$RELEASE_SKILL_ENTRY" verify --root <path> --plan <plan-path> --run <run-path> --json
 # 计划含 consumer gate 或 smokeBin 时：
-"${CLI[@]}" verify --root <path> --plan <plan-path> --run <run-path> --acknowledge-gate-side-effects --json
-
-# 从源码运行
-node "$RELEASE_SKILL_HOME/packages/release-skill/bin/release-skill.mjs" verify --root <path> --plan <plan-path> --run <run-path> --json
+node "$RELEASE_SKILL_ENTRY" verify --root <path> --plan <plan-path> --run <run-path> --acknowledge-gate-side-effects --json
 ```
 
 ## 验证步骤

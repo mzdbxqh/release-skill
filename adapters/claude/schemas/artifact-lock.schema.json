@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://release-skill.dev/artifact-lock.schema.json",
+  "title": "ArtifactLock",
+  "description": "Reachable accepted artifact manifest. Absolute repository paths are never authoritative.",
+  "type": "object",
+  "required": [
+    "lockVersion",
+    "repositoryId",
+    "repositoryIdentity",
+    "policyDigest",
+    "acceptanceId",
+    "acceptedArtifactManifestDigest",
+    "entries",
+    "acceptedAt",
+    "acceptedBy"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "release-skill.dev/artifact-lock/v1"
+    },
+    "lockVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "repositoryId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repositoryIdentity": {
+      "type": "object",
+      "required": ["remoteUrlHash"],
+      "additionalProperties": false,
+      "properties": {
+        "remoteUrlHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "policyDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "acceptanceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptedArtifactManifestDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "entries": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["path", "type", "mode", "gitOid", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": ["blob", "tree"]
+          },
+          "mode": {
+            "type": "string",
+            "pattern": "^(100644|100755|040000)$"
+          },
+          "gitOid": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40,64}$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^(sha256:)?[a-f0-9]{64}$"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "manifestDigest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "ownership": {
+            "type": "string",
+            "enum": ["human", "generated", "mixed"]
+          },
+          "mergeDriver": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "acceptedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acceptedBy": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -389,6 +389,7 @@ export async function publishRelease(options) {
           gitObjectDir: frozen.gitObjectDir,
           commit: frozen.commit,
           tree: frozen.tree,
+          commitTimestamp: frozen.commitTimestamp,
         });
         assertInsideAssetRoot(assetRoot, git.gitDir, 'frozen git object directory');
         if (frozen.npm) {

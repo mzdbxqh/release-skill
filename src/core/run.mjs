@@ -15,17 +15,17 @@
 import { link, lstat, mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { dirname, join, resolve, basename, relative, isAbsolute } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 
 import { assertImmutablePlanAuthority, computePlanDigest } from './plan.mjs';
 import { sha256Hex } from './digest.mjs';
 import { ReleaseError, GATE_FAILED } from './errors.mjs';
+import { readTrustedPackageResource } from './trusted-resource.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const RUN_SCHEMA_PATH = join(__dirname, '..', '..', 'schemas', 'release-run.schema.json');
-const RELEASE_RUN_SCHEMA = JSON.parse(await readFile(RUN_SCHEMA_PATH, 'utf8'));
+const RELEASE_RUN_SCHEMA = JSON.parse((await readTrustedPackageResource(
+  'schemas/release-run.schema.json',
+)).toString('utf8'));
 
 // ---------------------------------------------------------------------------
 // Default runDir resolution

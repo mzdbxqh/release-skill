@@ -2,6 +2,7 @@
 
 [简体中文](README.zh-CN.md) · Installation: [English](INSTALL.md) / [简体中文](INSTALL.zh-CN.md)
 
+<!-- release-skill:release-version: 0.1.4 -->
 Release preparation for Claude Code and Codex, with human-edited files kept intact.
 
 release-skill helps a maintainer answer three questions: what will be released,
@@ -10,21 +11,25 @@ reviewed artifacts first and publishes those same artifacts later; it does not
 regenerate a README or re-pack the live workspace at the last step.
 
 <!-- release-skill:capability:external-write-boundary -->
-> **Current boundary:** v0.1.1 completed a real production release to GitHub and
-> npm, followed by exact npm installation and Claude/Codex consumer installation
-> verification from the frozen Git ref. The same workflow also has a local
-> production-equivalent protocol suite using the real release-skill CLI and
-> frozen artifacts, local bare Git remotes, and protocol fakes for `gh`, `npm`,
-> Claude, and Codex. The suite does not provide OS-level network isolation, and
-> it does not prove that another project's credentials, permissions, rate limits,
-> or eventual-consistency behavior will match this release. Treat each project's
-> first production run as a monitored canary. `prepare --online` observes bound
-> previous-public baselines and fails closed on drift; remote uniqueness checks
-> run during publish global preflight.
+> **Current boundary:** v0.1.4 is the current release. v0.1.1 completed a real production release
+> to GitHub and npm — the first production-verified milestone — followed by
+> exact npm installation and Claude/Codex consumer installation verification
+> from the frozen Git ref; "current release" and "first production-verified
+> milestone" are two distinct facts and must not be conflated. The same
+> workflow also has a local production-equivalent protocol suite using the
+> real release-skill CLI and frozen artifacts, local bare Git remotes, and
+> protocol fakes for `gh`, `npm`, Claude, and Codex. The suite does not
+> provide OS-level network isolation, and it does not prove that another
+> project's credentials, permissions, rate limits, or eventual-consistency
+> behavior will match this release. Treat each project's first production run
+> as a monitored canary. `prepare --online` observes bound previous-public
+> baselines and fails closed on drift; remote uniqueness checks run during
+> publish global preflight.
 
 <!-- release-skill:capability:safe-first-command -->
-> **v0.1.1 production verified.** The npm-installed CLI is the supported user
-> entry. Source checkout is the development/contributor fallback.
+> **Production path verified since the v0.1.1 milestone; v0.1.4 is the current
+> release.** The npm-installed CLI is the supported user entry. Source checkout
+> is the development/contributor fallback.
 >
 > **Start here:**
 > - npm install: `npm install -g release-skill` → `release-skill help`
@@ -55,6 +60,13 @@ slogans, examples, prose, formatting, and later human edits.
   intervention; the tool does not force or overwrite them.
 - Only files listed in `publicFiles` are copied. Add translated READMEs, images,
   demos, and linked documents explicitly when they belong in the release.
+- A release freezes only the current truth: `prepare` never refreshes or
+  rewrites human docs. Maintainers update README, INSTALL, and CHANGELOG first
+  — including the machine-readable `release-skill:release-version` markers,
+  which must equal the `package.json` version, and the formal CHANGELOG
+  heading for the current version — then prepare, review, and approve. A
+  pre-release gate fails closed when any doc version marker or the CHANGELOG
+  current-version entry drifts.
 
 This is the preservation contract: **copy current truth, freeze reviewed
 truth, and never rewrite human truth.**
@@ -104,26 +116,81 @@ First keep local plans, approvals, and frozen artifacts out of Git:
 !.release-skill/project.yaml
 ```
 
-### First use: discover, then let a human finalize
+### First use: deterministic setup without loading the full report
 
-When the project has no configuration, start with read-only setup. It scans
-packages, plugin manifests, Git remotes, legacy `public-release.json`, and
-quality scripts. It reports release-unit, tag, branch, previous-baseline, and
-verification-gate candidates, but never treats README prose as instructions or
-automatically selects or executes a script:
+Setup is read-only by default. Keep its potentially large report in temporary
+files; show the user or Agent only the deterministic `compactSummary` review
+view. The summary does not replace authorization: `setupDigest` still binds the
+complete facts, candidates, and answers.
 
 ```bash
-release-skill setup --root /absolute/path/to/my-project --json
+PROJECT=/absolute/path/to/my-project
+SETUP_SESSION="$(mktemp -d "${TMPDIR:-/tmp}/release-setup.XXXXXX")"
+REPORT="$SETUP_SESSION/discovery.json"
+ANSWERS="$SETUP_SESSION/answers.json"
+BOUND_REPORT="$SETUP_SESSION/bound.json"
+printf 'SETUP_SESSION=%s\nPROJECT=%s\n' "$SETUP_SESSION" "$PROJECT"
+
+release-skill setup --root "$PROJECT" --json > "$REPORT" || test "$?" -eq 2
+node -e 'const fs=require("node:fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!r.compactSummary){console.error("compactSummary missing");process.exit(2)}process.stdout.write(JSON.stringify(r.compactSummary,null,2)+"\n")' "$REPORT"
 ```
 
-`NEEDS_INPUT` and `LOCAL_ONLY_DETECTED` intentionally exit with code 2. They
-are unresolved decision states, not a crash. Automation should inspect the JSON
-`status` instead of treating every nonzero setup result as an internal failure.
+`NEEDS_INPUT` and `LOCAL_ONLY_DETECTED` intentionally exit with code 2. If
+`proposalConflicts` is non-empty—including `PUBLIC_REPO_AUTHORITY_CONFLICT` or
+a public-file mapping conflict—stop and let a human correct the conflicting
+repository or mapping authority, then rerun setup. Do not guess a winner.
 
-After review, create an answers JSON containing the complete `projectConfig`.
-Its `selectedGateIds` must exactly match `projectConfig.verificationGates[].id`;
-use an explicit empty array when no project-specific gate is selected. Dry-run
-again with those answers, review the new `setupDigest`, then create the config:
+With no conflicts, copy the machine proposal mechanically. The Agent must not
+rewrite or transcribe it:
+
+```bash
+SETUP_SESSION='/session-directory-absolute-path-printed-above'
+PROJECT='/project-absolute-path-printed-above'
+REPORT="$SETUP_SESSION/discovery.json"
+ANSWERS="$SETUP_SESSION/answers.json"
+BOUND_REPORT="$SETUP_SESSION/bound.json"
+node -e 'const fs=require("node:fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if((r.proposalConflicts??[]).length){console.error("proposal conflicts require human resolution");process.exit(2)}if(!r.recommendedAnswers){console.error("recommendedAnswers missing");process.exit(2)}fs.writeFileSync(process.argv[2],JSON.stringify(r.recommendedAnswers,null,2)+"\n",{flag:"wx",mode:0o600})' "$REPORT" "$ANSWERS"
+
+release-skill setup --root "$PROJECT" --answers "$ANSWERS" --json > "$BOUND_REPORT"
+node -e 'const fs=require("node:fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!r.compactSummary||!r.setupDigest){console.error("bound setup report incomplete");process.exit(2)}process.stdout.write(JSON.stringify({compactSummary:r.compactSummary,setupDigest:r.setupDigest},null,2)+"\n")' "$BOUND_REPORT"
+printf 'SETUP_SESSION=%s\nPROJECT=%s\n' "$SETUP_SESSION" "$PROJECT"
+```
+
+Review that bound summary and exact digest once. After explicit human
+confirmation, use the confirmed digest literal to create the configuration:
+
+```bash
+SETUP_SESSION=<session-directory-absolute-path-printed-above>
+PROJECT=<project-absolute-path-printed-above>
+ANSWERS="$SETUP_SESSION/answers.json"
+CREATED_REPORT="$SETUP_SESSION/created.json"
+POST_REPORT="$SETUP_SESSION/post-setup.json"
+ASSESS_REPORT="$SETUP_SESSION/assess.json"
+release-skill setup --root "$PROJECT" --answers "$ANSWERS" \
+  --write --confirm-setup <confirmed-setupDigest> --json > "$CREATED_REPORT"
+release-skill setup --root "$PROJECT" --json > "$POST_REPORT"
+set +e
+release-skill assess --root "$PROJECT" --offline --json > "$ASSESS_REPORT"
+ASSESS_EXIT=$?
+set -e
+[ "$ASSESS_EXIT" -eq 0 ] || [ "$ASSESS_EXIT" -eq 1 ] || exit "$ASSESS_EXIT"
+node -e 'const fs=require("node:fs");const [c,p,a]=process.argv.slice(1).map(x=>JSON.parse(fs.readFileSync(x,"utf8")));if(c.status!=="CONFIG_CREATED"||p.status!=="ALREADY_CONFIGURED"||!["ASSESSED","NEEDS_INPUT","BLOCKED"].includes(a.status)){process.exit(2)}process.stdout.write(JSON.stringify({created:c.status,postSetup:p.status,assessment:{status:a.status,summary:a.summary,gapCount:(a.gaps??[]).length,blockingCodes:(a.gaps??[]).filter(g=>g.severity==="error").map(g=>g.code)}},null,2)+"\n")' "$CREATED_REPORT" "$POST_REPORT" "$ASSESS_REPORT"
+node -e 'require("node:fs").rmSync(process.argv[1],{recursive:true,force:false})' "$SETUP_SESSION"
+```
+
+The write must return `CONFIG_CREATED`; the next setup must return
+`ALREADY_CONFIGURED`. Existing configuration is never regenerated—make only
+reviewed incremental edits. Discovered interpreter/package-manager scripts are
+`SIDE_EFFECTS_UNPROVEN` and are not selected automatically. Add a project-specific
+hook or gate only after human review: edit `projectConfig.hooks`, or edit
+`verificationGates` and add the same id to `selectedGateIds`, then rerun the
+bound dry-run. Keep human files at `mode: preserve`, and
+use `sourceScope: workspace` only for explicit cross-unit shared sources.
+
+#### Advanced schema reference—not the first-use path
+
+The wrapper below illustrates the schema only. Do not hand-write it during the
+normal setup path; mechanically extract `recommendedAnswers` as shown above.
 
 ```json
 {
@@ -161,15 +228,12 @@ again with those answers, review the new `setupDigest`, then create the config:
 }
 ```
 
-This is a complete schema-shaped wrapper, not authoritative project data.
-Replace every repository, channel, baseline, and public-file decision with the
-reviewed facts from your project; use `mode: none` only when no public version
-exists.
+This is a schema reference, not an onboarding template. Normal setup must use
+the machine proposal. `mode: none` is valid only when no public version exists.
 
-To select one reported gate, keep the same complete `projectConfig`, add a
-top-level `verificationGates` array inside it, and make the wrapper's
-`selectedGateIds` identical. For example, when dry-run reported
-`my-project-script-test`:
+The following reference shows the exact relationship between a manually
+reviewed gate and `selectedGateIds`. Apply that relationship only as an
+incremental edit to the extracted machine proposal:
 
 ```json
 {
@@ -407,8 +471,8 @@ publication. The source checkout remains the development/contributor fallback.
    ```bash
    "${CLI[@]}" setup --root "$PROJECT" --json
    ```
-   Complete the answers and exact `setupDigest` confirmation described above;
-   skip this step when configuration already exists.
+   Follow the mechanical `compactSummary` and `recommendedAnswers` path above;
+   confirm the bound `setupDigest` once, and skip this step when configuration exists.
 3. **Readiness assessment (read-only):**
    ```bash
    "${CLI[@]}" assess --root "$PROJECT" --offline --json

@@ -423,25 +423,14 @@ export function createPluginMarketplaceAdapter(deps = {}) {
             });
           }
 
-          // Verify marketplace files exist
-          const manifestRelative = consumer === 'claude'
-            ? '.claude-plugin/plugin.json'
-            : '.codex-plugin/plugin.json';
+          // Verify marketplace files exist.
+          // marketplace.json is at the snapshot root; plugin manifest is
+          // resolved relative to the entry's declared source path.
           const marketplaceRelative = consumer === 'claude'
             ? '.claude-plugin/marketplace.json'
             : '.agents/plugins/marketplace.json';
 
-          const manifestPath = resolve(snapshotDirReal, manifestRelative);
           const marketplacePath = resolve(snapshotDirReal, marketplaceRelative);
-
-          const manifestResult = await validateManifestFile(manifestPath, ['name', 'version']);
-          if (!manifestResult.valid) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `frozen snapshot ${manifestRelative} invalid: ${manifestResult.error}`,
-            });
-          }
 
           // marketplace.json must exist and have root name (no root version required)
           const marketplaceResult = await validateManifestFile(marketplacePath, ['name']);
@@ -481,23 +470,70 @@ export function createPluginMarketplaceAdapter(deps = {}) {
           }
           const entry = pluginEntry[0];
 
-          // Entry source must be "./" (Claude: string, Codex: object with path "./")
-          if (consumer === 'claude') {
-            if (entry.source !== './') {
-              return createResult({
-                actionType,
-                status: ActionStatus.PREFLIGHT_FAILED,
-                error: `Claude marketplace plugin entry source must be "./", got "${entry.source}"`,
-              });
-            }
-          } else {
-            if (entry.source?.source !== 'local' || entry.source?.path !== './') {
-              return createResult({
-                actionType,
-                status: ActionStatus.PREFLIGHT_FAILED,
-                error: `Codex marketplace plugin entry source must be {source:"local",path:"./"}, got ${JSON.stringify(entry.source)}`,
-              });
-            }
+          // Entry source must be a safe relative path within the snapshot.
+          // Accepts "./" (root-level), "./adapters/claude" (subdirectory),
+          // etc. Rejects absolute paths, ".." traversal, remote URLs, and
+          // empty strings.
+          const sourcePath = consumer === 'claude'
+            ? entry.source
+            : entry.source?.source === 'local' ? entry.source?.path : null;
+          if (typeof sourcePath !== 'string' || sourcePath.length === 0) {
+            return createResult({
+              actionType,
+              status: ActionStatus.PREFLIGHT_FAILED,
+              error: `marketplace plugin entry source must be a non-empty relative path${consumer === 'codex' ? ' (object with source:"local")' : ''}, got ${JSON.stringify(entry.source)}`,
+            });
+          }
+          if (
+            sourcePath.startsWith('/') ||
+            sourcePath.includes('..') ||
+            sourcePath.includes('\\') ||
+            /^https?:\/\//i.test(sourcePath)
+          ) {
+            return createResult({
+              actionType,
+              status: ActionStatus.PREFLIGHT_FAILED,
+              error: `marketplace plugin entry source "${sourcePath}" is not a safe relative path`,
+            });
+          }
+          // Verify the declared source directory exists and contains the
+          // expected plugin manifest inside the frozen snapshot.
+          const sourceDirAbs = resolve(snapshotDirReal, sourcePath);
+          const sourceDirReal = await realpath(sourceDirAbs).catch(() => null);
+          if (!sourceDirReal) {
+            return createResult({
+              actionType,
+              status: ActionStatus.PREFLIGHT_FAILED,
+              error: `marketplace plugin entry source directory does not exist: ${sourcePath}`,
+            });
+          }
+          // Containment check: source must stay inside the snapshot
+          const sourceRelCheck = relative(snapshotDirReal, sourceDirReal);
+          if (sourceRelCheck.startsWith('..') || isAbsolute(sourceRelCheck)) {
+            return createResult({
+              actionType,
+              status: ActionStatus.PREFLIGHT_FAILED,
+              error: `marketplace plugin entry source "${sourcePath}" escapes the frozen snapshot`,
+            });
+          }
+
+          // Resolve plugin manifest relative to the declared source path.
+          // For root layouts (source: "./"), this resolves to
+          //   snapshot/.claude-plugin/plugin.json
+          // For subdirectory layouts (source: "./adapters/claude"), this resolves to
+          //   snapshot/adapters/claude/.claude-plugin/plugin.json
+          const manifestRelative = consumer === 'claude'
+            ? join(sourcePath, '.claude-plugin', 'plugin.json')
+            : join(sourcePath, '.codex-plugin', 'plugin.json');
+          const manifestPath = resolve(snapshotDirReal, manifestRelative);
+
+          const manifestResult = await validateManifestFile(manifestPath, ['name', 'version']);
+          if (!manifestResult.valid) {
+            return createResult({
+              actionType,
+              status: ActionStatus.PREFLIGHT_FAILED,
+              error: `frozen snapshot ${manifestRelative} invalid: ${manifestResult.error}`,
+            });
           }
 
           // Claude carries the version in the marketplace entry. Codex keeps
