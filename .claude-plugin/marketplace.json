@@ -1,0 +1,16 @@
+{
+  "name": "release-skill",
+  "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
+  "owner": {
+    "name": "mzdbxqh",
+    "url": "https://github.com/mzdbxqh"
+  },
+  "plugins": [
+    {
+      "name": "release-skill",
+      "source": "./",
+      "version": "0.1.0",
+      "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification"
+    }
+  ]
+}

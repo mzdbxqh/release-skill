@@ -1,0 +1,305 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://release-skill.dev/schemas/release-plan/v1",
+  "title": "Release Plan",
+  "description": "Schema for frozen release plan produced by the prepare phase",
+  "type": "object",
+  "required": ["planVersion", "status", "baseline", "units", "externalActions"],
+  "additionalProperties": false,
+  "properties": {
+    "planVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "DISCOVERED",
+        "ASSESSED",
+        "PREPARED",
+        "APPROVED",
+        "PUBLISHING",
+        "PUBLISHED",
+        "VERIFIED",
+        "NEEDS_INPUT",
+        "BLOCKED",
+        "PARTIAL"
+      ]
+    },
+    "production": {
+      "type": "object",
+      "required": ["mode", "assetRoot"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "const": "github-npm-v1" },
+        "assetRoot": { "type": "string", "minLength": 1 }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["gitTreeHash"],
+      "additionalProperties": false,
+      "properties": {
+        "gitTreeHash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceDigest": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Deterministic digest of workspace file state at plan freeze time"
+        },
+        "headCommit": {
+          "type": "string"
+        },
+        "dirtyFiles": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "units": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "targetVersion"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "targetVersion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string"
+          },
+          "publicRepo": {
+            "type": "string"
+          },
+          "tagTemplate": {
+            "type": "string"
+          },
+          "snapshotDigest": {
+            "type": "string",
+            "description": "SHA-256 digest of the snapshot content"
+          },
+          "productionConfig": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "githubHost": { "type": "string" },
+              "branchTemplate": { "type": "string" },
+              "releaseTitleTemplate": { "type": "string" },
+              "releaseNotes": { "type": "string" }
+            }
+          },
+          "frozenSnapshot": {
+            "type": "object",
+            "required": ["path", "manifestDigest", "gitObjectDir", "branch", "commit", "tree"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "manifestDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "gitObjectDir": { "type": "string", "minLength": 1 },
+              "branch": { "type": "string", "minLength": 1 },
+              "commit": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+              "tree": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+              "npm": {
+                "anyOf": [
+                  { "type": "null" },
+                  {
+                    "type": "object",
+                    "required": ["tarballPath", "tarballSha256", "integrity", "size"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "tarballPath": { "type": "string", "minLength": 1 },
+                      "tarballSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                      "integrity": { "type": "string", "minLength": 1 },
+                      "size": { "type": "integer", "minimum": 1 }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "distributions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["npm", "claude-plugin", "codex-plugin"]
+                },
+                "package": {
+                  "type": "string",
+                  "maxLength": 214,
+                  "pattern": "^(?:@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)$"
+                },
+                "access": {
+                  "type": "string",
+                  "enum": ["public", "restricted"]
+                },
+                "provenance": {
+                  "type": "boolean"
+                },
+                "tag": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "plugin": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                },
+                "marketplace": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                },
+                "entrySkill": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9][a-z0-9-]*$"
+                },
+                "smokeBin": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "smokeArgs": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "smokeExpectedJson": {
+                  "type": "object"
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": { "type": { "const": "npm" } }
+                  },
+                  "then": { "required": ["package"] }
+                },
+                {
+                  "if": {
+                    "properties": { "type": { "enum": ["claude-plugin", "codex-plugin"] } }
+                  },
+                  "then": { "required": ["plugin", "marketplace", "entrySkill"] }
+                },
+                {
+                  "if": {
+                    "required": ["smokeExpectedJson"],
+                    "properties": { "smokeBin": { "minLength": 1 } }
+                  },
+                  "then": { "required": ["smokeBin"] }
+                },
+                {
+                  "if": {
+                    "required": ["smokeArgs"],
+                    "properties": { "smokeBin": { "minLength": 1 } }
+                  },
+                  "then": { "required": ["smokeBin"] }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "externalActions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "adapter"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "push-commit",
+              "push-snapshot",
+              "create-tag",
+              "npm-publish",
+              "github-release",
+              "claude-marketplace-install",
+              "codex-marketplace-install"
+            ]
+          },
+          "adapter": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unitId": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object"
+          },
+          "expected": {
+            "type": "object",
+            "description": "Expected observation state for verification"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "SUCCEEDED", "FAILED", "SKIPPED"],
+            "description": "Action execution status"
+          }
+        }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "snapshotDigest": {
+      "type": "string",
+      "description": "Overall snapshot digest across all units"
+    },
+    "digest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "waivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "reason", "responsible", "expiresAt"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "responsible": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

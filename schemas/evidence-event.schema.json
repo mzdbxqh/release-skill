@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://release-skill.dev/schemas/evidence-event/v1",
+  "title": "Evidence Event",
+  "description": "Schema for JSONL evidence events produced during release execution",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "sequence",
+    "timestamp",
+    "command",
+    "phase",
+    "status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Event format version"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for the run (UUID)"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Event sequence number within the run, starting from 1"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of the event"
+    },
+    "command": {
+      "type": "string",
+      "enum": ["assess", "prepare", "publish", "reconcile", "verify"],
+      "description": "The command that triggered this event"
+    },
+    "phase": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Current execution phase identifier"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["started", "succeeded", "failed", "skipped"],
+      "description": "Status value of this event"
+    },
+    "error": {
+      "type": ["object", "null"],
+      "description": "Error details when status is failed",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "CONFIG_INVALID",
+            "BASELINE_CHANGED",
+            "DIRTY_SCOPE_CONFLICT",
+            "GATE_FAILED",
+            "AUTH_MISSING",
+            "REMOTE_CONFLICT",
+            "HOOK_TIMEOUT",
+            "PARTIAL_RELEASE",
+            "POST_PUBLISH_VERIFY_FAILED"
+          ],
+          "description": "Stable error code"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message"
+        }
+      }
+    },
+    "duration": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Phase duration in milliseconds"
+    },
+    "details": {
+      "type": "object",
+      "description": "Phase-specific supplementary information"
+    }
+  }
+}

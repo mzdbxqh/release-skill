@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://release-skill.dev/schemas/release-run/v1",
+  "title": "Release Run",
+  "description": "Schema for a release run record capturing execution checkpoints",
+  "type": "object",
+  "required": ["runId", "status", "checkpoints"],
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this run (UUID)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PUBLISHING",
+        "PUBLISHED",
+        "VERIFIED",
+        "PARTIAL",
+        "BLOCKED"
+      ],
+      "description": "Current status of the run"
+    },
+    "command": {
+      "type": "string",
+      "enum": ["assess", "prepare", "publish", "reconcile", "verify"],
+      "description": "The command that initiated this run"
+    },
+    "sourceRunId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Run ID of the source run (for reconcile runs)"
+    },
+    "planDigest": {
+      "type": "string",
+      "description": "SHA-256 digest of the release plan used"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the run started"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the run finished"
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["actionId", "actionType", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "actionId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Identifier of the external action"
+          },
+          "actionType": {
+            "type": "string",
+            "enum": [
+              "push-commit",
+              "push-snapshot",
+              "create-tag",
+              "npm-publish",
+              "github-release",
+              "claude-marketplace-install",
+              "codex-marketplace-install"
+            ],
+            "description": "Type of external action"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["succeeded", "failed", "skipped", "pending"],
+            "description": "Result status of this checkpoint"
+          },
+          "preObserve": {
+            "type": "string",
+            "enum": ["CONSISTENT", "MISSING", "CONFLICTING"],
+            "description": "Remote state before execution"
+          },
+          "postObserve": {
+            "type": "string",
+            "enum": ["CONSISTENT", "MISSING", "CONFLICTING"],
+            "description": "Remote state after execution"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "remoteRef": {
+            "type": "object",
+            "description": "Remote resource identifiers (commit, tag, version, URL)",
+            "additionalProperties": false,
+            "properties": {
+              "commit": { "type": "string" },
+              "tag": { "type": "string" },
+              "version": { "type": "string" },
+              "url": { "type": "string" }
+            }
+          },
+          "error": {
+            "type": "object",
+            "description": "Error details when status is failed",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "CONFIG_INVALID",
+                  "BASELINE_CHANGED",
+                  "DIRTY_SCOPE_CONFLICT",
+                  "GATE_FAILED",
+                  "AUTH_MISSING",
+                  "REMOTE_CONFLICT",
+                  "HOOK_TIMEOUT",
+                  "PARTIAL_RELEASE",
+                  "POST_PUBLISH_VERIFY_FAILED"
+                ]
+              },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

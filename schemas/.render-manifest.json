@@ -1,0 +1,37 @@
+{
+  "source": "schemas",
+  "files": {
+    "approval-record.schema.json": {
+      "digest": "38df0f095cc4b5be650a04513f8ea10cef5a6c3d0780ab38b0c5ee559d6ac7a5",
+      "bytes": 2611
+    },
+    "artifact-lock.schema.json": {
+      "digest": "6a5f4c826540b849571f173118bcbd778dfaceb4133034036ae565c3e9e353e5",
+      "bytes": 2729
+    },
+    "artifact-plan.schema.json": {
+      "digest": "f2166b1ec48a99135c0d55e5bacf8d74ed80d0b8cb46837819e295fa310979df",
+      "bytes": 1546
+    },
+    "artifact-policy.schema.json": {
+      "digest": "fa28b3856f2ed48b666458120c9b9d84d42c9ebfbec13bc866e8d71ecef6dea7",
+      "bytes": 2117
+    },
+    "evidence-event.schema.json": {
+      "digest": "b7e14522a5aba818cab191545f23d2323be0e4c80566e9d3e4da576103a00490",
+      "bytes": 2390
+    },
+    "release-plan.schema.json": {
+      "digest": "3647a554d7f8b1041078301b4de06c9aade0e1083ba8f6492cf4d3a825ea40ef",
+      "bytes": 4084
+    },
+    "release-project.schema.json": {
+      "digest": "6ae488bbad12563323892cc65f236a0ca3443aa6c0f4a17d69095a5c1af2574e",
+      "bytes": 6218
+    },
+    "release-run.schema.json": {
+      "digest": "eeb16507f0d852ed1c53b0fbeeeda0ab1c15abea63554d6f4c127f75ca1dc673",
+      "bytes": 4037
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "release-skill",
+  "version": "0.1.0",
+  "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
+  "author": {
+    "name": "release-skill contributors"
+  },
+  "license": "MIT",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Release Skill",
+    "shortDescription": "Safe preparation and frozen GitHub/npm publishing",
+    "longDescription": "Prepares byte-faithful public snapshots without rewriting project source files and publishes approved frozen GitHub/npm artifacts. Full happy end verification confirms consumer installation from frozen Git ref.",
+    "developerName": "release-skill",
+    "category": "DevOps",
+    "capabilities": [
+      "Write",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Assess this project for release readiness.",
+      "Prepare a release plan for version 0.1.0.",
+      "Help me understand the release workflow."
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "comment": "Prebuilt addon manifest. Entries are added when platform-specific build evidence is available. SHA-256 hashes are required for loading prebuilt addons; source-build users must use RELEASE_SKILL_NATIVE_DEV=1.",
+  "prebuilds": {}
+}

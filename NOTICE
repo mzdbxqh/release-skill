@@ -1,0 +1,25 @@
+# Notice
+
+release-skill is an open-source project released under the MIT License.
+
+## Third-Party Dependencies
+
+This project is built on Node.js and the npm ecosystem. See `package.json`
+for the full list of dependencies.
+
+## Acknowledgments
+
+The release governance patterns in this project draw on ideas from the
+following open-source projects:
+
+- [changesets/changesets](https://github.com/changesets/changesets) -
+  Change intent records and prepare/publish separation
+- [googleapis/release-please](https://github.com/googleapis/release-please) -
+  Reviewable release plans
+- [semantic-release/semantic-release](https://github.com/semantic-release/semantic-release) -
+  Idempotent publishing concepts
+- [vercel-labs/skills](https://github.com/vercel-labs/skills) -
+  Explicit triggers, provenance, and post-publish releases
+
+No code from these projects is copied or redistributed. Only design
+inspiration is acknowledged.
