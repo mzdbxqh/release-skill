@@ -1,6 +1,6 @@
 {
   "name": "release-skill",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
   "author": {
     "name": "release-skill contributors"
@@ -19,7 +19,7 @@
     ],
     "defaultPrompt": [
       "Assess this project for release readiness.",
-      "Prepare a release plan for version 0.1.4.",
+      "Prepare a release plan for version 0.1.5.",
       "Help me understand the release workflow."
     ]
   }

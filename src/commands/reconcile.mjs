@@ -222,7 +222,10 @@ export async function reconcileRelease(options) {
     // =======================================================================
     await evidence.append({ phase: 'safety-gate', gate: 'action-completeness', status: 'started' });
 
-    const completenessResult = validatePlanActionCompleteness(plan);
+    // Use legacyCompatibility: old PARTIAL plans (pre-v0.1.5) lack
+    // parameters.timeoutMs. Reconcile must still pass these plans,
+    // while strict mode (prepare/approve/publish) rejects them.
+    const completenessResult = validatePlanActionCompleteness(plan, { legacyCompatibility: true });
     if (!completenessResult.passed) {
       await evidence.append({
         phase: 'safety-gate',

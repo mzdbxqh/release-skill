@@ -2,7 +2,7 @@
 
 [English](README.md) · 安装指南：[中文](INSTALL.zh-CN.md) / [English](INSTALL.md)
 
-<!-- release-skill:release-version: 0.1.4 -->
+<!-- release-skill:release-version: 0.1.5 -->
 面向 Claude Code 和 Codex 的发布准备工具，完整保留人工维护的文件内容。
 
 release-skill 帮助维护者回答三个问题：准备发布什么、还有哪些检查未通过、最终
@@ -10,7 +10,7 @@ release-skill 帮助维护者回答三个问题：准备发布什么、还有哪
 最后一步重新生成 README、重新打包活动工作区或覆盖人工内容。
 
 <!-- release-skill:capability:external-write-boundary -->
-> **当前边界：** v0.1.4 是当前发布版本。v0.1.1 已完成 GitHub 与 npm 的
+> **当前边界：** v0.1.5 是当前发布版本。v0.1.1 已完成 GitHub 与 npm 的
 > 真实生产发布，是首次生产验证的历史里程碑，并从冻结 Git ref 完成精确 npm
 > 安装及 Claude/Codex 消费者安装验证；“当前发布版本”与“首次生产验证里程碑”
 > 是两个不同的事实，不得混写成同一含义。同一工作流还通过了本地
@@ -22,7 +22,7 @@ release-skill 帮助维护者回答三个问题：准备发布什么、还有哪
 > 远端唯一性检查在 `publish` 全局预检执行。
 
 <!-- release-skill:capability:safe-first-command -->
-> **生产路径自 v0.1.1 里程碑起已完成真实生产验证；v0.1.4 是当前发布版本。**
+> **生产路径自 v0.1.1 里程碑起已完成真实生产验证；v0.1.5 是当前发布版本。**
 > npm 安装的 CLI 是受支持的用户入口；源码 checkout 保留为开发/贡献者路径。
 >
 > **第一条命令：**
@@ -582,10 +582,12 @@ releaseUnits:
         plugin: my-plugin
         marketplace: my-plugin
         entrySkill: my-plugin-help
+        timeoutMs: 300000     # 可选；范围 30000–900000；默认 300000
       - type: codex-plugin
         plugin: my-plugin
         marketplace: my-plugin
         entrySkill: my-plugin-help
+        timeoutMs: 300000     # 可选；范围 30000–900000；默认 300000
     publicFiles:
       - from: packages/plugin/.claude-plugin/plugin.json
         to: .claude-plugin/plugin.json
@@ -630,6 +632,12 @@ releaseUnits:
 每个插件单元**必须**列出 Claude/Codex `plugin.json`、`marketplace.json`、
 入口 Skill 和全部 required public files。CLI 冒烟（`smokeBin`）对插件单元
 是可选项，仅当发布包同时暴露 CLI 二进制时才适用。
+
+插件分发可声明 `timeoutMs`（范围 30,000–900,000 毫秒；默认 300,000 毫秒），
+用于设置 marketplace add、plugin install 和 plugin list 三条命令的子进程超时。
+真实网络下这些命令可能需要 40–105 秒；默认 300 秒超时避免误报 `PARTIAL`。
+解析后的值冻结到计划中，与其他动作参数一起接受批准。无 `timeoutMs` 的旧计划
+在执行时默认回退到 300,000 毫秒以保证向后兼容。
 
 ### PARTIAL 恢复与 reconcile
 

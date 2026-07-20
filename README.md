@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md) · Installation: [English](INSTALL.md) / [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.4 -->
+<!-- release-skill:release-version: 0.1.5 -->
 Release preparation for Claude Code and Codex, with human-edited files kept intact.
 
 release-skill helps a maintainer answer three questions: what will be released,
@@ -11,7 +11,7 @@ reviewed artifacts first and publishes those same artifacts later; it does not
 regenerate a README or re-pack the live workspace at the last step.
 
 <!-- release-skill:capability:external-write-boundary -->
-> **Current boundary:** v0.1.4 is the current release. v0.1.1 completed a real production release
+> **Current boundary:** v0.1.5 is the current release. v0.1.1 completed a real production release
 > to GitHub and npm — the first production-verified milestone — followed by
 > exact npm installation and Claude/Codex consumer installation verification
 > from the frozen Git ref; "current release" and "first production-verified
@@ -27,7 +27,7 @@ regenerate a README or re-pack the live workspace at the last step.
 > publish global preflight.
 
 <!-- release-skill:capability:safe-first-command -->
-> **Production path verified since the v0.1.1 milestone; v0.1.4 is the current
+> **Production path verified since the v0.1.1 milestone; v0.1.5 is the current
 > release.** The npm-installed CLI is the supported user entry. Source checkout
 > is the development/contributor fallback.
 >
@@ -626,10 +626,12 @@ releaseUnits:
         plugin: my-plugin
         marketplace: my-plugin
         entrySkill: my-plugin-help
+        timeoutMs: 300000     # optional; range 30000-900000; default 300000
       - type: codex-plugin
         plugin: my-plugin
         marketplace: my-plugin
         entrySkill: my-plugin-help
+        timeoutMs: 300000     # optional; range 30000-900000; default 300000
     publicFiles:
       - from: packages/plugin/.claude-plugin/plugin.json
         to: .claude-plugin/plugin.json
@@ -675,6 +677,14 @@ Each plugin unit **must** list its Claude/Codex `plugin.json`, `marketplace.json
 the entry Skill, and all required public files. A CLI smoke (`smokeBin`) is
 optional for plugin units and only applies when the published npm package
 exposes a CLI binary.
+
+Plugin distributions may declare `timeoutMs` (range 30,000--900,000 ms; default
+300,000 ms). This sets the subprocess timeout for the marketplace add, plugin
+install, and plugin list commands. On real networks these commands can take
+40--105 seconds; the default 300-second timeout avoids false `PARTIAL` failures.
+The resolved value is frozen into the plan and approved along with all other
+action parameters. Old plans without `timeoutMs` default to 300,000 ms at
+execution time for backward compatibility.
 
 ### PARTIAL recovery and reconcile
 

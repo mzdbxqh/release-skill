@@ -19947,7 +19947,7 @@ async function writePlanImmutable(planPath, plan) {
   }
   return { planPath, planDigest };
 }
-function validatePlanActionCompleteness(plan) {
+function validatePlanActionCompleteness(plan, options = {}) {
   const failures = [];
   if (!plan || typeof plan !== "object") {
     return { passed: false, details: { failures: ["plan is null or not an object"], expectedCount: 0, actualCount: 0 } };
@@ -20254,6 +20254,26 @@ function validatePlanActionCompleteness(plan) {
           _checkRequired(action, "parameters.ref", action.parameters?.ref, expectedTag, unitId, failures);
           _checkRequired(action, "parameters.manifestDigest", action.parameters?.manifestDigest, frozen?.manifestDigest, unitId, failures);
         }
+        {
+          const raw = action.parameters?.timeoutMs;
+          if (raw === void 0) {
+            if (!options.legacyCompatibility) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs is missing, expected a valid timeout (30000-900000)`
+              );
+            }
+          } else {
+            if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw)) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be a finite integer, got: ${JSON.stringify(raw)}`
+              );
+            } else if (raw < 3e4 || raw > 9e5) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be between 30000 and 900000, got: ${raw}`
+              );
+            }
+          }
+        }
         _checkRequired(action, "expected.installed", action.expected?.installed, true, unitId, failures);
         _checkRequired(action, "expected.plugin", action.expected?.plugin, plugin, unitId, failures);
         _checkRequired(action, "expected.marketplace", action.expected?.marketplace, marketplace, unitId, failures);
@@ -20321,6 +20341,26 @@ function validatePlanActionCompleteness(plan) {
           _checkRequired(action, "parameters.snapshotPath", action.parameters?.snapshotPath, frozen?.path, unitId, failures);
           _checkRequired(action, "parameters.ref", action.parameters?.ref, expectedTag, unitId, failures);
           _checkRequired(action, "parameters.manifestDigest", action.parameters?.manifestDigest, frozen?.manifestDigest, unitId, failures);
+        }
+        {
+          const raw = action.parameters?.timeoutMs;
+          if (raw === void 0) {
+            if (!options.legacyCompatibility) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs is missing, expected a valid timeout (30000-900000)`
+              );
+            }
+          } else {
+            if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw)) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be a finite integer, got: ${JSON.stringify(raw)}`
+              );
+            } else if (raw < 3e4 || raw > 9e5) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be between 30000 and 900000, got: ${raw}`
+              );
+            }
+          }
         }
         _checkRequired(action, "expected.installed", action.expected?.installed, true, unitId, failures);
         _checkRequired(action, "expected.plugin", action.expected?.plugin, plugin, unitId, failures);
@@ -68159,6 +68199,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
       const claudeDist = (unit.distributions ?? []).find((d) => d.type === "claude-plugin");
       if (claudeDist) {
         const identity = marketplaceIdentity(claudeDist);
+        const claudeTimeoutMs = Number.isInteger(claudeDist.timeoutMs) ? claudeDist.timeoutMs : 3e5;
         actions.push({
           id: `claude-marketplace-install-${unit.id}`,
           type: "claude-marketplace-install",
@@ -68170,7 +68211,8 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
             marketplace: identity.marketplace,
             repo: unit.publicRepo,
             version,
-            entrySkill: identity.entrySkill
+            entrySkill: identity.entrySkill,
+            timeoutMs: claudeTimeoutMs
           },
           expected: {
             installed: true,
@@ -68185,6 +68227,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
       const codexDist = (unit.distributions ?? []).find((d) => d.type === "codex-plugin");
       if (codexDist) {
         const identity = marketplaceIdentity(codexDist);
+        const codexTimeoutMs = Number.isInteger(codexDist.timeoutMs) ? codexDist.timeoutMs : 3e5;
         actions.push({
           id: `codex-marketplace-install-${unit.id}`,
           type: "codex-marketplace-install",
@@ -68196,7 +68239,8 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
             marketplace: identity.marketplace,
             repo: unit.publicRepo,
             version,
-            entrySkill: identity.entrySkill
+            entrySkill: identity.entrySkill,
+            timeoutMs: codexTimeoutMs
           },
           expected: {
             installed: true,
@@ -68336,6 +68380,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
     const claudeDist = (unit.distributions ?? []).find((d) => d.type === "claude-plugin");
     if (claudeDist) {
       const identity = marketplaceIdentity(claudeDist);
+      const claudeTimeoutMs = Number.isInteger(claudeDist.timeoutMs) ? claudeDist.timeoutMs : 3e5;
       actions.push({
         id: `claude-marketplace-install-${unit.id}`,
         type: "claude-marketplace-install",
@@ -68350,7 +68395,8 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
           version: unitVersion,
           entrySkill: identity.entrySkill,
           snapshotPath: asset.snapshotPath,
-          manifestDigest: asset.manifestDigest
+          manifestDigest: asset.manifestDigest,
+          timeoutMs: claudeTimeoutMs
         },
         expected: {
           installed: true,
@@ -68370,6 +68416,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
     const codexDist = (unit.distributions ?? []).find((d) => d.type === "codex-plugin");
     if (codexDist) {
       const identity = marketplaceIdentity(codexDist);
+      const codexTimeoutMs = Number.isInteger(codexDist.timeoutMs) ? codexDist.timeoutMs : 3e5;
       actions.push({
         id: `codex-marketplace-install-${unit.id}`,
         type: "codex-marketplace-install",
@@ -68384,7 +68431,8 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
           version: unitVersion,
           entrySkill: identity.entrySkill,
           snapshotPath: asset.snapshotPath,
-          manifestDigest: asset.manifestDigest
+          manifestDigest: asset.manifestDigest,
+          timeoutMs: codexTimeoutMs
         },
         expected: {
           installed: true,
@@ -69526,7 +69574,7 @@ async function reconcileRelease(options) {
     }
     await evidence.append({ phase: "safety-gate", gate: "plan-digest", status: "passed" });
     await evidence.append({ phase: "safety-gate", gate: "action-completeness", status: "started" });
-    const completenessResult = validatePlanActionCompleteness(plan);
+    const completenessResult = validatePlanActionCompleteness(plan, { legacyCompatibility: true });
     if (!completenessResult.passed) {
       await evidence.append({
         phase: "safety-gate",
@@ -71194,6 +71242,23 @@ function validateMarketplaceParams(params) {
   }
   return { valid: true, error: null };
 }
+function resolveTimeoutMs(action) {
+  const raw = action?.timeoutMs;
+  if (raw === void 0) {
+    return 3e5;
+  }
+  if (raw === null || typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw)) {
+    throw new Error(
+      `action.timeoutMs must be a finite integer, got: ${JSON.stringify(raw)}`
+    );
+  }
+  if (raw < 3e4 || raw > 9e5) {
+    throw new Error(
+      `action.timeoutMs must be between 30000 and 900000, got: ${raw}`
+    );
+  }
+  return raw;
+}
 async function run4(cmd, args2, options = {}) {
   return execFile9(cmd, args2, {
     shell: false,
@@ -71663,11 +71728,21 @@ function createPluginMarketplaceAdapter(deps = {}) {
             ...baseEnv,
             ...consumer === "claude" ? { HOME: isolatedHome, CLAUDE_CONFIG_DIR: resolve18(isolatedHome, ".claude") } : { HOME: isolatedHome, CODEX_HOME: isolatedHome }
           };
+          let frozenTimeoutMs;
+          try {
+            frozenTimeoutMs = resolveTimeoutMs(action);
+          } catch (timeoutErr) {
+            return createResult({
+              actionType,
+              status: ActionStatus.EXECUTE_FAILED,
+              error: timeoutErr.message
+            });
+          }
           const ref = action.ref ?? `v${action.version}`;
           let addOutput;
           const marketplaceArgs = consumer === "claude" ? ["plugin", "marketplace", "add", `${action.repo}@${ref}`] : ["plugin", "marketplace", "add", action.repo, "--ref", ref, "--json"];
           try {
-            const addResult = await exec(cliCmd, marketplaceArgs, { env, cwd: context.root });
+            const addResult = await exec(cliCmd, marketplaceArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
             if (consumer === "codex") {
               try {
                 addOutput = JSON.parse(addResult.stdout);
@@ -71703,7 +71778,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
           let installOutput;
           const installArgs = consumer === "claude" ? ["plugin", "install", `${action.plugin}@${action.marketplace}`] : ["plugin", "add", `${action.plugin}@${action.marketplace}`, "--json"];
           try {
-            const installResult = await exec(cliCmd, installArgs, { env, cwd: context.root });
+            const installResult = await exec(cliCmd, installArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
             if (consumer === "codex") {
               try {
                 installOutput = JSON.parse(installResult.stdout);
@@ -71893,6 +71968,17 @@ function createPluginMarketplaceAdapter(deps = {}) {
             ...baseEnv,
             ...consumer === "claude" ? { HOME: isolatedHome, CLAUDE_CONFIG_DIR: resolve18(isolatedHome, ".claude") } : { HOME: isolatedHome, CODEX_HOME: isolatedHome }
           };
+          let frozenTimeoutMs;
+          try {
+            frozenTimeoutMs = resolveTimeoutMs(action);
+          } catch (timeoutErr) {
+            return createResult({
+              actionType,
+              status: ActionStatus.OBSERVED,
+              observation: { installed: false, error: timeoutErr.message },
+              error: timeoutErr.message
+            });
+          }
           let evidence = null;
           try {
             const evidenceRaw = await readFile16(resolve18(runDir, "evidence", `${consumer}-${action.plugin}`, "release-skill-install-evidence.json"), "utf8");
@@ -71920,7 +72006,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
           const listArgs = consumer === "claude" ? ["plugin", "list", "--json"] : ["plugin", "list", "--json"];
           let listOutput;
           try {
-            const result = await exec(cliCmd, listArgs, { env, cwd: context.root });
+            const result = await exec(cliCmd, listArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
             listOutput = JSON.parse(result.stdout);
           } catch (listErr) {
             return createResult({
@@ -72248,6 +72334,7 @@ var init_plugin_marketplace = __esm({
     STRICT_SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
     __name(validateSafeRef, "validateSafeRef");
     __name(validateMarketplaceParams, "validateMarketplaceParams");
+    __name(resolveTimeoutMs, "resolveTimeoutMs");
     __name(run4, "run");
     __name(validateManifestFile, "validateManifestFile");
     __name(checkRequiredFiles, "checkRequiredFiles");
@@ -72668,7 +72755,7 @@ async function verifyRelease(options) {
       }
       validateApproval(plan, approval, { clock: clockFn, requireUnexpired: false });
     }
-    const completenessResult = validatePlanActionCompleteness(plan);
+    const completenessResult = validatePlanActionCompleteness(plan, { legacyCompatibility: true });
     if (!completenessResult.passed) {
       throw new ReleaseError(
         GATE_FAILED,

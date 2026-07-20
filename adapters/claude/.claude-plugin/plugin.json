@@ -1,6 +1,6 @@
 {
   "name": "release-skill",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
   "author": {
     "name": "release-skill contributors"

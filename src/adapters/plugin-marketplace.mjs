@@ -186,6 +186,42 @@ function validateMarketplaceParams(params) {
 
 
 /**
+ * Resolve and validate the frozen timeoutMs from the expanded adapter action.
+ *
+ * The publish/reconcile/verify call path expands plan actions as
+ * `{ actionType, ...action.parameters }`, so `parameters.timeoutMs` in the
+ * plan becomes `action.timeoutMs` at the adapter level. This function reads
+ * from the top-level action, not from a nested `parameters` sub-object.
+ *
+ * Rules:
+ * - Missing field (undefined): returns 300000 default (legacy compatibility).
+ * - Present but null/invalid (null, string, NaN, Infinity, non-integer,
+ *   out of range): fail-closed, throws.
+ * - Valid integer in [30000, 900000]: returns the value as-is.
+ *
+ * @param {object} action - The expanded adapter action (top-level).
+ * @returns {number} Validated timeout in milliseconds.
+ * @throws {Error} If the value is present but invalid.
+ */
+function resolveTimeoutMs(action) {
+  const raw = action?.timeoutMs;
+  if (raw === undefined) {
+    return 300000;
+  }
+  if (raw === null || typeof raw !== 'number' || !Number.isFinite(raw) || !Number.isInteger(raw)) {
+    throw new Error(
+      `action.timeoutMs must be a finite integer, got: ${JSON.stringify(raw)}`,
+    );
+  }
+  if (raw < 30000 || raw > 900000) {
+    throw new Error(
+      `action.timeoutMs must be between 30000 and 900000, got: ${raw}`,
+    );
+  }
+  return raw;
+}
+
+/**
  * Run a CLI command using execFile (never shell: true).
  */
 async function run(cmd, args, options = {}) {
@@ -792,6 +828,23 @@ export function createPluginMarketplaceAdapter(deps = {}) {
           };
           // Ensure real HOME/CODEX_HOME don't leak back (already overridden above)
 
+          // Resolve frozen timeoutMs from the expanded action (top-level,
+          // not action.parameters -- the publish/reconcile/verify call path
+          // expands plan action as { actionType, ...action.parameters }).
+          // Default to 300000 for old plans that lack the field.
+          // Fail closed on invalid values (null, non-integer, non-finite,
+          // out of range).
+          let frozenTimeoutMs;
+          try {
+            frozenTimeoutMs = resolveTimeoutMs(action);
+          } catch (timeoutErr) {
+            return createResult({
+              actionType,
+              status: ActionStatus.EXECUTE_FAILED,
+              error: timeoutErr.message,
+            });
+          }
+
           // Step 1: Add marketplace
           const ref = action.ref ?? `v${action.version}`;
           let addOutput;
@@ -799,7 +852,7 @@ export function createPluginMarketplaceAdapter(deps = {}) {
             ? ['plugin', 'marketplace', 'add', `${action.repo}@${ref}`]
             : ['plugin', 'marketplace', 'add', action.repo, '--ref', ref, '--json'];
           try {
-            const addResult = await exec(cliCmd, marketplaceArgs, { env, cwd: context.root });
+            const addResult = await exec(cliCmd, marketplaceArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
             if (consumer === 'codex') {
               try {
                 addOutput = JSON.parse(addResult.stdout);
@@ -839,7 +892,7 @@ export function createPluginMarketplaceAdapter(deps = {}) {
             ? ['plugin', 'install', `${action.plugin}@${action.marketplace}`]
             : ['plugin', 'add', `${action.plugin}@${action.marketplace}`, '--json'];
           try {
-            const installResult = await exec(cliCmd, installArgs, { env, cwd: context.root });
+            const installResult = await exec(cliCmd, installArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
             if (consumer === 'codex') {
               try {
                 installOutput = JSON.parse(installResult.stdout);
@@ -1053,6 +1106,20 @@ export function createPluginMarketplaceAdapter(deps = {}) {
               : { HOME: isolatedHome, CODEX_HOME: isolatedHome }),
           };
 
+          // Resolve frozen timeoutMs from the expanded action (top-level).
+          // Default to 300000 for old plans. Fail closed on invalid values.
+          let frozenTimeoutMs;
+          try {
+            frozenTimeoutMs = resolveTimeoutMs(action);
+          } catch (timeoutErr) {
+            return createResult({
+              actionType,
+              status: ActionStatus.OBSERVED,
+              observation: { installed: false, error: timeoutErr.message },
+              error: timeoutErr.message,
+            });
+          }
+
           // Read execute evidence — mandatory for observe validation
           let evidence = null;
           try {
@@ -1095,7 +1162,7 @@ export function createPluginMarketplaceAdapter(deps = {}) {
 
           let listOutput;
           try {
-            const result = await exec(cliCmd, listArgs, { env, cwd: context.root });
+            const result = await exec(cliCmd, listArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
             listOutput = JSON.parse(result.stdout);
           } catch (listErr) {
             return createResult({

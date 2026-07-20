@@ -3,6 +3,33 @@
 All notable changes to the `release-skill` plugin will be documented in this
 file. The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.5] - 2026-07-21
+
+### Added
+
+- **Explicit marketplace install timeout (`timeoutMs`)**: Claude and Codex
+  plugin marketplace distributions now accept an optional `timeoutMs` integer
+  field (range 30,000--900,000 ms; default 300,000 ms). The resolved value is
+  frozen into each marketplace install action's `parameters.timeoutMs` during
+  `prepare`, making it part of the plan digest, approval binding, and plan
+  integrity. The `plugin-marketplace` adapter's marketplace add, plugin install,
+  and plugin list commands all use the same frozen timeout, replacing the
+  previous hardcoded 30-second limit that caused `PARTIAL` failures on real
+  network installations requiring 40--105 seconds.
+- **Old plan backward compatibility**: plans created before v0.1.5 that lack
+  `parameters.timeoutMs` on marketplace install actions default to 300,000 ms,
+  so existing `PARTIAL` runs can be reconciled without upgrading the plan.
+
+### Fixed
+
+- **Marketplace consumer install timeout**: v0.1.4 production releases hit
+  `PARTIAL` because Claude Code and Codex plugin marketplace add commands
+  required 40--105 seconds on real networks, while the adapter hardcoded a
+  30-second subprocess timeout. The timeout is now explicitly configurable per
+  distribution and verified through injected-executor tests. Invalid values
+  (non-integer, non-finite, out-of-range) fail closed rather than being
+  silently clamped.
+
 ## [0.1.4] - 2026-07-19
 
 ### Added

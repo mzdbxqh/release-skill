@@ -690,6 +690,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
       const claudeDist = (unit.distributions ?? []).find((d) => d.type === 'claude-plugin');
       if (claudeDist) {
         const identity = marketplaceIdentity(claudeDist);
+        const claudeTimeoutMs = Number.isInteger(claudeDist.timeoutMs) ? claudeDist.timeoutMs : 300000;
         actions.push({
           id: `claude-marketplace-install-${unit.id}`,
           type: 'claude-marketplace-install',
@@ -702,6 +703,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
             repo: unit.publicRepo,
             version,
             entrySkill: identity.entrySkill,
+            timeoutMs: claudeTimeoutMs,
           },
           expected: {
             installed: true,
@@ -716,6 +718,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
       const codexDist = (unit.distributions ?? []).find((d) => d.type === 'codex-plugin');
       if (codexDist) {
         const identity = marketplaceIdentity(codexDist);
+        const codexTimeoutMs = Number.isInteger(codexDist.timeoutMs) ? codexDist.timeoutMs : 300000;
         actions.push({
           id: `codex-marketplace-install-${unit.id}`,
           type: 'codex-marketplace-install',
@@ -728,6 +731,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
             repo: unit.publicRepo,
             version,
             entrySkill: identity.entrySkill,
+            timeoutMs: codexTimeoutMs,
           },
           expected: {
             installed: true,
@@ -884,6 +888,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
     const claudeDist = (unit.distributions ?? []).find((d) => d.type === 'claude-plugin');
     if (claudeDist) {
       const identity = marketplaceIdentity(claudeDist);
+      const claudeTimeoutMs = Number.isInteger(claudeDist.timeoutMs) ? claudeDist.timeoutMs : 300000;
       actions.push({
         id: `claude-marketplace-install-${unit.id}`,
         type: 'claude-marketplace-install',
@@ -899,6 +904,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
           entrySkill: identity.entrySkill,
           snapshotPath: asset.snapshotPath,
           manifestDigest: asset.manifestDigest,
+          timeoutMs: claudeTimeoutMs,
         },
         expected: {
           installed: true,
@@ -918,6 +924,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
     const codexDist = (unit.distributions ?? []).find((d) => d.type === 'codex-plugin');
     if (codexDist) {
       const identity = marketplaceIdentity(codexDist);
+      const codexTimeoutMs = Number.isInteger(codexDist.timeoutMs) ? codexDist.timeoutMs : 300000;
       actions.push({
         id: `codex-marketplace-install-${unit.id}`,
         type: 'codex-marketplace-install',
@@ -933,6 +940,7 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
           entrySkill: identity.entrySkill,
           snapshotPath: asset.snapshotPath,
           manifestDigest: asset.manifestDigest,
+          timeoutMs: codexTimeoutMs,
         },
         expected: {
           installed: true,

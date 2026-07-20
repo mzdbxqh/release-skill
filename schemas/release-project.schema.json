@@ -200,6 +200,12 @@
                 },
                 "smokeExpectedJson": {
                   "type": "object"
+                },
+                "timeoutMs": {
+                  "type": "integer",
+                  "minimum": 30000,
+                  "maximum": 900000,
+                  "description": "Timeout in milliseconds for plugin marketplace install commands. Only valid for claude-plugin and codex-plugin distributions."
                 }
               },
               "allOf": [
@@ -217,6 +223,23 @@
                       "registry",
                       "publisher"
                     ]
+                  }
+                },
+                {
+                  "if": {
+                    "required": [
+                      "timeoutMs"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "claude-plugin",
+                          "codex-plugin"
+                        ]
+                      }
+                    }
                   }
                 },
                 {

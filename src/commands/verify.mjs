@@ -669,7 +669,10 @@ export async function verifyRelease(options) {
     }
 
     // Validate plan action completeness before checkpoint mapping
-    const completenessResult = validatePlanActionCompleteness(plan);
+    // Use legacyCompatibility: old plans (pre-v0.1.5) lack
+    // parameters.timeoutMs. Verify must still pass these plans,
+    // while strict mode (prepare/approve/publish) rejects them.
+    const completenessResult = validatePlanActionCompleteness(plan, { legacyCompatibility: true });
     if (!completenessResult.passed) {
       throw new ReleaseError(
         GATE_FAILED,

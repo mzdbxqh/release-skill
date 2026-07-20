@@ -312,9 +312,13 @@ const REQUIRED_ACTION_TYPES = ['push-snapshot', 'create-tag', 'github-release'];
  * (e.g. v0.0.10 must not match expected version 0.0.1).
  *
  * @param {object} plan - A validated release plan object.
+ * @param {object} [options]
+ * @param {boolean} [options.legacyCompatibility] - When true, relax
+ *   timeoutMs requirement for old plans (reconcile/verify paths).
+ *   New prepare/approve/publish must not set this flag.
  * @returns {{ passed: boolean, details: { failures: string[], expectedCount: number, actualCount: number } }}
  */
-export function validatePlanActionCompleteness(plan) {
+export function validatePlanActionCompleteness(plan, options = {}) {
   const failures = [];
 
   if (!plan || typeof plan !== 'object') {
@@ -670,6 +674,33 @@ export function validatePlanActionCompleteness(plan) {
           _checkRequired(action, 'parameters.ref', action.parameters?.ref, expectedTag, unitId, failures);
           _checkRequired(action, 'parameters.manifestDigest', action.parameters?.manifestDigest, frozen?.manifestDigest, unitId, failures);
         }
+        // timeoutMs is mandatory for all marketplace install actions.
+        // Legacy plans (pre-v0.1.5) lack this field; legacyCompatibility
+        // relaxes the check for reconcile/verify paths only, and only when
+        // the property is genuinely absent (undefined). An explicit null is
+        // NOT "absent" -- it is an invalid value and always fails closed,
+        // like strings or out-of-range numbers, even in legacyCompatibility.
+        {
+          const raw = action.parameters?.timeoutMs;
+          if (raw === undefined) {
+            if (!options.legacyCompatibility) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs is missing, expected a valid timeout (30000-900000)`,
+              );
+            }
+          } else {
+            // Field is present -- always validate range/type, even in legacy mode
+            if (typeof raw !== 'number' || !Number.isFinite(raw) || !Number.isInteger(raw)) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be a finite integer, got: ${JSON.stringify(raw)}`,
+              );
+            } else if (raw < 30000 || raw > 900000) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be between 30000 and 900000, got: ${raw}`,
+              );
+            }
+          }
+        }
 
         // Expected checks
         _checkRequired(action, 'expected.installed', action.expected?.installed, true, unitId, failures);
@@ -745,6 +776,33 @@ export function validatePlanActionCompleteness(plan) {
           _checkRequired(action, 'parameters.snapshotPath', action.parameters?.snapshotPath, frozen?.path, unitId, failures);
           _checkRequired(action, 'parameters.ref', action.parameters?.ref, expectedTag, unitId, failures);
           _checkRequired(action, 'parameters.manifestDigest', action.parameters?.manifestDigest, frozen?.manifestDigest, unitId, failures);
+        }
+        // timeoutMs is mandatory for all marketplace install actions.
+        // Legacy plans (pre-v0.1.5) lack this field; legacyCompatibility
+        // relaxes the check for reconcile/verify paths only, and only when
+        // the property is genuinely absent (undefined). An explicit null is
+        // NOT "absent" -- it is an invalid value and always fails closed,
+        // like strings or out-of-range numbers, even in legacyCompatibility.
+        {
+          const raw = action.parameters?.timeoutMs;
+          if (raw === undefined) {
+            if (!options.legacyCompatibility) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs is missing, expected a valid timeout (30000-900000)`,
+              );
+            }
+          } else {
+            // Field is present -- always validate range/type, even in legacy mode
+            if (typeof raw !== 'number' || !Number.isFinite(raw) || !Number.isInteger(raw)) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be a finite integer, got: ${JSON.stringify(raw)}`,
+              );
+            } else if (raw < 30000 || raw > 900000) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be between 30000 and 900000, got: ${raw}`,
+              );
+            }
+          }
         }
 
         // Expected checks
