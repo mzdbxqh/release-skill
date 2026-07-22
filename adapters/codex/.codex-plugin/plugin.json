@@ -1,9 +1,9 @@
 {
   "name": "release-skill",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
   "author": {
-    "name": "release-skill contributors"
+    "name": "广州市风荷科技有限公司"
   },
   "license": "MIT",
   "skills": "./skills/",
@@ -11,7 +11,7 @@
     "displayName": "Release Skill",
     "shortDescription": "Safe preparation and frozen GitHub/npm publishing",
     "longDescription": "Prepares byte-faithful public snapshots without rewriting project source files and publishes approved frozen GitHub/npm artifacts. Full happy end verification confirms consumer installation from frozen Git ref.",
-    "developerName": "release-skill",
+    "developerName": "ifoohoo",
     "category": "DevOps",
     "capabilities": [
       "Write",
@@ -19,7 +19,7 @@
     ],
     "defaultPrompt": [
       "Assess this project for release readiness.",
-      "Prepare a release plan for version 0.1.6.",
+      "Prepare a release plan for version 0.1.7.",
       "Help me understand the release workflow."
     ]
   }

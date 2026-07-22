@@ -2,6 +2,16 @@
 
 release-skill is an open-source project released under the MIT License.
 
+## Maintenance
+
+release-skill is maintained by 广州市风荷科技有限公司 (Guangzhou Fenghe
+Technology Co., Ltd.), together with the release-skill contributors. Copyright
+in the project is held by the release-skill contributors and 广州市风荷科技
+有限公司 as stated in the LICENSE file. The transfer of the public GitHub
+repository to the `ifoohoo` organization is an administrative change of the
+hosting location and maintenance identity; it does not by itself constitute a
+copyright assignment or transfer.
+
 ## Third-Party Dependencies
 
 This project is built on Node.js and the npm ecosystem. See `package.json`

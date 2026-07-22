@@ -2,7 +2,7 @@
 
 [English](INSTALL.md)
 
-<!-- release-skill:release-version: 0.1.6 -->
+<!-- release-skill:release-version: 0.1.7 -->
 ## 前置条件
 
 - Node.js 22.0.0 或更高版本

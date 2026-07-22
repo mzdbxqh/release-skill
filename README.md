@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md) · Installation: [English](INSTALL.md) / [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.6 -->
+<!-- release-skill:release-version: 0.1.7 -->
 Release preparation for Claude Code and Codex, with human-edited files kept intact.
 
 release-skill helps a maintainer answer three questions: what will be released,
@@ -11,79 +11,37 @@ reviewed artifacts first and publishes those same artifacts later; it does not
 regenerate a README or re-pack the live workspace at the last step.
 
 <!-- release-skill:managed:start id=latest-release -->
-**0.1.6** (2026-07-22)
+**0.1.7** (2026-07-23)
 
-v0.1.6 is a release-preparation snapshot that closes the release-docs automation loop. A single structured release-notes source drives deterministic, multilingual CHANGELOG and README refresh behind a two-phase, digest-bound write protocol and a prepare-time documentation freshness gate, while terminal transaction receipts are bounded and the CLI lifecycle, path safety, and error-output redaction are hardened.
+v0.1.7 is an organizational migration release. The public GitHub repository moves from `mzdbxqh/release-skill` to `ifoohoo/release-skill` (the repository name is unchanged and GitHub redirects the old URL), the project gains an explicit corporate maintainer and copyright holder (广州市风荷科技有限公司), and the forward-looking repository, maintainer, author, and copyright metadata across the npm package, plugin marketplace manifests, NOTICE, LICENSE, and release configuration are aligned with the new organization. The npm package name (`release-skill`) and the npm publishing identity (`publisher: mzdbxqh`) are unchanged, and the already-published v0.1.6 tag, GitHub Release, and npm version are not rewritten.
 
-**Added**
+**Changed**
 
-- **Structured release-notes-driven document refresh (`docs refresh`)**: a single
-  structured release-notes source (`release-notes/0.1.6.yaml`) now drives
-  deterministic, multilingual refresh of the managed CHANGELOG and README
-  regions. Refresh runs as a two-phase protocol: a read-only planning phase
-  renders every candidate and freezes an `inputDigest` (binding the canonical
-  notes and the notes-source bytes) plus a `refreshDigest` (binding the protocol
-  version, unit, version, configuration projection, and per-file old/new
-  digests), and a separate write phase commits the changed targets only when all
-  three authorizations are present (`--write`, an exact `--confirm-refresh
-  <refreshDigest>` match, and `--ack-local-document-write`). The write phase
-  re-plans under the exclusive lock; a diverging digest converges to
-  `RELEASE_DOCS_REFRESH_STALE` with zero writes, and a clean plan is a zero-write
-  no-op. A prepare-time documentation freshness gate makes version drift between
-  the package version and the public docs fail closed before a release plan is
-  frozen.
-- **Bounded terminal transaction receipts with recovery safety**: terminal
-  (committed / rolled-back) transactions now persist a summary-only receipt
-  instead of full payload, capped at 256 KB per receipt
-  (`TERMINAL_RECEIPT_SIZE_CAP`), under a retention cap of 50 terminal records
-  (`DEFAULT_TRANSACTION_RETENTION_MAX`). Retention pruning only ever removes
-  terminal records and never prunes `RECOVERY_CONFLICT` records or any
-  non-terminal (recovery-relevant) record, so recovery evidence is preserved even
-  when the count cap is reached; a retention failure never aborts an in-flight
-  commit.
-- **Strict `docs refresh` parameter validation (fail closed)**: the `docs`
-  command validates every parameter before invoking the refresh service, so
-  precise stable parameter errors surface even without project configuration or a
-  safe-fs backend. The `--flag=value` equals form routes through exactly the same
-  validation as the space-separated form; duplicated flags fail closed with
-  `DUPLICATE_PARAMETER` before any service call, config read, lock, or
-  transaction; and bare positional arguments and single-dash flags (such as `-w`)
-  are rejected as unrecognized. Write-authorization flags supplied without
-  `--write`, or `--write` without its full authorizations, fail closed with
-  precise reasons rather than silently proceeding.
-
-**Fixed**
-
-- **Bundle entry lifecycle settles with real exit codes**: the self-contained
-  bundle now owns the command lifecycle. Its entry awaits command completion and
-  exits with the real business exit code for success, business errors, handled
-  async rejections, and unknown commands, so the launcher no longer leaves an
-  unsettled top-level await (Node exit code 13). When the bundle is missing or
-  cannot be evaluated, the launcher fails closed with static text only and never
-  interpolates machine-specific paths, usernames, or host layout, because
-  module-load failure messages carry absolute paths.
-- **Fail-closed path canonicalization with stable diagnostics**: artifact path
-  canonicalization requires POSIX separators and rejects absolute paths in POSIX
-  (`/`), Windows drive-letter, and UNC spellings, along with traversal, Windows
-  reserved device names, and colons, failing closed with `PATH_UNSAFE` rather
-  than normalizing an unsafe spelling into a different public path. Error-output
-  redaction now distinguishes real filesystem paths from strict RFC 6901 JSON
-  Pointer diagnostic coordinates (such as `/units/0/version`): absolute
-  POSIX/Windows/UNC paths collapse to a stable `<redacted-path>` placeholder
-  while diagnostic pointers are preserved verbatim, keeping failures diagnosable
-  without leaking host paths.
-- **Self public-boundary redaction**: the centralized redaction authority
-  (`core/redact.mjs`) now closes the self public boundary so runtime error
-  outputs and detail structures never carry the release-skill workspace's own
-  absolute path, nor the macOS `Users`, Linux home, macOS `private`/`var` alias,
-  temp, or CI checkout realms. Redaction runs fail-closed through the
-  `ReleaseError` choke point: any two-or-more-segment `/`-led token that is not a
-  strict diagnostic JSON Pointer is replaced with `<redacted-path>`, so
-  self-releasing never leaks private filesystem layout into public outputs.
+- **Public repository migrated to the `ifoohoo` organization**: the public
+  GitHub repository is transferred from `mzdbxqh/release-skill` to
+  `ifoohoo/release-skill` with the repository name unchanged. The default branch
+  remains `main`, the v0.1.6 tag, release, and history are preserved, and the old
+  URL redirects (HTTP 301) to the new location. The release configuration
+  (`publicRepo` and the bound `previousPublicBaseline`) now points at
+  `ifoohoo/release-skill` with the public v0.1.6 commit
+  `48fb2a258a2786c2e32136ad67bd51f3a280b3b8` as the previous public baseline.
+- **Corporate maintainer and copyright**: the MIT LICENSE (root and public
+  package) now carries a dual copyright line for the release-skill contributors
+  and 广州市风荷科技有限公司, and the NOTICE states that the project is maintained
+  by 广州市风荷科技有限公司 and clarifies that the GitHub repository transfer is an
+  administrative hosting/identity change that does not by itself constitute a
+  copyright assignment.
+- **Forward-looking metadata aligned with the organization**: the npm
+  `package.json` repository, homepage, and issue tracker URLs point at
+  `ifoohoo/release-skill`, and the package adds a corporate author while
+  preserving the release-skill contributors. The Claude Code plugin marketplace
+  owner now identifies the `ifoohoo` organization. The npm package name
+  (`release-skill`) and the npm publishing identity (`publisher: mzdbxqh`) are
+  unchanged.
 <!-- release-skill:managed:end id=latest-release -->
 
 <!-- release-skill:capability:external-write-boundary -->
-> **Current boundary:** v0.1.6 is the current release (v0.1.5 previously held
+> **Current boundary:** v0.1.7 is the current release (v0.1.6 previously held
 > this status after completing real production verification).
 > v0.1.1 completed a real production release to GitHub and npm — the first
 > production-verified milestone — followed by
@@ -101,7 +59,7 @@ v0.1.6 is a release-preparation snapshot that closes the release-docs automation
 > publish global preflight.
 
 <!-- release-skill:capability:safe-first-command -->
-> **Production path verified since the v0.1.1 milestone; v0.1.6 is the current
+> **Production path verified since the v0.1.1 milestone; v0.1.7 is the current
 > release.** The npm-installed CLI is the supported user entry. Source checkout
 > is the development/contributor fallback.
 >

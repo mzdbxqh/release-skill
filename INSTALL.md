@@ -2,7 +2,7 @@
 
 [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.6 -->
+<!-- release-skill:release-version: 0.1.7 -->
 ## Prerequisites
 
 - Node.js 22.0.0 or later

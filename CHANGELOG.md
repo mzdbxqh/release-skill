@@ -1,5 +1,36 @@
 # Changelog
 
+<!-- release-skill:changelog:start version=0.1.7 locale=en baseline=sha256:e41fd6460f5bb63343547f04b08e2cfcdd8a64cb53806cbcf39870a2fe27b03e -->
+## [0.1.7] - 2026-07-23
+
+v0.1.7 is an organizational migration release. The public GitHub repository moves from `mzdbxqh/release-skill` to `ifoohoo/release-skill` (the repository name is unchanged and GitHub redirects the old URL), the project gains an explicit corporate maintainer and copyright holder (广州市风荷科技有限公司), and the forward-looking repository, maintainer, author, and copyright metadata across the npm package, plugin marketplace manifests, NOTICE, LICENSE, and release configuration are aligned with the new organization. The npm package name (`release-skill`) and the npm publishing identity (`publisher: mzdbxqh`) are unchanged, and the already-published v0.1.6 tag, GitHub Release, and npm version are not rewritten.
+
+### Changed
+
+- **Public repository migrated to the `ifoohoo` organization**: the public
+  GitHub repository is transferred from `mzdbxqh/release-skill` to
+  `ifoohoo/release-skill` with the repository name unchanged. The default branch
+  remains `main`, the v0.1.6 tag, release, and history are preserved, and the old
+  URL redirects (HTTP 301) to the new location. The release configuration
+  (`publicRepo` and the bound `previousPublicBaseline`) now points at
+  `ifoohoo/release-skill` with the public v0.1.6 commit
+  `48fb2a258a2786c2e32136ad67bd51f3a280b3b8` as the previous public baseline.
+- **Corporate maintainer and copyright**: the MIT LICENSE (root and public
+  package) now carries a dual copyright line for the release-skill contributors
+  and 广州市风荷科技有限公司, and the NOTICE states that the project is maintained
+  by 广州市风荷科技有限公司 and clarifies that the GitHub repository transfer is an
+  administrative hosting/identity change that does not by itself constitute a
+  copyright assignment.
+- **Forward-looking metadata aligned with the organization**: the npm
+  `package.json` repository, homepage, and issue tracker URLs point at
+  `ifoohoo/release-skill`, and the package adds a corporate author while
+  preserving the release-skill contributors. The Claude Code plugin marketplace
+  owner now identifies the `ifoohoo` organization. The npm package name
+  (`release-skill`) and the npm publishing identity (`publisher: mzdbxqh`) are
+  unchanged.
+<!-- release-skill:changelog:end version=0.1.7 locale=en -->
+
+
 <!-- release-skill:changelog:start version=0.1.6 locale=en baseline=sha256:6b45d1aa912b32c9c00a616661ae3e2a9536e5ff85a7c0cf82b846a3ffb6c1d3 -->
 ## [0.1.6] - 2026-07-22
 

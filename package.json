@@ -1,14 +1,22 @@
 {
   "name": "release-skill",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
+  "author": {
+    "name": "广州市风荷科技有限公司"
+  },
+  "contributors": [
+    {
+      "name": "release-skill contributors"
+    }
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mzdbxqh/release-skill.git"
+    "url": "git+https://github.com/ifoohoo/release-skill.git"
   },
-  "homepage": "https://github.com/mzdbxqh/release-skill#readme",
+  "homepage": "https://github.com/ifoohoo/release-skill#readme",
   "bugs": {
-    "url": "https://github.com/mzdbxqh/release-skill/issues"
+    "url": "https://github.com/ifoohoo/release-skill/issues"
   },
   "type": "module",
   "bin": {
