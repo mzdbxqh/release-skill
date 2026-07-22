@@ -3,6 +3,9 @@
  *
  * Runs the full prepare pipeline in order:
  * 1. Load and validate project configuration
+ * 1b. Resolve authoritative versions and gate release-document freshness
+ *     (read-only; blocks stale docs before hooks, baseline, snapshots,
+ *     remote checks, and plan write; re-checked after hooks)
  * 2. Capture Git baseline (HEAD, tree hash, dirty files)
  * 3. Run project-declared hooks (build, test)
  * 4. For each release unit: build snapshot, scan for leakage, evaluate README
@@ -40,7 +43,7 @@ import {
   normalizeGitTimestamp,
   sealFrozenSnapshot,
 } from '../snapshot/frozen.mjs';
-import { ReleaseError, GATE_FAILED, CONFIG_INVALID, FORBIDDEN_CONTENT_DETECTED } from '../core/errors.mjs';
+import { ReleaseError, GATE_FAILED, CONFIG_INVALID, FORBIDDEN_CONTENT_DETECTED, RELEASE_DOCS_STALE } from '../core/errors.mjs';
 import { acquireProjectLock } from '../artifacts/project-lock.mjs';
 import { assertPreviousPublicBaselineTarget, observePreviousPublicBaseline } from '../core/previous-public-baseline.mjs';
 import { verifyFrozenNpmTarballIdentity } from '../adapters/npm.mjs';
@@ -54,19 +57,21 @@ import { createProductionPrepareRunDir } from '../core/run.mjs';
  * Resolve the target version for a release unit.
  *
  * Resolution rules:
- * 1. If explicitVersion is provided, use it (overrides everything).
- * 2. Otherwise, read from `<root>/<unit.source>/<unit.version.source>`.
+ * 1. The version is read AUTHORITATIVELY from
+ *    `<root>/<unit.source>/<unit.version.source>`; it is never overridden.
+ * 2. An explicitVersion (when provided) is only a consistency ASSERTION:
+ *    a mismatch fails closed with GATE_FAILED.
  * 3. Reject: absolute path, path escape, missing file, invalid JSON,
  *    missing/empty version field.
  * 4. For v0.1: if multiple units resolve to different versions, fail closed.
  *
  * @param {object} unit - The release unit configuration.
  * @param {string} root - Absolute project root.
- * @param {string} [explicitVersion] - Explicit version override.
- * @returns {Promise<string>} The resolved version string.
+ * @param {string} [explicitVersion] - Explicit version consistency assertion.
+ * @returns {Promise<string>} The resolved authoritative version string.
  * @throws {ReleaseError} CONFIG_INVALID or GATE_FAILED on any validation failure.
  */
-async function resolveUnitVersion(unit, root, explicitVersion) {
+export async function resolveUnitVersion(unit, root, explicitVersion) {
   // Validate unit.version.source exists
   const versionSource = unit.version?.source;
   if (!versionSource || typeof versionSource !== 'string') {
@@ -157,7 +162,7 @@ async function resolveUnitVersion(unit, root, explicitVersion) {
  * @returns {Promise<string[]>} Array of resolved versions (one per unit).
  * @throws {ReleaseError} CONFIG_INVALID or GATE_FAILED on any validation failure.
  */
-async function resolveAllUnitVersions(units, root, explicitVersion, evidence) {
+export async function resolveAllUnitVersions(units, root, explicitVersion, evidence) {
   await evidence.append({ phase: 'version-resolution', status: 'started' });
 
   const resolvedVersions = [];
@@ -198,10 +203,12 @@ async function resolveAllUnitVersions(units, root, explicitVersion, evidence) {
  * @param {object} config - The loaded project config.
  * @param {string} root - Absolute project root.
  * @param {object} evidence - The evidence writer.
+ * @param {Function} [hookFn] - Hook runner (default runHook); tests inject a
+ *   spy that records call order while delegating to the real implementation.
  * @returns {Promise<void>}
  * @throws {ReleaseError} GATE_FAILED if any hook returns a non-zero exit code.
  */
-async function runDeclaredHooks(config, root, evidence) {
+async function runDeclaredHooks(config, root, evidence, hookFn = runHook) {
   const hookOrder = ['docs', 'build', 'test', 'typecheck'];
   const hooks = config.hooks ?? {};
 
@@ -217,7 +224,7 @@ async function runDeclaredHooks(config, root, evidence) {
 
     let result;
     try {
-      result = await runHook(hook, { root });
+      result = await hookFn(hook, { root });
     } catch (err) {
       await evidence.append({
         phase: 'hooks',
@@ -258,6 +265,222 @@ async function runDeclaredHooks(config, root, evidence) {
       exitCode: 0,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Release-documents freshness gate
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the release-documents planner the freshness gate runs with.
+ *
+ * An injected planner (test spy or documented bypass) is returned unchanged.
+ * Otherwise the default planner is loaded LAZILY from the refresh service:
+ * src/docs/** joins the published package snapshot at the public-asset
+ * generation stage, so prepare.mjs must not carry a static import of it —
+ * every staged runtime file must stay importable from the minimal public
+ * distribution. The load happens only when a release unit actually
+ * configures releaseDocuments, and an unavailable module fails closed —
+ * the freshness gate is never silently skipped.
+ *
+ * @param {Function} [injected] - Injected planner (takes precedence).
+ * @returns {Promise<Function>} The planner to use.
+ * @throws {ReleaseError} GATE_FAILED when the default planner is unavailable.
+ */
+async function resolveReleaseDocsPlanFn(injected) {
+  if (typeof injected === 'function') return injected;
+  let loaded;
+  try {
+    loaded = await import('../docs/refresh-service.mjs');
+  } catch (err) {
+    throw new ReleaseError(
+      GATE_FAILED,
+      'the release-documents refresh planner is unavailable; the freshness gate cannot run',
+      { reason: 'RELEASE_DOCS_PLAN_UNAVAILABLE', cause: err?.code ?? 'UNKNOWN' },
+    );
+  }
+  if (typeof loaded.planReleaseDocsRefreshForUnit !== 'function') {
+    throw new ReleaseError(
+      GATE_FAILED,
+      'the release-documents refresh planner is unavailable; the freshness gate cannot run',
+      { reason: 'RELEASE_DOCS_PLAN_UNAVAILABLE' },
+    );
+  }
+  return loaded.planReleaseDocsRefreshForUnit;
+}
+
+/**
+ * Read-only release-documents freshness gate
+ * (2026-07-21-release-docs-command-and-prepare-gate §5).
+ *
+ * Runs the SAME read-only refresh planner the standalone `docs refresh`
+ * dry-run uses, for every release unit that configures `releaseDocuments`:
+ *
+ * - no unit configures releaseDocuments → no check runs and no
+ *   docs-freshness evidence is appended (legacy behaviour preserved);
+ * - a clean unit appends a `completed` docs-freshness event carrying its
+ *   unitId and refreshDigest;
+ * - the first `changes` result appends a `blocking` event and throws
+ *   RELEASE_DOCS_STALE with the exact dry-run/write argv the operator needs
+ *   to refresh (canonical relative paths only — never bodies, absolute
+ *   paths, or serialized bytes).
+ *
+ * When `expectedBindings` is supplied (the post-hook pass), a plan that
+ * re-renders clean is STILL compared against the pre-hook binding: hooks
+ * run as arbitrary local processes and may rewrite bytes the renderers
+ * deliberately preserve (for example text outside the managed regions).
+ * Any divergence from the validated binding — the refreshDigest or any
+ * per-target old digest — fails closed with RELEASE_DOCS_STALE so an
+ * inconsistent plan can never be frozen.
+ *
+ * The gate is strictly read-only: prepare never writes README/CHANGELOG
+ * implicitly. Refreshed bytes enter the baseline/workspace/snapshot/plan
+ * digests through the standalone docs command, which naturally invalidates
+ * approvals bound to the pre-refresh plan digest.
+ *
+ * @param {object} options
+ * @param {object[]} options.units - Release units from the loaded config.
+ * @param {string[]} options.resolvedVersions - Authoritative versions,
+ *   index-aligned with `units` (resolved once before hooks, reused after).
+ * @param {string} options.root - Absolute project root.
+ * @param {object} options.config - The loaded project config.
+ * @param {object} options.evidence - The evidence writer.
+ * @param {Function} [options.planFn] - Read-only planner; tests inject spies
+ *   or documented bypasses. When omitted, the shared
+ *   planReleaseDocsRefreshForUnit is loaded lazily (see
+ *   resolveReleaseDocsPlanFn — keeps the public boundary import-clean and
+ *   fails closed when unavailable).
+ * @param {string} options.reasonTag - Gate-pass identifier bound into the
+ *   evidence and error details ('RELEASE_DOCS_STALE' before hooks,
+ *   'CHANGES_AFTER_HOOKS' after hooks).
+ * @param {Map<string, { refreshDigest: string, files: Map<string, string> }>}
+ *   [options.expectedBindings] - Pre-hook bindings (unitId → refreshDigest +
+ *   canonical target path → old digest) the post-hook pass fails closed
+ *   against. Omitted on the pre-hook pass.
+ * @returns {Promise<Map<string, { refreshDigest: string, files: Map<string, string> }>>}
+ *   The bindings observed on this pass (empty when no unit configures
+ *   releaseDocuments); the pre-hook pass result feeds the post-hook pass.
+ * @throws {ReleaseError} RELEASE_DOCS_STALE when any configured unit is stale
+ *   or drifted from the expected binding.
+ */
+async function runReleaseDocsFreshnessGate({
+  units,
+  resolvedVersions,
+  root,
+  config,
+  evidence,
+  planFn,
+  reasonTag,
+  expectedBindings = null,
+}) {
+  const configured = [];
+  for (let index = 0; index < units.length; index += 1) {
+    const unit = units[index];
+    if (unit && unit.releaseDocuments !== undefined && unit.releaseDocuments !== null) {
+      configured.push({ unit, index });
+    }
+  }
+  const bindings = new Map();
+  if (configured.length === 0) return bindings;
+
+  const effectivePlanFn = await resolveReleaseDocsPlanFn(planFn);
+
+  await evidence.append({ phase: 'docs-freshness', status: 'started', reasonTag });
+
+  for (const { unit, index } of configured) {
+    const { display } = await effectivePlanFn({
+      root,
+      config,
+      unit,
+      version: resolvedVersions[index],
+    });
+
+    bindings.set(unit.id, {
+      refreshDigest: display.refreshDigest,
+      files: new Map(display.files.map((file) => [file.path, file.oldDigest])),
+    });
+
+    if (display.status === 'clean') {
+      // Bound-change detection (post-hook pass): a hook may rewrite bytes
+      // the renderers preserve, which still re-plan clean. Compare against
+      // the pre-hook binding and fail closed on ANY divergence.
+      const expected = expectedBindings?.get(unit.id);
+      const driftedFiles = expected
+        ? display.files.filter((file) => expected.files.get(file.path) !== file.oldDigest)
+        : [];
+      if (expected && (display.refreshDigest !== expected.refreshDigest || driftedFiles.length > 0)) {
+        await evidence.append({
+          phase: 'docs-freshness',
+          status: 'blocking',
+          unitId: unit.id,
+          reason: reasonTag,
+          refreshDigest: display.refreshDigest,
+          changedPaths: driftedFiles.map((file) => file.path),
+        });
+        throw new ReleaseError(
+          RELEASE_DOCS_STALE,
+          `release documents for unit "${unit.id}" changed after hooks`,
+          {
+            reason: reasonTag,
+            unitId: unit.id,
+            version: resolvedVersions[index],
+            refreshDigest: display.refreshDigest,
+            changedPaths: driftedFiles.map((file) => file.path),
+            files: driftedFiles.map(({ path, kind, locale, change, oldDigest, newDigest }) => ({
+              path,
+              kind,
+              locale,
+              change,
+              oldDigest,
+              newDigest,
+            })),
+            dryRunArgv: [...display.nextCommand.argv],
+            writeArgv: display.nextCommand.writeArgv ? [...display.nextCommand.writeArgv] : null,
+          },
+        );
+      }
+      await evidence.append({
+        phase: 'docs-freshness',
+        status: 'completed',
+        unitId: unit.id,
+        refreshDigest: display.refreshDigest,
+      });
+      continue;
+    }
+
+    const changedFiles = display.files.filter((file) => file.changed);
+    await evidence.append({
+      phase: 'docs-freshness',
+      status: 'blocking',
+      unitId: unit.id,
+      reason: reasonTag,
+      refreshDigest: display.refreshDigest,
+      changedPaths: changedFiles.map((file) => file.path),
+    });
+    throw new ReleaseError(
+      RELEASE_DOCS_STALE,
+      `release documents are stale for unit "${unit.id}"`,
+      {
+        reason: reasonTag,
+        unitId: unit.id,
+        version: resolvedVersions[index],
+        refreshDigest: display.refreshDigest,
+        changedPaths: changedFiles.map((file) => file.path),
+        files: changedFiles.map(({ path, kind, locale, change, oldDigest, newDigest }) => ({
+          path,
+          kind,
+          locale,
+          change,
+          oldDigest,
+          newDigest,
+        })),
+        dryRunArgv: [...display.nextCommand.argv],
+        writeArgv: [...display.nextCommand.writeArgv],
+      },
+    );
+  }
+
+  return bindings;
 }
 
 // ---------------------------------------------------------------------------
@@ -985,6 +1208,13 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
  *   means the user accepts hook side-effect risks, not that hooks are safe.
  * @param {boolean} [options.verificationGatesAuthorized] - Must be explicitly
  *   true when project verification gates are declared.
+ * @param {Function} [options.releaseDocsPlanFn] - Read-only release-documents
+ *   planner used by the freshness gate (default
+ *   planReleaseDocsRefreshForUnit); tests inject spies or documented
+ *   bypasses. Prepare itself never writes README/CHANGELOG.
+ * @param {Function} [options.runHookFn] - Hook runner passed to
+ *   runDeclaredHooks (default runHook); tests inject a spy that records call
+ *   order while delegating to the real implementation.
  *
  * @returns {Promise<{ planPath: string, planDigest: string, evidenceDir: string }>}
  *
@@ -1072,6 +1302,32 @@ export async function prepareRelease(options) {
       status: 'completed',
       configPath: relative(realRoot, configPath),
       configDigest,
+    });
+
+    // --- Step 1b: Resolve authoritative versions and gate release-document
+    //     freshness BEFORE hook authorization ---
+    // Authoritative versions resolve exactly once here and are reused by
+    // every downstream consumer, so a hook can never silently switch the
+    // version a plan binds. Units that configure releaseDocuments must be
+    // clean under the read-only refresh planner before any hook, verification
+    // gate, baseline, snapshot, remote check, or plan write runs. Units
+    // without releaseDocuments keep the exact legacy behaviour (the gate
+    // appends no evidence and performs no check).
+    const configUnits = config.releaseUnits ?? [];
+    const resolvedVersions = await resolveAllUnitVersions(
+      configUnits,
+      realRoot,
+      version,
+      evidence,
+    );
+    const preHookDocsBindings = await runReleaseDocsFreshnessGate({
+      units: configUnits,
+      resolvedVersions,
+      root: realRoot,
+      config,
+      evidence,
+      planFn: options.releaseDocsPlanFn,
+      reasonTag: 'RELEASE_DOCS_STALE',
     });
 
     // --- Step 2: Hook authorization gate ---
@@ -1165,8 +1421,54 @@ export async function prepareRelease(options) {
 
     // --- Step 3: Run declared hooks ---
     await evidence.append({ phase: 'hooks', status: 'started' });
-    await runDeclaredHooks(config, realRoot, evidence);
+    await runDeclaredHooks(config, realRoot, evidence, options.runHookFn ?? runHook);
     await evidence.append({ phase: 'hooks', status: 'completed' });
+
+    // --- Step 3b: Re-check release-document freshness AFTER hooks ---
+    // Declared hooks run as arbitrary local processes; they may rewrite a
+    // release unit's authoritative version source or any declared release
+    // document. Re-bind the pre-hook authoritative versions and re-run the
+    // same read-only planner gate; any drift or new change fails closed
+    // BEFORE the baseline, snapshots, remote checks, and plan write, so an
+    // inconsistent plan can never be frozen. Skipped entirely when no unit
+    // configures releaseDocuments (legacy behaviour preserved).
+    if (configUnits.some((unit) => unit && unit.releaseDocuments)) {
+      for (let unitIndex = 0; unitIndex < configUnits.length; unitIndex += 1) {
+        const postHookVersion = await resolveUnitVersion(
+          configUnits[unitIndex],
+          realRoot,
+          version,
+        );
+        if (postHookVersion !== resolvedVersions[unitIndex]) {
+          await evidence.append({
+            phase: 'docs-freshness',
+            status: 'blocking',
+            unitId: configUnits[unitIndex].id,
+            reason: 'VERSION_DRIFT_AFTER_HOOKS',
+          });
+          throw new ReleaseError(
+            RELEASE_DOCS_STALE,
+            `release unit "${configUnits[unitIndex].id}" authoritative version changed after hooks`,
+            {
+              reason: 'VERSION_DRIFT_AFTER_HOOKS',
+              unitId: configUnits[unitIndex].id,
+              version: resolvedVersions[unitIndex],
+              currentVersion: postHookVersion,
+            },
+          );
+        }
+      }
+      await runReleaseDocsFreshnessGate({
+        units: configUnits,
+        resolvedVersions,
+        root: realRoot,
+        config,
+        evidence,
+        planFn: options.releaseDocsPlanFn,
+        reasonTag: 'CHANGES_AFTER_HOOKS',
+        expectedBindings: preHookDocsBindings,
+      });
+    }
 
     // --- Step 4: Capture Git baseline (AFTER hooks, so workspaceDigest
     //     reflects any file changes introduced by hooks) ---
@@ -1183,13 +1485,10 @@ export async function prepareRelease(options) {
     });
 
     // --- Step 4b: Per-unit previous public baseline observe ---
-    const configUnits = config.releaseUnits ?? [];
-    const resolvedVersions = await resolveAllUnitVersions(
-      configUnits,
-      realRoot,
-      version,
-      evidence,
-    );
+    // `configUnits` and `resolvedVersions` were resolved once in Step 1b
+    // (before hook authorization and the docs freshness gate) and are reused
+    // here verbatim, so the frozen plan binds exactly the versions the
+    // pre-hook gate validated.
     const defaultObserveFn = async (repo, ref, expectedCommit, { githubHost = 'github.com' } = {}) => {
       try {
         const { stdout } = await execFile("git", ["ls-remote", `https://${githubHost}/${repo}.git`, ref], {

@@ -21,6 +21,11 @@
 | `POST_PUBLISH_VERIFY_FAILED` | 发布后验证未通过 | 安装测试失败、泄漏审计未通过、provenance 验证失败 | 检查失败原因，可能需要人工干预 |
 | `SETUP_DIGEST_MISMATCH` | setup 事实或答案已漂移 | dry-run 后 README/package/manifest/remote/answers 发生变化，或确认摘要错误 | 重新运行 setup dry-run、审阅并确认新摘要 |
 | `CONFIG_EXISTS` | setup 目标配置已经存在 | 写入模式试图创建已有 `.release-skill/project.yaml` | 不覆盖；运行 assess 并人工增量编辑 |
+| `RELEASE_DOCS_INVALID` | 发布文档配置或说明数据语义非法 | `releaseDocuments` 配置不合规、说明源含重复键/alias/未知字段、版本漂移 | 修正配置或说明源后重新演练 |
+| `RELEASE_DOCS_TRANSLATION_MISSING` | 说明源缺少或多余配置语种 | `locales` 声明多个语种但说明源只含其一 | 补齐全部配置语种，禁止语种回退 |
+| `RELEASE_DOCS_CONFLICT` | 目标文档存在人工冲突 | 非受管同版本 CHANGELOG 条目、受管标记缺失/重复/损坏、版本标记非唯一 | 人工修复目标并保留人工修改后重新演练 |
+| `RELEASE_DOCS_REFRESH_STALE` | 写入确认绑定的候选已变化 | 演练后说明源或目标发生变化，仍用旧 `refreshDigest` 写入 | 重新演练取得新的 `refreshDigest` 并重新确认 |
+| `RELEASE_DOCS_STALE` | prepare 检测到发布文档未刷新 | 说明源已更新但 README/CHANGELOG 受管内容未同步 | `docs refresh` 演练 → 确认写入 → 审阅提交 → 重新 prepare |
 
 ---
 

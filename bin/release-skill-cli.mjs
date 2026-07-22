@@ -4,10 +4,22 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { parseNodeMajor, meetsMinimum, computeReadinessStatus } from '../src/core/node-version.mjs';
+import { registerPathRedactor } from '../src/core/errors.mjs';
+import { redactSensitivePaths } from '../src/core/redact.mjs';
+
+// Install the path-redaction choke point eagerly and synchronously (static
+// imports, no top-level await) so every ReleaseError constructed on any
+// command path is redacted from the very first statement — in source mode and
+// in the self-contained bundle alike. The bundle evaluates these static
+// imports during its top level, before any lazy command initialization or
+// handler runs; keeping this module graph free of top-level await is also
+// what lets the bundled artifacts tree settle (AC-7: the launcher must never
+// exit 13 "Detected unsettled top-level await" for a command it owns).
+registerPathRedactor(redactSensitivePaths);
 
 const execFile = promisify(execFileCb);
 
-const COMMANDS = new Set(['help', 'setup', 'assess', 'prepare', 'approve', 'publish', 'reconcile', 'verify', 'artifacts']);
+const COMMANDS = new Set(['help', 'setup', 'assess', 'prepare', 'approve', 'publish', 'reconcile', 'verify', 'artifacts', 'docs']);
 
 /**
  * Check if a command is available and get its version.
@@ -128,6 +140,11 @@ function getCapabilityMaturity() {
       mode: 'offline local writes',
       description: 'Freeze a release plan with snapshots and gates',
     },
+    docs: {
+      available: true,
+      mode: 'read-only dry-run / explicit local document write',
+      description: 'Refresh declared README managed regions and CHANGELOG current-version entries from one structured notes source; write requires --write, exact --confirm-refresh, and --ack-local-document-write; never commits, pushes, or publishes',
+    },
     publish: {
       available: true,
       mode: 'controlled production (protocol-tested; no OS/network sandbox)',
@@ -162,6 +179,7 @@ Commands:
   reconcile  Resume PARTIAL state from evidence; conflicts require a human
   verify     Fresh remote and consumer verification; only this reaches VERIFIED
   artifacts  Artifact status, inspect, update/apply, resolution, and diagnostics
+  docs       Refresh declared release documents (read-only dry-run by default)
 
 Options:
   --root <path>    Project root directory (default: cwd)
@@ -175,6 +193,9 @@ Options:
   --answers <path> Human-reviewed setup answers JSON
   --write          Create an absent project.yaml during setup; never overwrites
   --confirm-setup <digest> Confirm exact setup facts and answers before create
+  --unit <id>      Release unit whose declared release documents are refreshed (docs refresh)
+  --confirm-refresh <sha256:...> Confirm the exact dry-run refreshDigest before any document write
+  --ack-local-document-write Acknowledge the explicit local release-document write (docs refresh --write)
   --acknowledge-hook-side-effects Acknowledge unsandboxed legacy hook execution
   --acknowledge-gate-side-effects Acknowledge unsandboxed local verification gate execution
   --json           Output results as JSON
@@ -189,6 +210,7 @@ Safety:
   - prepare output goes to .release-skill/ directory only
   - User-configured hooks may write anywhere and perform remote operations
   - To ensure zero remote writes, disable hooks or audit them separately
+  - docs refresh --write rewrites only declared README managed regions and the current CHANGELOG entry after exact refreshDigest confirmation; it never commits, pushes, tags, publishes, or installs.
   - publish requires explicit approval and an exact plan-digest confirmation
   - publish consumes frozen Git/npm artifacts, never the live workspace
   - existing remote objects and uncertain checks stop for human intervention
@@ -206,9 +228,25 @@ const positional = args.filter(a => !a.startsWith('--'));
 const command = positional[0];
 
 if (!command && (args.includes('--version') || args.includes('-v'))) {
-  const { createRequire } = await import('node:module');
-  const require = createRequire(import.meta.url);
-  const pkg = require('../package.json');
+  // The version probe must be install-closure independent: the npm closure
+  // resolves ../package.json from bin/, but the Claude and Codex adapter
+  // closures ship the bundle at a different depth with no package.json at
+  // all. Bundled closures therefore carry the package identity as a
+  // build-time constant (__bundlePkg) injected by the esbuild banner in
+  // scripts/build-bundle.mjs; only source mode reads the file.
+  let pkg;
+  if (typeof __bundlePkg !== 'undefined') {
+    pkg = __bundlePkg;
+  } else {
+    // Source mode only (the bundle always carries __bundlePkg). Deliberately
+    // not a require('../package.json'): esbuild would inline it into the
+    // bundle as the one remaining bundle-relative file dependency, which is
+    // exactly what breaks the adapter closures.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+    pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  }
   if (hasJson) {
     console.log(JSON.stringify({
       command: 'version',
@@ -269,6 +307,7 @@ if (!command || command === 'help') {
         setup: 'read-only by default; create-once requires answers plus exact setupDigest confirmation',
         assess: 'read-only (default); --output writes local report',
         prepare: 'offline local writes; configured hooks/gates require their explicit side-effect acknowledgements',
+        docs: 'read-only dry-run by default; write requires --write, exact --confirm-refresh, and --ack-local-document-write; never commits, pushes, or publishes',
         onlinePrepare: 'previous-public-baseline observation available; production mode freezes publish artifacts and fails closed on drift or unknown state',
         publish: 'GitHub/npm plus configured Claude/Codex consumer checkpoints are protocol-tested without an OS/network sandbox; approval and exact digest confirmation required',
         reconcile: 'PARTIAL recovery is protocol-tested without an OS/network sandbox; remote conflicts require human intervention',
@@ -798,6 +837,126 @@ if (command === 'artifacts') {
     } else {
       console.error(`Error: ${err.message}`);
     }
+    process.exit(err.exitCode ?? 1);
+  }
+}
+
+// --- Docs command routing ---
+if (command === 'docs') {
+  try {
+    const { ReleaseError, MISSING_PARAMETERS } = await import('../src/core/errors.mjs');
+
+    // --root is extracted and validated here (the router resolves the project
+    // root): a following flag is never accepted as the path, and a duplicated
+    // --root is an explicit parameter error (previously silently ignored).
+    const rootIndexes = [];
+    for (let i = 0; i < args.length; i += 1) {
+      if (args[i] === '--root') rootIndexes.push(i);
+    }
+    if (rootIndexes.length > 1) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        'docs received --root more than once',
+        { reason: 'DUPLICATE_PARAMETER', field: '--root' },
+      );
+    }
+    let rawRoot = process.cwd();
+    if (rootIndexes.length === 1) {
+      rawRoot = args[rootIndexes[0] + 1];
+      if (typeof rawRoot !== 'string' || rawRoot.length === 0 || rawRoot.startsWith('-')) {
+        throw new ReleaseError(
+          MISSING_PARAMETERS,
+          'docs --root requires a path value',
+          { reason: 'MISSING_VALUE', field: '--root' },
+        );
+      }
+    }
+    const root = resolve(rawRoot);
+
+    // The docs subcommand is the first bare positional token after the `docs`
+    // command token itself. Valued flags and their values are skipped so
+    // `--root <path>` can never be mistaken for the subcommand; any flag
+    // outside the recognized docs set (including unregistered valued flags)
+    // is rejected here so its value can never be mistaken for the subcommand.
+    const valuedDocsFlags = new Set(['--root', '--unit', '--confirm-refresh']);
+    const booleanDocsFlags = new Set(['--json', '--write', '--ack-local-document-write']);
+    let docsSubcommand;
+    let sawCommandToken = false;
+    for (let i = 0; i < args.length; i += 1) {
+      const token = args[i];
+      if (typeof token !== 'string') continue;
+      if (token.startsWith('--')) {
+        const eq = token.indexOf('=');
+        const flag = eq === -1 ? token : token.slice(0, eq);
+        if (valuedDocsFlags.has(flag)) {
+          if (eq === -1) i += 1; // space-separated form: skip the value too
+          continue;
+        }
+        if (booleanDocsFlags.has(flag)) continue;
+        throw new ReleaseError(
+          MISSING_PARAMETERS,
+          `docs does not accept ${flag}`,
+          { reason: 'UNRECOGNIZED_PARAMETER', parameter: flag },
+        );
+      }
+      if (token.startsWith('-') && token.length > 1) {
+        throw new ReleaseError(
+          MISSING_PARAMETERS,
+          `docs does not accept ${token}`,
+          { reason: 'UNRECOGNIZED_PARAMETER', parameter: token },
+        );
+      }
+      if (!sawCommandToken) {
+        sawCommandToken = true; // the `docs` command token itself
+        continue;
+      }
+      docsSubcommand = token;
+      break;
+    }
+
+    const { runDocsCommand } = await import('../src/commands/docs.mjs');
+    const result = await runDocsCommand({ subcommand: docsSubcommand, args, root });
+
+    if (hasJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else if (result.mode === 'dry-run') {
+      console.log(`Status: ${result.status}`);
+      console.log(`Unit: ${result.unitId}`);
+      console.log(`Version: ${result.version}`);
+      console.log(`Refresh digest: ${result.refreshDigest}`);
+      for (const file of result.files) {
+        const marker = file.changed ? '' : ' (unchanged)';
+        console.log(`  ${file.path} ${file.kind} ${file.locale} ${file.change}${marker}`);
+      }
+      if (result.nextCommand?.argv) {
+        console.log(`Next: ${result.nextCommand.argv.join(' ')}`);
+      }
+      if (result.nextCommand?.writeArgv) {
+        console.log(`Next (write): ${result.nextCommand.writeArgv.join(' ')}`);
+      }
+    } else {
+      console.log(`Status: ${result.status}`);
+      console.log(`Unit: ${result.unitId}`);
+      console.log(`Version: ${result.version}`);
+      console.log(`Refresh digest: ${result.refreshDigest}`);
+      if (result.refreshed) {
+        console.log(`Transaction: ${result.transactionId}`);
+        for (const path of result.refreshedPaths ?? []) {
+          console.log(`  refreshed ${path}`);
+        }
+      }
+    }
+
+    process.exit(0);
+  } catch (err) {
+    // docs parameter errors must surface the stable JSON error shape even in
+    // text mode (CLI parameter validation precedes any service I/O).
+    console.log(JSON.stringify({
+      error: err.code ?? 'UNKNOWN_ERROR',
+      message: err.message,
+      details: err.details ?? {},
+      exitCode: err.exitCode ?? 1,
+    }));
     process.exit(err.exitCode ?? 1);
   }
 }

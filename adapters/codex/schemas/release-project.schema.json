@@ -445,6 +445,9 @@
                 }
               ]
             }
+          },
+          "releaseDocuments": {
+            "$ref": "#/definitions/releaseDocuments"
           }
         },
         "allOf": [
@@ -631,6 +634,121 @@
             "pattern": "^[A-Z_][A-Z0-9_]*$"
           },
           "uniqueItems": true
+        }
+      }
+    },
+    "releaseDocuments": {
+      "type": "object",
+      "description": "Optional configuration-driven multilingual release-document refresh for one release unit. Absence preserves legacy behaviour. Lexical layer only; runtime path, locale-membership and collision checks apply additionally.",
+      "required": [
+        "notesSource",
+        "locales",
+        "changelogs",
+        "readmes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "notesSource": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\.\\/)(?!.*\\\\)(?!.*:)(?!\\.\\.(/|$))(?!\\.$)(?!.*\\/\\.\\.\\/)(?!.*\\/\\.\\.$)(?!.*\\/\\.\\/)(?!.*\\/\\/)(?!.*\\0)(?!.*\\/\\.$)(?!.*\\/$)(?!.*\\{(?!version\\}))(?!.*(?<!\\{version)\\}).+\\.(?:yaml|yml|json)$"
+        },
+        "locales": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+          }
+        },
+        "changelogs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/releaseDocumentsChangelog"
+          }
+        },
+        "readmes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/releaseDocumentsReadme"
+          }
+        }
+      }
+    },
+    "releaseDocumentsChangelog": {
+      "type": "object",
+      "required": [
+        "path",
+        "locale"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\.\\/)(?!.*\\\\)(?!.*:)(?!\\.\\.(/|$))(?!\\.$)(?!.*\\/\\.\\.\\/)(?!.*\\/\\.\\.$)(?!.*\\/\\.\\/)(?!.*\\/\\/)(?!.*\\0)(?!.*\\/\\.$)(?!.*\\/$).*$"
+        },
+        "locale": {
+          "type": "string",
+          "pattern": "^[a-zA-Z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+        }
+      }
+    },
+    "releaseDocumentsReadme": {
+      "type": "object",
+      "required": [
+        "path",
+        "locale",
+        "regions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\.\\/)(?!.*\\\\)(?!.*:)(?!\\.\\.(/|$))(?!\\.$)(?!.*\\/\\.\\.\\/)(?!.*\\/\\.\\.$)(?!.*\\/\\.\\/)(?!.*\\/\\/)(?!.*\\0)(?!.*\\/\\.$)(?!.*\\/$).*$"
+        },
+        "locale": {
+          "type": "string",
+          "pattern": "^[a-zA-Z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+        },
+        "regions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          }
+        },
+        "versionMarkers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/releaseDocumentsVersionMarker"
+          }
+        }
+      }
+    },
+    "releaseDocumentsVersionMarker": {
+      "type": "object",
+      "required": [
+        "id",
+        "pattern"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md) · Installation: [English](INSTALL.md) / [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.5 -->
+<!-- release-skill:release-version: 0.1.6 -->
 Release preparation for Claude Code and Codex, with human-edited files kept intact.
 
 release-skill helps a maintainer answer three questions: what will be released,
@@ -10,9 +10,83 @@ which checks still fail, and which exact bytes will reach users. It freezes the
 reviewed artifacts first and publishes those same artifacts later; it does not
 regenerate a README or re-pack the live workspace at the last step.
 
+<!-- release-skill:managed:start id=latest-release -->
+**0.1.6** (2026-07-22)
+
+v0.1.6 is a release-preparation snapshot that closes the release-docs automation loop. A single structured release-notes source drives deterministic, multilingual CHANGELOG and README refresh behind a two-phase, digest-bound write protocol and a prepare-time documentation freshness gate, while terminal transaction receipts are bounded and the CLI lifecycle, path safety, and error-output redaction are hardened.
+
+**Added**
+
+- **Structured release-notes-driven document refresh (`docs refresh`)**: a single
+  structured release-notes source (`release-notes/0.1.6.yaml`) now drives
+  deterministic, multilingual refresh of the managed CHANGELOG and README
+  regions. Refresh runs as a two-phase protocol: a read-only planning phase
+  renders every candidate and freezes an `inputDigest` (binding the canonical
+  notes and the notes-source bytes) plus a `refreshDigest` (binding the protocol
+  version, unit, version, configuration projection, and per-file old/new
+  digests), and a separate write phase commits the changed targets only when all
+  three authorizations are present (`--write`, an exact `--confirm-refresh
+  <refreshDigest>` match, and `--ack-local-document-write`). The write phase
+  re-plans under the exclusive lock; a diverging digest converges to
+  `RELEASE_DOCS_REFRESH_STALE` with zero writes, and a clean plan is a zero-write
+  no-op. A prepare-time documentation freshness gate makes version drift between
+  the package version and the public docs fail closed before a release plan is
+  frozen.
+- **Bounded terminal transaction receipts with recovery safety**: terminal
+  (committed / rolled-back) transactions now persist a summary-only receipt
+  instead of full payload, capped at 256 KB per receipt
+  (`TERMINAL_RECEIPT_SIZE_CAP`), under a retention cap of 50 terminal records
+  (`DEFAULT_TRANSACTION_RETENTION_MAX`). Retention pruning only ever removes
+  terminal records and never prunes `RECOVERY_CONFLICT` records or any
+  non-terminal (recovery-relevant) record, so recovery evidence is preserved even
+  when the count cap is reached; a retention failure never aborts an in-flight
+  commit.
+- **Strict `docs refresh` parameter validation (fail closed)**: the `docs`
+  command validates every parameter before invoking the refresh service, so
+  precise stable parameter errors surface even without project configuration or a
+  safe-fs backend. The `--flag=value` equals form routes through exactly the same
+  validation as the space-separated form; duplicated flags fail closed with
+  `DUPLICATE_PARAMETER` before any service call, config read, lock, or
+  transaction; and bare positional arguments and single-dash flags (such as `-w`)
+  are rejected as unrecognized. Write-authorization flags supplied without
+  `--write`, or `--write` without its full authorizations, fail closed with
+  precise reasons rather than silently proceeding.
+
+**Fixed**
+
+- **Bundle entry lifecycle settles with real exit codes**: the self-contained
+  bundle now owns the command lifecycle. Its entry awaits command completion and
+  exits with the real business exit code for success, business errors, handled
+  async rejections, and unknown commands, so the launcher no longer leaves an
+  unsettled top-level await (Node exit code 13). When the bundle is missing or
+  cannot be evaluated, the launcher fails closed with static text only and never
+  interpolates machine-specific paths, usernames, or host layout, because
+  module-load failure messages carry absolute paths.
+- **Fail-closed path canonicalization with stable diagnostics**: artifact path
+  canonicalization requires POSIX separators and rejects absolute paths in POSIX
+  (`/`), Windows drive-letter, and UNC spellings, along with traversal, Windows
+  reserved device names, and colons, failing closed with `PATH_UNSAFE` rather
+  than normalizing an unsafe spelling into a different public path. Error-output
+  redaction now distinguishes real filesystem paths from strict RFC 6901 JSON
+  Pointer diagnostic coordinates (such as `/units/0/version`): absolute
+  POSIX/Windows/UNC paths collapse to a stable `<redacted-path>` placeholder
+  while diagnostic pointers are preserved verbatim, keeping failures diagnosable
+  without leaking host paths.
+- **Self public-boundary redaction**: the centralized redaction authority
+  (`core/redact.mjs`) now closes the self public boundary so runtime error
+  outputs and detail structures never carry the release-skill workspace's own
+  absolute path, nor the macOS `Users`, Linux home, macOS `private`/`var` alias,
+  temp, or CI checkout realms. Redaction runs fail-closed through the
+  `ReleaseError` choke point: any two-or-more-segment `/`-led token that is not a
+  strict diagnostic JSON Pointer is replaced with `<redacted-path>`, so
+  self-releasing never leaks private filesystem layout into public outputs.
+<!-- release-skill:managed:end id=latest-release -->
+
 <!-- release-skill:capability:external-write-boundary -->
-> **Current boundary:** v0.1.5 is the current release. v0.1.1 completed a real production release
-> to GitHub and npm — the first production-verified milestone — followed by
+> **Current boundary:** v0.1.6 is the current release (v0.1.5 previously held
+> this status after completing real production verification).
+> v0.1.1 completed a real production release to GitHub and npm — the first
+> production-verified milestone — followed by
 > exact npm installation and Claude/Codex consumer installation verification
 > from the frozen Git ref; "current release" and "first production-verified
 > milestone" are two distinct facts and must not be conflated. The same
@@ -27,7 +101,7 @@ regenerate a README or re-pack the live workspace at the last step.
 > publish global preflight.
 
 <!-- release-skill:capability:safe-first-command -->
-> **Production path verified since the v0.1.1 milestone; v0.1.5 is the current
+> **Production path verified since the v0.1.1 milestone; v0.1.6 is the current
 > release.** The npm-installed CLI is the supported user entry. Source checkout
 > is the development/contributor fallback.
 >
@@ -72,6 +146,10 @@ This is the preservation contract: **copy current truth, freeze reviewed
 truth, and never rewrite human truth.**
 
 ## Quick start
+
+Every read-only step below keeps potentially large reports in temporary files
+and surfaces only the deterministic `compactSummary` review view; the summary
+is a review aid, never a substitute for the bound digest authorization.
 
 ### Install / requirements
 
@@ -490,7 +568,9 @@ publication. The source checkout remains the development/contributor fallback.
    `units[].targetVersion`, and `planDigest`. Each unit's snapshot is under
    `<evidenceDir>/snapshots/<unit-id>/`. The release-skill pipeline writes its
    own data under `.release-skill/`; acknowledged project hooks and gates are
-   unsandboxed processes and may write elsewhere or access the network.
+   arbitrary project processes without an operating-system sandbox and may
+   write elsewhere, access the network, and read any credentials, tokens,
+   keys, and environment variables accessible to the current account.
 6. **Production plan freeze:**
    ```bash
    PRODUCTION_JSON=$("${CLI[@]}" prepare --root "$PROJECT" --online --production \
@@ -521,7 +601,11 @@ publication. The source checkout remains the development/contributor fallback.
    publish/reconcile. Approval expires after 24
    hours; a PARTIAL recovery may create a new approval for the same plan while
    preserving every earlier approval byte-for-byte. Use the returned
-   `approvalPath` and `expiresAt` as authority.
+   `approvalPath` and `expiresAt` as authority. `--actor` is only an
+   unauthenticated local audit label: release-skill performs no identity
+   authentication and provides no digital signature, so it cannot prove that
+   a real human actually approved — it only records the identity the operator
+   self-reports.
 8. **Publish (remote writes start here):**
    ```bash
    PUBLISH_JSON=$("${CLI[@]}" publish --root "$PROJECT" \
@@ -557,6 +641,110 @@ Before a real release run `gh auth login`, `gh auth setup-git`, and
 Version branches default to `release/<tag>` and can be configured per unit with
 `production.branchTemplate`; any existing remote object stops for human review.
 
+### Release-document refresh (optional)
+
+A release unit can declare `releaseDocuments` so one structured, bilingual
+notes source deterministically refreshes the managed README regions and the
+current CHANGELOG entry. The core CLI runs entirely offline: it does not use
+the network, does not call any large language model, and does not
+auto-translate. It only rewrites the declared managed regions, the unique
+version marker's machine value, and the current CHANGELOG managed entry;
+every byte outside those regions is preserved verbatim. `prepare` only
+checks freshness and never writes the working tree.
+
+```yaml
+# .release-skill/project.yaml (release unit fragment)
+releaseUnits:
+  - id: my-project
+    source: .
+    releaseDocuments:
+      notesSource: release-notes/{version}.yaml
+      locales: [en, zh-CN]
+      changelogs:
+        - path: CHANGELOG.md
+          locale: en
+      readmes:
+        - path: README.md
+          locale: en
+          regions: [latest-release]
+          versionMarkers:
+            - id: current-version
+              pattern: '<!-- release-skill:version -->v{version}<!-- /release-skill:version -->'
+        - path: README.zh-CN.md
+          locale: zh-CN
+          regions: [latest-release]
+```
+
+`notesSource` and every target path are relative to the release unit root.
+`versionMarkers[].pattern` must match the README's existing unique version
+marker exactly, with `{version}` standing in for the machine value; the
+refresh replaces only that value (zero or multiple matches fail closed).
+
+```yaml
+# release-notes/0.1.6.yaml (structured notes source)
+version: 0.1.6
+date: 2026-07-21
+locales:
+  en:
+    summary: Deterministic multilingual release-document refresh.
+    changes:
+      added:
+        - Refresh managed README regions and changelogs from one source.
+    upgradeNotes: Review and commit refreshed documents before prepare.
+  zh-CN:
+    summary: 从同一说明源确定性刷新多语种发布文档。
+    changes:
+      added:
+        - 自动刷新 README 受管区域和 CHANGELOG。
+    upgradeNotes: prepare 前审阅并提交刷新结果。
+```
+
+`version` must exactly equal the resolved unit version; every configured
+locale appears exactly once with a non-empty `summary` and at least one
+change under `security`, `breaking`, `added`, `changed`, `deprecated`,
+`removed`, or `fixed`. YAML aliases, duplicate keys, unknown fields, and
+locale fallback all fail closed.
+
+1. **Read-only drill:**
+   ```bash
+   "${CLI[@]}" docs refresh --root "$PROJECT" --unit my-project --json
+   ```
+   Prints `status` (`changes` or `clean`), per-file relative `path`,
+   `locale`, `kind`, old/new digests, the unit `version`, `locales`,
+   `inputDigest`, and `refreshDigest` — a binding over the protocol
+   version, the unit, the canonical notes object, the configuration
+   projection, and the sorted per-file old/new digests. It never binds
+   time, absolute paths, or display text. `nextCommand.argv` carries the
+   exact write command.
+2. **Digest-confirmed local write (only after explicit human authorization
+   of the local release-document write):**
+   ```bash
+   "${CLI[@]}" docs refresh --root "$PROJECT" --unit my-project \
+     --write --confirm-refresh <refreshDigest> \
+     --ack-local-document-write --json
+   ```
+   All three bindings are required; a mismatched digest fails closed with
+   `RELEASE_DOCS_REFRESH_STALE` and writes nothing. When the candidate is
+   unchanged the drill reports `clean` and the write performs zero writes.
+   All targets commit as one transaction; a successful write is followed
+   by a re-drill that must return `clean`.
+
+This authorization covers only the declared local document targets. It is
+not authorization for hooks, Git commits, pushes, publishes, or installs:
+a maintainer must review the refreshed documents, commit them, and rerun
+`prepare` — the new bytes change the snapshot, workspace digest, and plan
+digest, so an earlier approval cannot authorize the refreshed plan.
+
+When configured documents drift, `prepare` fails closed with
+`RELEASE_DOCS_STALE` before hooks, baseline, snapshot, remote checks, and
+plan freeze. Recovery: run the drill, review the shown files/locales/
+version/digest, authorize and perform the local write, review and commit
+the result, then rerun `prepare`. `RELEASE_DOCS_INVALID` (bad
+configuration or notes data), `RELEASE_DOCS_TRANSLATION_MISSING` (a
+configured locale absent), and `RELEASE_DOCS_CONFLICT` (unmanaged
+same-version content or marker damage) each require fixing the source or
+target first; never widen the write scope to resolve them.
+
 ### Parent workspace with npm + plugin sub-units
 
 When a monorepo produces both an npm package and a Claude/Codex plugin from
@@ -567,6 +755,10 @@ and entry Skill:
 Here `project` is the parent workspace's orchestration container, not a public
 release unit. If the workspace root also publishes its own repository or
 package, add another release unit with `source: .`.
+`version.source` is resolved relative to that release unit's `source` directory
+(`version.source` 相对于该发布单元的 `source` 目录解析): a unit with
+`source: packages/app` therefore writes plain `package.json`, not
+`packages/app/package.json`.
 
 ```yaml
 apiVersion: release-skill/v1
@@ -580,7 +772,7 @@ releaseUnits:
     source: packages/app
     publicRepo: owner/my-app
     version:
-      source: packages/app/package.json
+      source: package.json
       tagTemplate: my-app-v{version}
     distributions:
       - type: npm
@@ -616,7 +808,7 @@ releaseUnits:
     source: packages/plugin
     publicRepo: owner/my-plugin
     version:
-      source: packages/plugin/package.json
+      source: package.json
       tagTemplate: my-plugin-v{version}
     distributions:
       # Declare plugin consumers only when the unit ships a plugin.
@@ -749,6 +941,29 @@ Successful reconcile returns `PUBLISHED`, not `VERIFIED`; only the fresh
 them only for work that genuinely needs the parent workspace or generates
 source files. They can modify files or access the network, so prepare requires
 `--acknowledge-hook-side-effects`.
+
+Each hook is an object, never a bare command list.
+`command` is an executable/argument array, not a shell string
+(`command` 是可执行文件/参数数组，不是 shell 字符串). Each hook also declares
+`cwd`, `timeoutMs`, and `envAllowlist`:
+
+```yaml
+hooks:
+  build:
+    command: [node, scripts/build.mjs]
+    cwd: .
+    timeoutMs: 120000
+    envAllowlist: [CI]
+  test:
+    command: [node, --test, test/]
+    cwd: .
+    timeoutMs: 300000
+    envAllowlist: []
+```
+
+Hooks still run only after human review of every configured executable,
+argument, working directory, and side effect, and only with
+`prepare --acknowledge-hook-side-effects`.
 
 `verificationGates` are the controlled extension point for release calibration:
 

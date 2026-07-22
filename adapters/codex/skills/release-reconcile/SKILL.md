@@ -26,7 +26,7 @@ marketplace 隔离消费者 checkpoint，但只恢复到 `PUBLISHED`；最终 np
 
 ## 职责与边界
 
-查询远端实际状态，对照冻结计划识别一致/不一致检查点。已成功的步骤幂等跳过，只重试安全且未完成的步骤。远端冲突时停止并要求人工决策。不删除远端资源。`--run` 必需；重试需 `--approval`。
+查询远端实际状态，对照冻结计划识别一致/不一致检查点。已成功的步骤幂等跳过，只重试安全且未完成的步骤。远端冲突时停止并要求人工决策。不删除远端资源。`--run` 必需；重试需 `--approval`。reconcile 永不隐式刷新工作树中的发布文档；陈旧文档只能回到 `docs refresh` → 人工审阅 → 提交 → 重新 prepare。
 
 **阶段通过规则**: 本阶段的通过只能由 CLI exit code 0 和结构化状态码 `PUBLISHED` 确认。随后必须以 reconcile 返回的新 `runPath` 执行 verify；只有 verify 的 `VERIFIED` 才是完整终态。
 

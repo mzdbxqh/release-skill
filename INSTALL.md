@@ -2,7 +2,7 @@
 
 [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.5 -->
+<!-- release-skill:release-version: 0.1.6 -->
 ## Prerequisites
 
 - Node.js 22.0.0 or later
@@ -299,6 +299,86 @@ network sandbox; release-skill limits their inputs and evidence but cannot
 guarantee that a custom command will not modify files or access the network.
 Never register Git push, tag, default-branch changes, GitHub Releases, or npm
 publish as a hook/gate; those are controlled plan actions.
+
+### Advanced: release-document refresh (optional)
+
+A release unit can declare `releaseDocuments` so one structured notes source
+deterministically refreshes its managed README regions and the current
+CHANGELOG entry. The command runs offline: it does not use the network, does
+not call any large language model, and does not auto-translate. It only
+rewrites declared managed regions, the unique version marker's machine
+value, and the current CHANGELOG managed entry; every other byte is
+preserved. `prepare` only checks freshness and never writes the working
+tree.
+
+```yaml
+# Release unit fragment in .release-skill/project.yaml
+releaseUnits:
+  - id: my-project
+    source: .
+    releaseDocuments:
+      notesSource: release-notes/{version}.yaml
+      locales: [en, zh-CN]
+      changelogs:
+        - path: CHANGELOG.md
+          locale: en
+      readmes:
+        - path: README.md
+          locale: en
+          regions: [latest-release]
+          versionMarkers:
+            - id: current-version
+              pattern: '<!-- release-skill:version -->v{version}<!-- /release-skill:version -->'
+        - path: README.zh-CN.md
+          locale: zh-CN
+          regions: [latest-release]
+```
+
+`notesSource` and every target path are relative to the release unit root;
+`versionMarkers[].pattern` must match the README's existing unique version
+marker exactly, and the refresh replaces only the machine version value.
+The notes source lives under the release unit root; its `version` must
+equal the resolved unit version, every configured locale appears exactly
+once with a non-empty summary and at least one change category, and YAML
+aliases, duplicate keys, unknown fields, and locale fallback all fail
+closed:
+
+```yaml
+# release-notes/0.1.6.yaml
+version: 0.1.6
+date: 2026-07-21
+locales:
+  en:
+    summary: Deterministic multilingual release-document refresh.
+    changes:
+      added:
+        - Refresh managed README regions and changelogs from one source.
+  zh-CN:
+    summary: 从同一说明源确定性刷新多语种发布文档。
+    changes:
+      added:
+        - 自动刷新 README 受管区域和 CHANGELOG。
+```
+
+Drill first (read-only), then write only with all three bindings:
+
+```bash
+"${CLI[@]}" docs refresh --root <your-project> --unit my-project --json
+"${CLI[@]}" docs refresh --root <your-project> --unit my-project \
+  --write --confirm-refresh <refreshDigest> --ack-local-document-write --json
+```
+
+`refreshDigest` binds the canonical notes object, the configuration
+projection, and the sorted per-file old/new digests — never time, absolute
+paths, or display text. A mismatched digest fails closed with
+`RELEASE_DOCS_REFRESH_STALE` and writes nothing; an unchanged candidate
+reports `clean` and writes nothing either. This authorization covers only
+the declared local document targets; it does not authorize hooks, commits,
+pushes, publishes, or installs. When `prepare` reports `RELEASE_DOCS_STALE`,
+recover by running the drill, reviewing the listed files and locales,
+performing the confirmed local write, reviewing and committing the result,
+and rerunning `prepare`. See the README release-document refresh section
+for the full contract.
 
 ### Production branch strategy
 

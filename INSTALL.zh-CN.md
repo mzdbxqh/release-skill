@@ -2,7 +2,7 @@
 
 [English](INSTALL.md)
 
-<!-- release-skill:release-version: 0.1.5 -->
+<!-- release-skill:release-version: 0.1.6 -->
 ## 前置条件
 
 - Node.js 22.0.0 或更高版本
@@ -277,6 +277,74 @@ verificationGates:
 release-skill 约束其输入与证据，但无法保证自定义命令不修改文件或不访问网络。
 禁止把 Git push、tag、默认分支修改、GitHub Release 或 npm publish 注册为
 hook/gate，它们只能由受控的计划动作完成。
+
+### 进阶：发布文档刷新（可选）
+
+发布单元可以声明 `releaseDocuments`，用一份结构化说明源确定性刷新 README 受管
+区域和 CHANGELOG 当前版本条目。该命令离线运行：不联网、不调用大模型、不自动
+翻译；只改写声明过的受管区域、唯一版本标记的机器值和 CHANGELOG 当前版本受管
+条目，其他字节全部保留。`prepare` 只检查新鲜度，不写工作树。
+
+```yaml
+# .release-skill/project.yaml 的发布单元片段
+releaseUnits:
+  - id: my-project
+    source: .
+    releaseDocuments:
+      notesSource: release-notes/{version}.yaml
+      locales: [en, zh-CN]
+      changelogs:
+        - path: CHANGELOG.md
+          locale: en
+      readmes:
+        - path: README.md
+          locale: en
+          regions: [latest-release]
+          versionMarkers:
+            - id: current-version
+              pattern: '<!-- release-skill:version -->v{version}<!-- /release-skill:version -->'
+        - path: README.zh-CN.md
+          locale: zh-CN
+          regions: [latest-release]
+```
+
+`notesSource` 和所有目标路径均相对发布单元根；`versionMarkers[].pattern` 必须与
+README 现有唯一版本标记精确匹配，刷新只替换机器版本值。说明源位于发布单元根
+下，`version` 必须与解析出的单元版本一致，每个配置语种恰好出现一次且 summary
+非空、至少一个变更类别有条目；YAML alias、重复键、未知字段和语种回退均失败
+关闭：
+
+```yaml
+# release-notes/0.1.6.yaml
+version: 0.1.6
+date: 2026-07-21
+locales:
+  en:
+    summary: Deterministic multilingual release-document refresh.
+    changes:
+      added:
+        - Refresh managed README regions and changelogs from one source.
+  zh-CN:
+    summary: 从同一说明源确定性刷新多语种发布文档。
+    changes:
+      added:
+        - 自动刷新 README 受管区域和 CHANGELOG。
+```
+
+先只读演练，确认后再带三项绑定写入：
+
+```bash
+"${CLI[@]}" docs refresh --root <your-project> --unit my-project --json
+"${CLI[@]}" docs refresh --root <your-project> --unit my-project \
+  --write --confirm-refresh <refreshDigest> --ack-local-document-write --json
+```
+
+`refreshDigest` 绑定规范说明对象、配置投影和按路径排序的逐文件新旧摘要，不绑定
+时间、绝对路径或展示文本。摘要不匹配以 `RELEASE_DOCS_REFRESH_STALE` 失败关闭且
+零写入；候选无变化时返回 `clean` 同样零写入。该授权只覆盖声明的本地文档目标，
+不是 hook、提交、push、publish 或安装的授权。`prepare` 报告 `RELEASE_DOCS_STALE`
+时，按“运行演练 → 审阅文件与语种 → 确认本地写入 → 审阅并提交 → 重新 prepare”
+恢复。完整契约见 README 的发布文档刷新章节。
 
 ### 生产分支策略
 

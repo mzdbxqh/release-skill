@@ -8,6 +8,8 @@ import { createRequire as __bundleCreateRequire } from 'node:module';
 const __bundlePkgRoot = __bundleResolve(__bundleDirname(__bundleFileURLToPath(import.meta.url)), '..');
 // Provide a real require() for CJS packages bundled into ESM (e.g. yaml, ajv).
 const __bundleRealRequire = __bundleCreateRequire(import.meta.url);
+// Package identity injected at build time — closure-independent --version probe.
+const __bundlePkg = Object.freeze({"name":"release-skill","version":"0.1.6"});
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -43,6 +45,293 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+
+// src/core/redact.mjs
+var redact_exports = {};
+__export(redact_exports, {
+  REDACTED_PATH_PLACEHOLDER: () => REDACTED_PATH_PLACEHOLDER,
+  redactSensitivePaths: () => redactSensitivePaths
+});
+function isStrictJsonPointer(token) {
+  const segments = token.slice(1).split("/");
+  if (segments.length < 2) return false;
+  if (KNOWN_FS_ROOTS.has(segments[0])) return false;
+  if (!DIAGNOSTIC_POINTER_ROOTS.has(segments[0])) return false;
+  for (const segment of segments) {
+    if (!POINTER_INDEX_RE.test(segment) && !POINTER_IDENTIFIER_RE.test(segment)) {
+      return false;
+    }
+  }
+  return true;
+}
+function looksLikeAbsolutePath(token) {
+  if (typeof token !== "string" || token.length < 3) return false;
+  if (!token.startsWith("/") || token.startsWith("//")) return false;
+  if (!token.slice(1).includes("/")) return false;
+  return !isStrictJsonPointer(token);
+}
+function isWindowsDrivePath(token) {
+  return /^[A-Za-z]:[\\/]/.test(token);
+}
+function isUncPath(token) {
+  return token.startsWith("\\\\");
+}
+function redactString(input) {
+  return input.replace(PATH_TOKEN_RE, (raw) => {
+    const match = TRAILING_PUNCT_RE.exec(raw);
+    const core = match[1];
+    const tail = match[2];
+    if (isWindowsDrivePath(core) || isUncPath(core) || looksLikeAbsolutePath(core)) {
+      return `${REDACTED_PATH_PLACEHOLDER}${tail}`;
+    }
+    return raw;
+  });
+}
+function redactSensitivePaths(value) {
+  if (typeof value === "string") {
+    return redactString(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactSensitivePaths);
+  }
+  if (value !== null && typeof value === "object") {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      return value;
+    }
+    const out = {};
+    for (const [key, val] of Object.entries(value)) {
+      out[key] = redactSensitivePaths(val);
+    }
+    return out;
+  }
+  return value;
+}
+var REDACTED_PATH_PLACEHOLDER, PATH_TOKEN_RE, TRAILING_PUNCT_RE, KNOWN_FS_ROOTS, POINTER_IDENTIFIER_RE, POINTER_INDEX_RE, DIAGNOSTIC_POINTER_ROOTS;
+var init_redact = __esm({
+  "src/core/redact.mjs"() {
+    REDACTED_PATH_PLACEHOLDER = "<redacted-path>";
+    PATH_TOKEN_RE = /(?<=^|[\s'"=:,([{<])(?:[A-Za-z]:[\\/][^\s'"]*|\\\\[^\s'"]+|\/[^\s'"]+)/g;
+    TRAILING_PUNCT_RE = /^(.*?)([.!,;:)\]}>]*)$/;
+    KNOWN_FS_ROOTS = /* @__PURE__ */ new Set([
+      // Unix/Linux FHS
+      "bin",
+      "boot",
+      "dev",
+      "etc",
+      "home",
+      "lib",
+      "lib64",
+      "media",
+      "mnt",
+      "opt",
+      "proc",
+      "root",
+      "run",
+      "sbin",
+      "srv",
+      "sys",
+      "tmp",
+      "usr",
+      "var",
+      // macOS realms
+      "Applications",
+      "Library",
+      "Network",
+      "System",
+      "Users",
+      "Volumes",
+      "cores",
+      "private",
+      // common ephemeral / CI checkout roots
+      "app",
+      "build",
+      "data",
+      "dist",
+      "workspace",
+      "workspaces"
+    ]);
+    POINTER_IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+    POINTER_INDEX_RE = /^(?:0|[1-9][0-9]*)$/;
+    DIAGNOSTIC_POINTER_ROOTS = /* @__PURE__ */ new Set([
+      "frozenSnapshot",
+      "units"
+    ]);
+    __name(isStrictJsonPointer, "isStrictJsonPointer");
+    __name(looksLikeAbsolutePath, "looksLikeAbsolutePath");
+    __name(isWindowsDrivePath, "isWindowsDrivePath");
+    __name(isUncPath, "isUncPath");
+    __name(redactString, "redactString");
+    __name(redactSensitivePaths, "redactSensitivePaths");
+  }
+});
+
+// src/core/errors.mjs
+var errors_exports = {};
+__export(errors_exports, {
+  ADOPTION_AMBIGUOUS: () => ADOPTION_AMBIGUOUS,
+  ALL_ERROR_CODES: () => ALL_ERROR_CODES,
+  ARTIFACT_POLICY_INVALID: () => ARTIFACT_POLICY_INVALID,
+  AUTH_MISSING: () => AUTH_MISSING,
+  BASELINE_CHANGED: () => BASELINE_CHANGED,
+  BASE_UNAVAILABLE: () => BASE_UNAVAILABLE,
+  CONFIG_EXISTS: () => CONFIG_EXISTS,
+  CONFIG_INVALID: () => CONFIG_INVALID,
+  DIRTY_SCOPE_CONFLICT: () => DIRTY_SCOPE_CONFLICT,
+  EXIT_CODE_MAP: () => EXIT_CODE_MAP,
+  FORBIDDEN_CONTENT_DETECTED: () => FORBIDDEN_CONTENT_DETECTED,
+  GATE_FAILED: () => GATE_FAILED,
+  HOOK_TIMEOUT: () => HOOK_TIMEOUT,
+  INVALID_STATE_TRANSITION: () => INVALID_STATE_TRANSITION,
+  LOCK_MIGRATION_REQUIRED: () => LOCK_MIGRATION_REQUIRED,
+  MISSING_PARAMETERS: () => MISSING_PARAMETERS,
+  PARTIAL_RELEASE: () => PARTIAL_RELEASE,
+  PATH_UNSAFE: () => PATH_UNSAFE,
+  PLAN_DIGEST_MISMATCH: () => PLAN_DIGEST_MISMATCH,
+  PLAN_STALE: () => PLAN_STALE,
+  POST_PUBLISH_VERIFY_FAILED: () => POST_PUBLISH_VERIFY_FAILED,
+  PRODUCER_NONDETERMINISTIC: () => PRODUCER_NONDETERMINISTIC,
+  PRODUCER_SCOPE_VIOLATION: () => PRODUCER_SCOPE_VIOLATION,
+  PUBLIC_FILE_MISSING: () => PUBLIC_FILE_MISSING,
+  PUBLIC_PATH_FORBIDDEN: () => PUBLIC_PATH_FORBIDDEN,
+  RELEASE_DOCS_CONFLICT: () => RELEASE_DOCS_CONFLICT,
+  RELEASE_DOCS_INVALID: () => RELEASE_DOCS_INVALID,
+  RELEASE_DOCS_REFRESH_STALE: () => RELEASE_DOCS_REFRESH_STALE,
+  RELEASE_DOCS_STALE: () => RELEASE_DOCS_STALE,
+  RELEASE_DOCS_TRANSLATION_MISSING: () => RELEASE_DOCS_TRANSLATION_MISSING,
+  REMOTE_CONFLICT: () => REMOTE_CONFLICT,
+  ReleaseError: () => ReleaseError,
+  SAFE_WRITE_UNAVAILABLE: () => SAFE_WRITE_UNAVAILABLE,
+  SECRET_DETECTED: () => SECRET_DETECTED,
+  SENSITIVE_CONFLICT: () => SENSITIVE_CONFLICT,
+  SETUP_DIGEST_MISMATCH: () => SETUP_DIGEST_MISMATCH,
+  SNAPSHOT_FIDELITY_FAILED: () => SNAPSHOT_FIDELITY_FAILED,
+  STALE_BUILD_ARTIFACT: () => STALE_BUILD_ARTIFACT,
+  STRUCTURE_INVALID: () => STRUCTURE_INVALID,
+  TRANSACTION_INCOMPLETE: () => TRANSACTION_INCOMPLETE,
+  registerPathRedactor: () => registerPathRedactor
+});
+function registerPathRedactor(fn) {
+  if (typeof fn === "function") redactSensitivePaths2 = fn;
+}
+var redactSensitivePaths2, EXIT_CODE_MAP, CONFIG_INVALID, BASELINE_CHANGED, DIRTY_SCOPE_CONFLICT, GATE_FAILED, AUTH_MISSING, REMOTE_CONFLICT, HOOK_TIMEOUT, PARTIAL_RELEASE, POST_PUBLISH_VERIFY_FAILED, INVALID_STATE_TRANSITION, PLAN_DIGEST_MISMATCH, SECRET_DETECTED, PUBLIC_PATH_FORBIDDEN, STALE_BUILD_ARTIFACT, MISSING_PARAMETERS, PUBLIC_FILE_MISSING, SNAPSHOT_FIDELITY_FAILED, FORBIDDEN_CONTENT_DETECTED, PATH_UNSAFE, STRUCTURE_INVALID, LOCK_MIGRATION_REQUIRED, ARTIFACT_POLICY_INVALID, BASE_UNAVAILABLE, PRODUCER_NONDETERMINISTIC, PRODUCER_SCOPE_VIOLATION, ADOPTION_AMBIGUOUS, PLAN_STALE, SENSITIVE_CONFLICT, TRANSACTION_INCOMPLETE, SAFE_WRITE_UNAVAILABLE, SETUP_DIGEST_MISMATCH, CONFIG_EXISTS, RELEASE_DOCS_INVALID, RELEASE_DOCS_TRANSLATION_MISSING, RELEASE_DOCS_CONFLICT, RELEASE_DOCS_REFRESH_STALE, RELEASE_DOCS_STALE, ReleaseError, ALL_ERROR_CODES;
+var init_errors = __esm({
+  "src/core/errors.mjs"() {
+    redactSensitivePaths2 = /* @__PURE__ */ __name((value) => value, "redactSensitivePaths");
+    __name(registerPathRedactor, "registerPathRedactor");
+    Promise.resolve().then(() => (init_redact(), redact_exports)).then(
+      (mod) => registerPathRedactor(mod.redactSensitivePaths),
+      () => {
+      }
+    );
+    EXIT_CODE_MAP = Object.freeze({
+      CONFIG_INVALID: 10,
+      BASELINE_CHANGED: 11,
+      DIRTY_SCOPE_CONFLICT: 12,
+      GATE_FAILED: 13,
+      AUTH_MISSING: 14,
+      REMOTE_CONFLICT: 15,
+      HOOK_TIMEOUT: 16,
+      PARTIAL_RELEASE: 17,
+      POST_PUBLISH_VERIFY_FAILED: 18,
+      INVALID_STATE_TRANSITION: 19,
+      PLAN_DIGEST_MISMATCH: 20,
+      SECRET_DETECTED: 21,
+      PUBLIC_PATH_FORBIDDEN: 22,
+      STALE_BUILD_ARTIFACT: 23,
+      MISSING_PARAMETERS: 24,
+      PUBLIC_FILE_MISSING: 25,
+      SNAPSHOT_FIDELITY_FAILED: 26,
+      FORBIDDEN_CONTENT_DETECTED: 27,
+      PATH_UNSAFE: 28,
+      STRUCTURE_INVALID: 29,
+      LOCK_MIGRATION_REQUIRED: 30,
+      ARTIFACT_POLICY_INVALID: 31,
+      BASE_UNAVAILABLE: 32,
+      PRODUCER_NONDETERMINISTIC: 33,
+      PRODUCER_SCOPE_VIOLATION: 34,
+      ADOPTION_AMBIGUOUS: 35,
+      PLAN_STALE: 36,
+      SENSITIVE_CONFLICT: 37,
+      TRANSACTION_INCOMPLETE: 38,
+      SAFE_WRITE_UNAVAILABLE: 39,
+      SETUP_DIGEST_MISMATCH: 40,
+      CONFIG_EXISTS: 41,
+      RELEASE_DOCS_INVALID: 42,
+      RELEASE_DOCS_TRANSLATION_MISSING: 43,
+      RELEASE_DOCS_CONFLICT: 44,
+      RELEASE_DOCS_REFRESH_STALE: 45,
+      RELEASE_DOCS_STALE: 46
+    });
+    CONFIG_INVALID = "CONFIG_INVALID";
+    BASELINE_CHANGED = "BASELINE_CHANGED";
+    DIRTY_SCOPE_CONFLICT = "DIRTY_SCOPE_CONFLICT";
+    GATE_FAILED = "GATE_FAILED";
+    AUTH_MISSING = "AUTH_MISSING";
+    REMOTE_CONFLICT = "REMOTE_CONFLICT";
+    HOOK_TIMEOUT = "HOOK_TIMEOUT";
+    PARTIAL_RELEASE = "PARTIAL_RELEASE";
+    POST_PUBLISH_VERIFY_FAILED = "POST_PUBLISH_VERIFY_FAILED";
+    INVALID_STATE_TRANSITION = "INVALID_STATE_TRANSITION";
+    PLAN_DIGEST_MISMATCH = "PLAN_DIGEST_MISMATCH";
+    SECRET_DETECTED = "SECRET_DETECTED";
+    PUBLIC_PATH_FORBIDDEN = "PUBLIC_PATH_FORBIDDEN";
+    STALE_BUILD_ARTIFACT = "STALE_BUILD_ARTIFACT";
+    MISSING_PARAMETERS = "MISSING_PARAMETERS";
+    PUBLIC_FILE_MISSING = "PUBLIC_FILE_MISSING";
+    SNAPSHOT_FIDELITY_FAILED = "SNAPSHOT_FIDELITY_FAILED";
+    FORBIDDEN_CONTENT_DETECTED = "FORBIDDEN_CONTENT_DETECTED";
+    PATH_UNSAFE = "PATH_UNSAFE";
+    STRUCTURE_INVALID = "STRUCTURE_INVALID";
+    LOCK_MIGRATION_REQUIRED = "LOCK_MIGRATION_REQUIRED";
+    ARTIFACT_POLICY_INVALID = "ARTIFACT_POLICY_INVALID";
+    BASE_UNAVAILABLE = "BASE_UNAVAILABLE";
+    PRODUCER_NONDETERMINISTIC = "PRODUCER_NONDETERMINISTIC";
+    PRODUCER_SCOPE_VIOLATION = "PRODUCER_SCOPE_VIOLATION";
+    ADOPTION_AMBIGUOUS = "ADOPTION_AMBIGUOUS";
+    PLAN_STALE = "PLAN_STALE";
+    SENSITIVE_CONFLICT = "SENSITIVE_CONFLICT";
+    TRANSACTION_INCOMPLETE = "TRANSACTION_INCOMPLETE";
+    SAFE_WRITE_UNAVAILABLE = "SAFE_WRITE_UNAVAILABLE";
+    SETUP_DIGEST_MISMATCH = "SETUP_DIGEST_MISMATCH";
+    CONFIG_EXISTS = "CONFIG_EXISTS";
+    RELEASE_DOCS_INVALID = "RELEASE_DOCS_INVALID";
+    RELEASE_DOCS_TRANSLATION_MISSING = "RELEASE_DOCS_TRANSLATION_MISSING";
+    RELEASE_DOCS_CONFLICT = "RELEASE_DOCS_CONFLICT";
+    RELEASE_DOCS_REFRESH_STALE = "RELEASE_DOCS_REFRESH_STALE";
+    RELEASE_DOCS_STALE = "RELEASE_DOCS_STALE";
+    ReleaseError = class _ReleaseError extends Error {
+      static {
+        __name(this, "ReleaseError");
+      }
+      constructor(code, message, details = {}, exitCode) {
+        super(redactSensitivePaths2(message));
+        this.name = "ReleaseError";
+        this.code = code;
+        this.details = redactSensitivePaths2(details);
+        this.exitCode = exitCode ?? EXIT_CODE_MAP[code] ?? 1;
+        if (Error.captureStackTrace) {
+          Error.captureStackTrace(this, _ReleaseError);
+        }
+      }
+      /**
+       * Serialise the error to a plain JSON-safe object.
+       * Intentionally omits the stack trace and any raw secret values.
+       *
+       * @returns {{ code: string, message: string, details: Record<string, unknown>, exitCode: number }}
+       */
+      toJSON() {
+        return {
+          code: this.code,
+          message: this.message,
+          details: this.details,
+          exitCode: this.exitCode
+        };
+      }
+    };
+    ALL_ERROR_CODES = Object.freeze(Object.keys(EXIT_CODE_MAP));
+  }
+});
 
 // ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS({
@@ -4115,10 +4404,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep3, value } = collItem;
+        const { start, key, sep: sep4, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep3?.[0],
+          next: key ?? sep4?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -4132,7 +4421,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep3) {
+          if (!keyProps.anchor && !keyProps.tag && !sep4) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4156,7 +4445,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep3 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep4 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4172,7 +4461,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep3, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep4, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4265,7 +4554,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep3 = "";
+        let sep4 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4279,13 +4568,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep3 + cb;
-              sep3 = "";
+                comment += sep4 + cb;
+              sep4 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep3 += source;
+                sep4 += source;
               hasSpace = true;
               break;
             default:
@@ -4329,18 +4618,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep3, value } = collItem;
+        const { start, key, sep: sep4, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep3?.[0],
+          next: key ?? sep4?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep3 && !value) {
+          if (!props.anchor && !props.tag && !sep4 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4394,8 +4683,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep3 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep3, null, props, onError);
+        if (!isMap && !sep4 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep4, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4407,7 +4696,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep3 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep4 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4418,8 +4707,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep3)
-                for (const st of sep3) {
+              if (sep4)
+                for (const st of sep4) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4436,7 +4725,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep3, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep4, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4574,7 +4863,7 @@ var require_resolve_block_scalar = __commonJS({
       if (!header)
         return { value: "", type: null, comment: "", range: [start, start, start] };
       const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
-      const lines = scalar.source ? splitLines(scalar.source) : [];
+      const lines = scalar.source ? splitLines2(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
         const content = lines[i][1];
@@ -4619,7 +4908,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep3 = "";
+      let sep4 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4636,24 +4925,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep3 + indent.slice(trimIndent) + content;
-          sep3 = "\n";
+          value += sep4 + indent.slice(trimIndent) + content;
+          sep4 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep3 === " ")
-            sep3 = "\n";
-          else if (!prevMoreIndented && sep3 === "\n")
-            sep3 = "\n\n";
-          value += sep3 + indent.slice(trimIndent) + content;
-          sep3 = "\n";
+          if (sep4 === " ")
+            sep4 = "\n";
+          else if (!prevMoreIndented && sep4 === "\n")
+            sep4 = "\n\n";
+          value += sep4 + indent.slice(trimIndent) + content;
+          sep4 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep3 === "\n")
+          if (sep4 === "\n")
             value += "\n";
           else
-            sep3 = "\n";
+            sep4 = "\n";
         } else {
-          value += sep3 + content;
-          sep3 = " ";
+          value += sep4 + content;
+          sep4 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4734,7 +5023,7 @@ var require_resolve_block_scalar = __commonJS({
       return { mode, indent, chomp, comment, length };
     }
     __name(parseBlockScalarHeader, "parseBlockScalarHeader");
-    function splitLines(source) {
+    function splitLines2(source) {
       const split = source.split(/\n( *)/);
       const first = split[0];
       const m = first.match(/^( *)/);
@@ -4744,7 +5033,7 @@ var require_resolve_block_scalar = __commonJS({
         lines.push([split[i], split[i + 1]]);
       return lines;
     }
-    __name(splitLines, "splitLines");
+    __name(splitLines2, "splitLines");
     exports.resolveBlockScalar = resolveBlockScalar;
   }
 });
@@ -4841,25 +5130,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep3 = " ";
+      let sep4 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep3 === "\n")
-            res += sep3;
+          if (sep4 === "\n")
+            res += sep4;
           else
-            sep3 = "\n";
+            sep4 = "\n";
         } else {
-          res += sep3 + match[1];
-          sep3 = " ";
+          res += sep4 + match[1];
+          sep4 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep3 + (match?.[1] ?? "");
+      return res + sep4 + (match?.[1] ?? "");
     }
     __name(foldLines, "foldLines");
     function doubleQuotedValue(source, onError) {
@@ -5693,14 +5982,14 @@ var require_cst_stringify = __commonJS({
       }
     }
     __name(stringifyToken, "stringifyToken");
-    function stringifyItem({ start, key, sep: sep3, value }) {
+    function stringifyItem({ start, key, sep: sep4, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep3)
-        for (const st of sep3)
+      if (sep4)
+        for (const st of sep4)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6889,18 +7178,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep3;
+          let sep4;
           if (scalar.end) {
-            sep3 = scalar.end;
-            sep3.push(this.sourceToken);
+            sep4 = scalar.end;
+            sep4.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep3 = [this.sourceToken];
+            sep4 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep3 }]
+            items: [{ start, key: scalar, sep: sep4 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -7053,15 +7342,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep3 = it.sep;
-                  sep3.push(this.sourceToken);
+                  const sep4 = it.sep;
+                  sep4.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep3 }]
+                    items: [{ start: start2, key, sep: sep4 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7255,13 +7544,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep3 = fc.end.splice(1, fc.end.length);
-            sep3.push(this.sourceToken);
+            const sep4 = fc.end.splice(1, fc.end.length);
+            sep4.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep3 }]
+              items: [{ start, key: fc, sep: sep4 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -10752,7 +11041,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve22.call(this, root, ref);
+      let _sch = resolve23.call(this, root, ref);
       if (_sch === void 0) {
         const schema2 = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -10783,13 +11072,13 @@ var require_compile = __commonJS({
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
     __name(sameSchemaEnv, "sameSchemaEnv");
-    function resolve22(root, ref) {
+    function resolve23(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
       return sch || this.schemas[ref] || resolveSchema.call(this, root, ref);
     }
-    __name(resolve22, "resolve");
+    __name(resolve23, "resolve");
     function resolveSchema(root, ref) {
       const p = this.opts.uriResolver.parse(ref);
       const refPath = (0, resolve_1._getFullPath)(this.opts.uriResolver, p);
@@ -11441,56 +11730,56 @@ var require_fast_uri = __commonJS({
       return uri;
     }
     __name(normalize4, "normalize");
-    function resolve22(baseURI, relativeURI, options) {
+    function resolve23(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse2(baseURI, schemelessOptions), parse2(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    __name(resolve22, "resolve");
-    function resolveComponent(base, relative19, options, skipNormalization) {
+    __name(resolve23, "resolve");
+    function resolveComponent(base, relative20, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse2(serialize(base, options), options);
-        relative19 = parse2(serialize(relative19, options), options);
+        relative20 = parse2(serialize(relative20, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative19.scheme) {
-        target.scheme = relative19.scheme;
-        target.userinfo = relative19.userinfo;
-        target.host = relative19.host;
-        target.port = relative19.port;
-        target.path = removeDotSegments(relative19.path || "");
-        target.query = relative19.query;
+      if (!options.tolerant && relative20.scheme) {
+        target.scheme = relative20.scheme;
+        target.userinfo = relative20.userinfo;
+        target.host = relative20.host;
+        target.port = relative20.port;
+        target.path = removeDotSegments(relative20.path || "");
+        target.query = relative20.query;
       } else {
-        if (relative19.userinfo !== void 0 || relative19.host !== void 0 || relative19.port !== void 0) {
-          target.userinfo = relative19.userinfo;
-          target.host = relative19.host;
-          target.port = relative19.port;
-          target.path = removeDotSegments(relative19.path || "");
-          target.query = relative19.query;
+        if (relative20.userinfo !== void 0 || relative20.host !== void 0 || relative20.port !== void 0) {
+          target.userinfo = relative20.userinfo;
+          target.host = relative20.host;
+          target.port = relative20.port;
+          target.path = removeDotSegments(relative20.path || "");
+          target.query = relative20.query;
         } else {
-          if (!relative19.path) {
+          if (!relative20.path) {
             target.path = base.path;
-            if (relative19.query !== void 0) {
-              target.query = relative19.query;
+            if (relative20.query !== void 0) {
+              target.query = relative20.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative19.path[0] === "/") {
-              target.path = removeDotSegments(relative19.path);
+            if (relative20.path[0] === "/") {
+              target.path = removeDotSegments(relative20.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative19.path;
+                target.path = "/" + relative20.path;
               } else if (!base.path) {
-                target.path = relative19.path;
+                target.path = relative20.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative19.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative20.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative19.query;
+            target.query = relative20.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -11498,7 +11787,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative19.fragment;
+      target.fragment = relative20.fragment;
       return target;
     }
     __name(resolveComponent, "resolveComponent");
@@ -11709,7 +11998,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize4,
-      resolve: resolve22,
+      resolve: resolve23,
       resolveComponent,
       equal,
       serialize,
@@ -12584,8 +12873,8 @@ var require_multipleOf = __commonJS({
         const { gen, data, schemaCode, it } = cxt;
         const prec = it.opts.multipleOfPrecision;
         const res = gen.let("res");
-        const invalid = prec ? (0, codegen_1._)`Math.abs(Math.round(${res}) - ${res}) > 1e-${prec}` : (0, codegen_1._)`${res} !== parseInt(${res})`;
-        cxt.fail$data((0, codegen_1._)`(${schemaCode} === 0 || (${res} = ${data}/${schemaCode}, ${invalid}))`);
+        const invalid5 = prec ? (0, codegen_1._)`Math.abs(Math.round(${res}) - ${res}) > 1e-${prec}` : (0, codegen_1._)`${res} !== parseInt(${res})`;
+        cxt.fail$data((0, codegen_1._)`(${schemaCode} === 0 || (${res} = ${data}/${schemaCode}, ${invalid5}))`);
       }
     };
     exports.default = def;
@@ -14842,104 +15131,6 @@ var init_digest = __esm({
   }
 });
 
-// src/core/errors.mjs
-var EXIT_CODE_MAP, CONFIG_INVALID, BASELINE_CHANGED, DIRTY_SCOPE_CONFLICT, GATE_FAILED, AUTH_MISSING, REMOTE_CONFLICT, POST_PUBLISH_VERIFY_FAILED, INVALID_STATE_TRANSITION, PLAN_DIGEST_MISMATCH, SECRET_DETECTED, PUBLIC_PATH_FORBIDDEN, STALE_BUILD_ARTIFACT, MISSING_PARAMETERS, PUBLIC_FILE_MISSING, SNAPSHOT_FIDELITY_FAILED, FORBIDDEN_CONTENT_DETECTED, PATH_UNSAFE, STRUCTURE_INVALID, ARTIFACT_POLICY_INVALID, PRODUCER_NONDETERMINISTIC, ADOPTION_AMBIGUOUS, PLAN_STALE, SENSITIVE_CONFLICT, TRANSACTION_INCOMPLETE, SAFE_WRITE_UNAVAILABLE, SETUP_DIGEST_MISMATCH, CONFIG_EXISTS, ReleaseError, ALL_ERROR_CODES;
-var init_errors = __esm({
-  "src/core/errors.mjs"() {
-    EXIT_CODE_MAP = Object.freeze({
-      CONFIG_INVALID: 10,
-      BASELINE_CHANGED: 11,
-      DIRTY_SCOPE_CONFLICT: 12,
-      GATE_FAILED: 13,
-      AUTH_MISSING: 14,
-      REMOTE_CONFLICT: 15,
-      HOOK_TIMEOUT: 16,
-      PARTIAL_RELEASE: 17,
-      POST_PUBLISH_VERIFY_FAILED: 18,
-      INVALID_STATE_TRANSITION: 19,
-      PLAN_DIGEST_MISMATCH: 20,
-      SECRET_DETECTED: 21,
-      PUBLIC_PATH_FORBIDDEN: 22,
-      STALE_BUILD_ARTIFACT: 23,
-      MISSING_PARAMETERS: 24,
-      PUBLIC_FILE_MISSING: 25,
-      SNAPSHOT_FIDELITY_FAILED: 26,
-      FORBIDDEN_CONTENT_DETECTED: 27,
-      PATH_UNSAFE: 28,
-      STRUCTURE_INVALID: 29,
-      LOCK_MIGRATION_REQUIRED: 30,
-      ARTIFACT_POLICY_INVALID: 31,
-      BASE_UNAVAILABLE: 32,
-      PRODUCER_NONDETERMINISTIC: 33,
-      PRODUCER_SCOPE_VIOLATION: 34,
-      ADOPTION_AMBIGUOUS: 35,
-      PLAN_STALE: 36,
-      SENSITIVE_CONFLICT: 37,
-      TRANSACTION_INCOMPLETE: 38,
-      SAFE_WRITE_UNAVAILABLE: 39,
-      SETUP_DIGEST_MISMATCH: 40,
-      CONFIG_EXISTS: 41
-    });
-    CONFIG_INVALID = "CONFIG_INVALID";
-    BASELINE_CHANGED = "BASELINE_CHANGED";
-    DIRTY_SCOPE_CONFLICT = "DIRTY_SCOPE_CONFLICT";
-    GATE_FAILED = "GATE_FAILED";
-    AUTH_MISSING = "AUTH_MISSING";
-    REMOTE_CONFLICT = "REMOTE_CONFLICT";
-    POST_PUBLISH_VERIFY_FAILED = "POST_PUBLISH_VERIFY_FAILED";
-    INVALID_STATE_TRANSITION = "INVALID_STATE_TRANSITION";
-    PLAN_DIGEST_MISMATCH = "PLAN_DIGEST_MISMATCH";
-    SECRET_DETECTED = "SECRET_DETECTED";
-    PUBLIC_PATH_FORBIDDEN = "PUBLIC_PATH_FORBIDDEN";
-    STALE_BUILD_ARTIFACT = "STALE_BUILD_ARTIFACT";
-    MISSING_PARAMETERS = "MISSING_PARAMETERS";
-    PUBLIC_FILE_MISSING = "PUBLIC_FILE_MISSING";
-    SNAPSHOT_FIDELITY_FAILED = "SNAPSHOT_FIDELITY_FAILED";
-    FORBIDDEN_CONTENT_DETECTED = "FORBIDDEN_CONTENT_DETECTED";
-    PATH_UNSAFE = "PATH_UNSAFE";
-    STRUCTURE_INVALID = "STRUCTURE_INVALID";
-    ARTIFACT_POLICY_INVALID = "ARTIFACT_POLICY_INVALID";
-    PRODUCER_NONDETERMINISTIC = "PRODUCER_NONDETERMINISTIC";
-    ADOPTION_AMBIGUOUS = "ADOPTION_AMBIGUOUS";
-    PLAN_STALE = "PLAN_STALE";
-    SENSITIVE_CONFLICT = "SENSITIVE_CONFLICT";
-    TRANSACTION_INCOMPLETE = "TRANSACTION_INCOMPLETE";
-    SAFE_WRITE_UNAVAILABLE = "SAFE_WRITE_UNAVAILABLE";
-    SETUP_DIGEST_MISMATCH = "SETUP_DIGEST_MISMATCH";
-    CONFIG_EXISTS = "CONFIG_EXISTS";
-    ReleaseError = class _ReleaseError extends Error {
-      static {
-        __name(this, "ReleaseError");
-      }
-      constructor(code, message, details = {}, exitCode) {
-        super(message);
-        this.name = "ReleaseError";
-        this.code = code;
-        this.details = details;
-        this.exitCode = exitCode ?? EXIT_CODE_MAP[code] ?? 1;
-        if (Error.captureStackTrace) {
-          Error.captureStackTrace(this, _ReleaseError);
-        }
-      }
-      /**
-       * Serialise the error to a plain JSON-safe object.
-       * Intentionally omits the stack trace and any raw secret values.
-       *
-       * @returns {{ code: string, message: string, details: Record<string, unknown>, exitCode: number }}
-       */
-      toJSON() {
-        return {
-          code: this.code,
-          message: this.message,
-          details: this.details,
-          exitCode: this.exitCode
-        };
-      }
-    };
-    ALL_ERROR_CODES = Object.freeze(Object.keys(EXIT_CODE_MAP));
-  }
-});
-
 // src/artifacts/project-lock.mjs
 import { mkdir, rm, writeFile, readFile, readdir, stat, lstat, open } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -15425,10 +15616,10 @@ function lexicalPath(resource, code) {
   }
   return path3;
 }
-function assertStat(stat8, resource, code) {
-  if (stat8.isSymbolicLink()) fail(code, resource, "SYMLINK");
-  if (!stat8.isFile()) fail(code, resource, "NOT_REGULAR_FILE");
-  if (stat8.nlink !== 1) fail(code, resource, "UNEXPECTED_HARDLINK_COUNT");
+function assertStat(stat9, resource, code) {
+  if (stat9.isSymbolicLink()) fail(code, resource, "SYMLINK");
+  if (!stat9.isFile()) fail(code, resource, "NOT_REGULAR_FILE");
+  if (stat9.nlink !== 1) fail(code, resource, "UNEXPECTED_HARDLINK_COUNT");
 }
 function assertPhysicalContainment(physicalRoot, physicalPath, resource, code) {
   const rel = relative(physicalRoot, physicalPath);
@@ -15438,13 +15629,13 @@ function assertPhysicalContainment(physicalRoot, physicalPath, resource, code) {
 }
 function readTrustedPackageResourceSync(resource, { code = CONFIG_INVALID } = {}) {
   const path3 = lexicalPath(resource, code);
-  let stat8;
+  let stat9;
   try {
-    stat8 = lstatSync(path3);
+    stat9 = lstatSync(path3);
   } catch {
     fail(code, resource, "MISSING");
   }
-  assertStat(stat8, resource, code);
+  assertStat(stat9, resource, code);
   let physicalRoot;
   let physicalPath;
   try {
@@ -15462,13 +15653,13 @@ function readTrustedPackageResourceSync(resource, { code = CONFIG_INVALID } = {}
 }
 async function readTrustedPackageResource(resource, { code = CONFIG_INVALID } = {}) {
   const path3 = lexicalPath(resource, code);
-  let stat8;
+  let stat9;
   try {
-    stat8 = await lstat2(path3);
+    stat9 = await lstat2(path3);
   } catch {
     fail(code, resource, "MISSING");
   }
-  assertStat(stat8, resource, code);
+  assertStat(stat9, resource, code);
   let physicalRoot;
   let physicalPath;
   try {
@@ -16132,8 +16323,8 @@ function safeRelative(root, path3) {
   return rel || ".";
 }
 async function readJsonBounded(path3, label) {
-  const stat8 = await lstat3(path3);
-  if (!stat8.isFile() || stat8.isSymbolicLink() || stat8.size > MAX_JSON_BYTES) {
+  const stat9 = await lstat3(path3);
+  if (!stat9.isFile() || stat9.isSymbolicLink() || stat9.size > MAX_JSON_BYTES) {
     throw setupError(CONFIG_INVALID, `${label} must be a regular JSON file no larger than 1 MiB`, { path: path3 });
   }
   try {
@@ -17096,9 +17287,9 @@ async function setupProject({ root, answersPath, write = false, confirmSetup, fa
   const configPath = join2(rootReal, ".release-skill", "project.yaml");
   let configExists = false;
   try {
-    const stat8 = await lstat3(configPath);
+    const stat9 = await lstat3(configPath);
     configExists = true;
-    if (!stat8.isFile() || stat8.isSymbolicLink()) {
+    if (!stat9.isFile() || stat9.isSymbolicLink()) {
       throw setupError(CONFIG_INVALID, "existing project.yaml must be a regular file");
     }
   } catch (error) {
@@ -17545,24 +17736,24 @@ async function computeWorkspaceDigest(root) {
           `Refusing to read path outside repository root: ${relPath} resolves to ${absPath}`
         );
       }
-      const stat8 = await lstat4(absPath);
+      const stat9 = await lstat4(absPath);
       let type;
-      if (stat8.isSymbolicLink()) {
+      if (stat9.isSymbolicLink()) {
         type = "symlink";
-      } else if (stat8.isDirectory()) {
+      } else if (stat9.isDirectory()) {
         type = "dir";
-      } else if (stat8.isFile()) {
+      } else if (stat9.isFile()) {
         type = "file";
       } else {
         type = "other";
       }
       const typeMarker = `TYPE:${type}`;
       let content;
-      if (stat8.isFile()) {
+      if (stat9.isFile()) {
         const handle = await open2(absPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
         try {
           const fdStat = await handle.stat();
-          if (fdStat.ino !== stat8.ino) {
+          if (fdStat.ino !== stat9.ino) {
             throw new Error(
               `Race detected: inode changed for ${relPath} between lstat and read`
             );
@@ -17577,7 +17768,7 @@ async function computeWorkspaceDigest(root) {
         } finally {
           await handle.close();
         }
-      } else if (stat8.isSymbolicLink()) {
+      } else if (stat9.isSymbolicLink()) {
         content = Buffer.from(await readlink(absPath), "utf8");
       } else {
         content = Buffer.alloc(0);
@@ -19336,10 +19527,10 @@ async function resolveSafeCwd(executionRoot, cwd, gate) {
   let current = rootReal;
   for (const segment of rel.split(/[\\/]/).filter(Boolean)) {
     current = join4(current, segment);
-    const stat8 = await lstat6(current).catch((error) => {
+    const stat9 = await lstat6(current).catch((error) => {
       throw gateError(gate, "cwd does not exist", { cause: error.code });
     });
-    if (stat8.isSymbolicLink()) throw gateError(gate, "cwd contains a symlink");
+    if (stat9.isSymbolicLink()) throw gateError(gate, "cwd contains a symlink");
   }
   const physical = await realpath7(lexical);
   if (!isInside2(rootReal, physical)) throw gateError(gate, "cwd resolves outside the execution root");
@@ -19580,9 +19771,9 @@ async function runVerificationGate({
   return result;
 }
 async function makeTreeWritable(root) {
-  const stat8 = await lstat6(root);
-  if (!stat8.isDirectory() || stat8.isSymbolicLink()) throw new Error("gate copy root must be a real directory");
-  await chmod2(root, stat8.mode | 448);
+  const stat9 = await lstat6(root);
+  if (!stat9.isDirectory() || stat9.isSymbolicLink()) throw new Error("gate copy root must be a real directory");
+  await chmod2(root, stat9.mode | 448);
   for (const child of await readdir4(root, { withFileTypes: true })) {
     const absolute = join4(root, child.name);
     const childStat = await lstat6(absolute);
@@ -19804,14 +19995,14 @@ async function assertNoSymlinkAncestors(directory) {
   let current = join5(parsed.root, ...segments.slice(0, firstChecked));
   for (const segment of segments.slice(firstChecked)) {
     current = join5(current, segment);
-    let stat8;
+    let stat9;
     try {
-      stat8 = await lstat7(current);
+      stat9 = await lstat7(current);
     } catch (error) {
       if (error.code === "ENOENT") continue;
       throw error;
     }
-    if (stat8.isSymbolicLink() || !stat8.isDirectory()) {
+    if (stat9.isSymbolicLink() || !stat9.isDirectory()) {
       throw new ReleaseError(
         GATE_FAILED,
         "release authority path contains a symlink or non-directory ancestor",
@@ -19831,8 +20022,8 @@ async function assertAuthorityFileTarget(filePath) {
   const absolute = resolve11(filePath);
   await prepareAuthorityDirectory(dirname5(absolute));
   try {
-    const stat8 = await lstat7(absolute);
-    if (stat8.isSymbolicLink() || !stat8.isFile()) {
+    const stat9 = await lstat7(absolute);
+    if (stat9.isSymbolicLink() || !stat9.isFile()) {
       throw new ReleaseError(
         GATE_FAILED,
         "release authority target must be a regular file, never a symlink or special file",
@@ -21618,9 +21809,9 @@ async function scanFile(relPath, absPath, forbiddenPaths, forbiddenContentPatter
   for (const fp of forbiddenPaths) {
     const normFp = fp.replaceAll(win32.sep, posix2.sep).replace(/\/+$/, "").toLowerCase();
     if (!normFp) continue;
-    for (const sep3 of separators) {
-      const prefix = normFp.endsWith(sep3.toLowerCase()) ? normFp : normFp + sep3.toLowerCase();
-      const checkPath = lowerRel + sep3.toLowerCase();
+    for (const sep4 of separators) {
+      const prefix = normFp.endsWith(sep4.toLowerCase()) ? normFp : normFp + sep4.toLowerCase();
+      const checkPath = lowerRel + sep4.toLowerCase();
       if (lowerRel === normFp || checkPath.startsWith(prefix)) {
         const dedupKey = `FORBIDDEN_PATH:${normFp}:${normRel}`;
         if (!seenKinds.has(dedupKey)) {
@@ -22974,10 +23165,10 @@ var require_commonjs = __commonJS({
        * Return a void Promise that resolves once the stream ends.
        */
       async promise() {
-        return new Promise((resolve22, reject) => {
+        return new Promise((resolve23, reject) => {
           this.on(DESTROYED, () => reject(new Error("stream destroyed")));
           this.on("error", (er) => reject(er));
-          this.on("end", () => resolve22());
+          this.on("end", () => resolve23());
         });
       }
       /**
@@ -23001,7 +23192,7 @@ var require_commonjs = __commonJS({
             return Promise.resolve({ done: false, value: res });
           if (this[EOF])
             return stop();
-          let resolve22;
+          let resolve23;
           let reject;
           const onerr = /* @__PURE__ */ __name((er) => {
             this.off("data", ondata);
@@ -23015,19 +23206,19 @@ var require_commonjs = __commonJS({
             this.off("end", onend);
             this.off(DESTROYED, ondestroy);
             this.pause();
-            resolve22({ value, done: !!this[EOF] });
+            resolve23({ value, done: !!this[EOF] });
           }, "ondata");
           const onend = /* @__PURE__ */ __name(() => {
             this.off("error", onerr);
             this.off("data", ondata);
             this.off(DESTROYED, ondestroy);
             stop();
-            resolve22({ done: true, value: void 0 });
+            resolve23({ done: true, value: void 0 });
           }, "onend");
           const ondestroy = /* @__PURE__ */ __name(() => onerr(new Error("stream destroyed")), "ondestroy");
           return new Promise((res2, rej) => {
             reject = rej;
-            resolve22 = res2;
+            resolve23 = res2;
             this.once(DESTROYED, ondestroy);
             this.once("error", onerr);
             this.once("end", onend);
@@ -24118,10 +24309,10 @@ var require_minipass = __commonJS({
       }
       // stream.promise().then(() => done, er => emitted error)
       promise() {
-        return new Promise((resolve22, reject) => {
+        return new Promise((resolve23, reject) => {
           this.on(DESTROYED, () => reject(new Error("stream destroyed")));
           this.on("error", (er) => reject(er));
-          this.on("end", () => resolve22());
+          this.on("end", () => resolve23());
         });
       }
       // for await (let chunk of stream)
@@ -24132,7 +24323,7 @@ var require_minipass = __commonJS({
             return Promise.resolve({ done: false, value: res });
           if (this[EOF])
             return Promise.resolve({ done: true });
-          let resolve22 = null;
+          let resolve23 = null;
           let reject = null;
           const onerr = /* @__PURE__ */ __name((er) => {
             this.removeListener("data", ondata);
@@ -24143,17 +24334,17 @@ var require_minipass = __commonJS({
             this.removeListener("error", onerr);
             this.removeListener("end", onend);
             this.pause();
-            resolve22({ value, done: !!this[EOF] });
+            resolve23({ value, done: !!this[EOF] });
           }, "ondata");
           const onend = /* @__PURE__ */ __name(() => {
             this.removeListener("error", onerr);
             this.removeListener("data", ondata);
-            resolve22({ done: true });
+            resolve23({ done: true });
           }, "onend");
           const ondestroy = /* @__PURE__ */ __name(() => onerr(new Error("stream destroyed")), "ondestroy");
           return new Promise((res2, rej) => {
             reject = rej;
-            resolve22 = res2;
+            resolve23 = res2;
             this.once(DESTROYED, ondestroy);
             this.once("error", onerr);
             this.once("end", onend);
@@ -28192,12 +28383,12 @@ var require_body = __commonJS({
         if (resTimeout && resTimeout.unref) {
           resTimeout.unref();
         }
-        return new Promise((resolve22) => {
+        return new Promise((resolve23) => {
           if (stream !== upstream) {
             upstream.on("error", (er) => stream.emit("error", er));
             upstream.pipe(stream);
           }
-          resolve22();
+          resolve23();
         }).then(() => stream.concat()).then((buf) => {
           clearTimeout(resTimeout);
           return buf;
@@ -28962,7 +29153,7 @@ var require_lib2 = __commonJS({
     var fetch = /* @__PURE__ */ __name(async (url, opts) => {
       if (/^data:/.test(url)) {
         const request = new Request(url, opts);
-        return Promise.resolve().then(() => new Promise((resolve22, reject) => {
+        return Promise.resolve().then(() => new Promise((resolve23, reject) => {
           let type, data;
           try {
             const { pathname, search } = new URL2(url);
@@ -28986,10 +29177,10 @@ var require_lib2 = __commonJS({
           if (type) {
             headers["Content-Type"] = type;
           }
-          return resolve22(new Response(data, { headers }));
+          return resolve23(new Response(data, { headers }));
         }));
       }
-      return new Promise((resolve22, reject) => {
+      return new Promise((resolve23, reject) => {
         const request = new Request(url, opts);
         let options;
         try {
@@ -29108,7 +29299,7 @@ var require_lib2 = __commonJS({
                 requestOpts.body = void 0;
                 requestOpts.headers.delete("content-length");
               }
-              resolve22(fetch(new Request(locationURL, requestOpts)));
+              resolve23(fetch(new Request(locationURL, requestOpts)));
               finalize();
               return;
             }
@@ -29136,7 +29327,7 @@ var require_lib2 = __commonJS({
           const codings = headers.get("Content-Encoding");
           if (!request.compress || request.method === "HEAD" || codings === null || res.statusCode === 204 || res.statusCode === 304) {
             response = new Response(body, responseOptions);
-            resolve22(response);
+            resolve23(response);
             return;
           }
           const zlibOptions = {
@@ -29155,7 +29346,7 @@ var require_lib2 = __commonJS({
               ).pipe(unzip),
               responseOptions
             );
-            resolve22(response);
+            resolve23(response);
             return;
           }
           if (codings === "deflate" || codings === "x-deflate") {
@@ -29167,7 +29358,7 @@ var require_lib2 = __commonJS({
                 (er) => decoder2.emit("error", er)
               ).pipe(decoder2);
               response = new Response(decoder2, responseOptions);
-              resolve22(response);
+              resolve23(response);
             });
             return;
           }
@@ -29185,11 +29376,11 @@ var require_lib2 = __commonJS({
               (er) => decoder.emit("error", er)
             ).pipe(decoder);
             response = new Response(decoder, responseOptions);
-            resolve22(response);
+            resolve23(response);
             return;
           }
           response = new Response(body, responseOptions);
-          resolve22(response);
+          resolve23(response);
         });
         writeToStream(req, request);
       });
@@ -29443,12 +29634,12 @@ var require_lib3 = __commonJS({
           return process.emit("input", "end");
         }, "end"),
         read: /* @__PURE__ */ __name(function(...args2) {
-          let resolve22, reject;
+          let resolve23, reject;
           const promise = new Promise((_resolve, _reject) => {
-            resolve22 = _resolve;
+            resolve23 = _resolve;
             reject = _reject;
           });
-          process.emit("input", "read", resolve22, reject, ...args2);
+          process.emit("input", "read", resolve23, reject, ...args2);
           return promise;
         }, "read")
       }
@@ -29555,13 +29746,13 @@ var require_utils2 = __commonJS({
       }
       return "*".repeat(length);
     }, "asterisk");
-    var escapeRegExp = /* @__PURE__ */ __name((text) => {
+    var escapeRegExp2 = /* @__PURE__ */ __name((text) => {
       return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, `\\$&`);
     }, "escapeRegExp");
     var urlEncodeRegexGroup = /* @__PURE__ */ __name((value) => {
       const decoded = decodeURIComponent(value);
       const encoded = encodeURIComponent(value);
-      const union = [.../* @__PURE__ */ new Set([encoded, decoded, value])].map(escapeRegExp).join("|");
+      const union = [.../* @__PURE__ */ new Set([encoded, decoded, value])].map(escapeRegExp2).join("|");
       return union;
     }, "urlEncodeRegexGroup");
     var urlEncodeRegexTag = /* @__PURE__ */ __name((strings, ...values) => {
@@ -29667,7 +29858,7 @@ var require_utils2 = __commonJS({
     }, "redactUrlPassword");
     module.exports = {
       asterisk,
-      escapeRegExp,
+      escapeRegExp: escapeRegExp2,
       urlEncodeRegexGroup,
       urlEncodeRegexTag,
       redactUrlHostnameMatcher,
@@ -33863,7 +34054,7 @@ var require_npa = __commonJS({
           spec = arg;
         }
       }
-      return resolve22(name, spec, where, arg);
+      return resolve23(name, spec, where, arg);
     }
     __name(npa, "npa");
     function isFileSpec(spec) {
@@ -33886,7 +34077,7 @@ var require_npa = __commonJS({
       return spec.toLowerCase().startsWith("npm:");
     }
     __name(isAliasSpec, "isAliasSpec");
-    function resolve22(name, spec, where, arg) {
+    function resolve23(name, spec, where, arg) {
       const res = new Result({
         raw: arg,
         name,
@@ -33918,7 +34109,7 @@ var require_npa = __commonJS({
         return fromRegistry(res);
       }
     }
-    __name(resolve22, "resolve");
+    __name(resolve23, "resolve");
     function toPurl(arg, reg = defaultRegistry) {
       const res = npa(arg);
       if (res.type !== "version") {
@@ -34219,7 +34410,7 @@ var require_npa = __commonJS({
     }
     __name(fromRegistry, "fromRegistry");
     module.exports = npa;
-    module.exports.resolve = resolve22;
+    module.exports.resolve = resolve23;
     module.exports.toPurl = toPurl;
     module.exports.Result = Result;
   }
@@ -35810,7 +36001,7 @@ var require_lib7 = __commonJS({
         return `${this.algorithm}-${this.digest}${getOptString(this.options)}`;
       }
     };
-    function integrityHashToString(toString, sep3, opts, hashes) {
+    function integrityHashToString(toString, sep4, opts, hashes) {
       const toStringIsNotEmpty = toString !== "";
       let shouldAddFirstSep = false;
       let complement = "";
@@ -35820,7 +36011,7 @@ var require_lib7 = __commonJS({
         if (hashString) {
           shouldAddFirstSep = true;
           complement += hashString;
-          complement += sep3;
+          complement += sep4;
         }
       }
       const finalHashString = Hash.prototype.toString.call(hashes[lastIndex], opts);
@@ -35829,7 +36020,7 @@ var require_lib7 = __commonJS({
         complement += finalHashString;
       }
       if (toStringIsNotEmpty && shouldAddFirstSep) {
-        return toString + sep3 + complement;
+        return toString + sep4 + complement;
       }
       return toString + complement;
     }
@@ -35848,18 +36039,18 @@ var require_lib7 = __commonJS({
         return Object.keys(this).length === 0;
       }
       toString(opts) {
-        let sep3 = opts?.sep || " ";
+        let sep4 = opts?.sep || " ";
         let toString = "";
         if (opts?.strict) {
-          sep3 = sep3.replace(/\S+/g, " ");
+          sep4 = sep4.replace(/\S+/g, " ");
           for (const hash of SPEC_ALGORITHMS) {
             if (this[hash]) {
-              toString = integrityHashToString(toString, sep3, opts, this[hash]);
+              toString = integrityHashToString(toString, sep4, opts, this[hash]);
             }
           }
         } else {
           for (const hash of Object.keys(this)) {
-            toString = integrityHashToString(toString, sep3, opts, this[hash]);
+            toString = integrityHashToString(toString, sep4, opts, this[hash]);
           }
         }
         return toString;
@@ -35992,7 +36183,7 @@ var require_lib7 = __commonJS({
     module.exports.fromStream = fromStream;
     function fromStream(stream, opts) {
       const istream = integrityStream(opts);
-      return new Promise((resolve22, reject) => {
+      return new Promise((resolve23, reject) => {
         stream.pipe(istream);
         stream.on("error", reject);
         istream.on("error", reject);
@@ -36000,7 +36191,7 @@ var require_lib7 = __commonJS({
         istream.on("integrity", (s) => {
           sri = s;
         });
-        istream.on("end", () => resolve22(sri));
+        istream.on("end", () => resolve23(sri));
         istream.resume();
       });
     }
@@ -36061,7 +36252,7 @@ var require_lib7 = __commonJS({
         ));
       }
       const checker = integrityStream(opts);
-      return new Promise((resolve22, reject) => {
+      return new Promise((resolve23, reject) => {
         stream.pipe(checker);
         stream.on("error", reject);
         checker.on("error", reject);
@@ -36069,7 +36260,7 @@ var require_lib7 = __commonJS({
         checker.on("verified", (s) => {
           verified = s;
         });
-        checker.on("end", () => resolve22(verified));
+        checker.on("end", () => resolve23(verified));
         checker.resume();
       });
     }
@@ -36952,20 +37143,20 @@ var require_polyfill = __commonJS({
       copyFile,
       lstat: lstat15,
       mkdir: mkdir17,
-      readdir: readdir11,
+      readdir: readdir12,
       readlink: readlink2,
-      stat: stat8,
+      stat: stat9,
       symlink,
       unlink: unlink4,
       utimes
     } = __require("fs/promises");
     var {
       dirname: dirname15,
-      isAbsolute: isAbsolute16,
-      join: join21,
+      isAbsolute: isAbsolute17,
+      join: join22,
       parse: parse2,
-      resolve: resolve22,
-      sep: sep3,
+      resolve: resolve23,
+      sep: sep4,
       toNamespacedPath
     } = __require("path");
     var { fileURLToPath: fileURLToPath3 } = __require("url");
@@ -37051,7 +37242,7 @@ var require_polyfill = __commonJS({
     }
     __name(areIdentical, "areIdentical");
     function getStats(src, dest, opts) {
-      const statFunc = opts.dereference ? (file) => stat8(file, { bigint: true }) : (file) => lstat15(file, { bigint: true });
+      const statFunc = opts.dereference ? (file) => stat9(file, { bigint: true }) : (file) => lstat15(file, { bigint: true });
       return Promise.all([
         statFunc(src),
         statFunc(dest).catch((err) => {
@@ -37074,7 +37265,7 @@ var require_polyfill = __commonJS({
     }
     __name(checkParentDir, "checkParentDir");
     function pathExists2(dest) {
-      return stat8(dest).then(
+      return stat9(dest).then(
         () => true,
         // istanbul ignore next: not sure when this would occur
         (err) => err.code === "ENOENT" ? false : Promise.reject(err)
@@ -37082,14 +37273,14 @@ var require_polyfill = __commonJS({
     }
     __name(pathExists2, "pathExists");
     async function checkParentPaths(src, srcStat, dest) {
-      const srcParent = resolve22(dirname15(src));
-      const destParent = resolve22(dirname15(dest));
+      const srcParent = resolve23(dirname15(src));
+      const destParent = resolve23(dirname15(dest));
       if (destParent === srcParent || destParent === parse2(destParent).root) {
         return;
       }
       let destStat;
       try {
-        destStat = await stat8(destParent, { bigint: true });
+        destStat = await stat9(destParent, { bigint: true });
       } catch (err) {
         if (err.code === "ENOENT") {
           return;
@@ -37107,7 +37298,7 @@ var require_polyfill = __commonJS({
       return checkParentPaths(src, srcStat, destParent);
     }
     __name(checkParentPaths, "checkParentPaths");
-    var normalizePathToArray = /* @__PURE__ */ __name((path3) => resolve22(path3).split(sep3).filter(Boolean), "normalizePathToArray");
+    var normalizePathToArray = /* @__PURE__ */ __name((path3) => resolve23(path3).split(sep4).filter(Boolean), "normalizePathToArray");
     function isSrcSubdir(src, dest) {
       const srcArr = normalizePathToArray(src);
       const destArr = normalizePathToArray(dest);
@@ -37129,7 +37320,7 @@ var require_polyfill = __commonJS({
     }
     __name(startCopy, "startCopy");
     async function getStatsForCopy(destStat, src, dest, opts) {
-      const statFn = opts.dereference ? stat8 : lstat15;
+      const statFn = opts.dereference ? stat9 : lstat15;
       const srcStat = await statFn(src);
       if (srcStat.isDirectory() && opts.recursive) {
         return onDir(srcStat, destStat, src, dest, opts);
@@ -37222,7 +37413,7 @@ var require_polyfill = __commonJS({
     }
     __name(setDestMode, "setDestMode");
     async function setDestTimestamps(src, dest) {
-      const updatedSrcStat = await stat8(src);
+      const updatedSrcStat = await stat9(src);
       return utimes(dest, updatedSrcStat.atime, updatedSrcStat.mtime);
     }
     __name(setDestTimestamps, "setDestTimestamps");
@@ -37240,11 +37431,11 @@ var require_polyfill = __commonJS({
     }
     __name(mkDirAndCopy, "mkDirAndCopy");
     async function copyDir(src, dest, opts) {
-      const dir = await readdir11(src);
+      const dir = await readdir12(src);
       for (let i = 0; i < dir.length; i++) {
         const item = dir[i];
-        const srcItem = join21(src, item);
-        const destItem = join21(dest, item);
+        const srcItem = join22(src, item);
+        const destItem = join22(dest, item);
         const { destStat } = await checkPaths(srcItem, destItem, opts);
         await startCopy(destStat, srcItem, destItem, opts);
       }
@@ -37252,8 +37443,8 @@ var require_polyfill = __commonJS({
     __name(copyDir, "copyDir");
     async function onLink(destStat, src, dest) {
       let resolvedSrc = await readlink2(src);
-      if (!isAbsolute16(resolvedSrc)) {
-        resolvedSrc = resolve22(dirname15(src), resolvedSrc);
+      if (!isAbsolute17(resolvedSrc)) {
+        resolvedSrc = resolve23(dirname15(src), resolvedSrc);
       }
       if (!destStat) {
         return symlink(resolvedSrc, dest);
@@ -37267,8 +37458,8 @@ var require_polyfill = __commonJS({
         }
         throw err;
       }
-      if (!isAbsolute16(resolvedDest)) {
-        resolvedDest = resolve22(dirname15(dest), resolvedDest);
+      if (!isAbsolute17(resolvedDest)) {
+        resolvedDest = resolve23(dirname15(dest), resolvedDest);
       }
       if (isSrcSubdir(resolvedSrc, resolvedDest)) {
         throw new ERR_FS_CP_EINVAL({
@@ -37278,7 +37469,7 @@ var require_polyfill = __commonJS({
           errno: EINVAL
         });
       }
-      const srcStat = await stat8(src);
+      const srcStat = await stat9(src);
       if (srcStat.isDirectory() && isSrcSubdir(resolvedDest, resolvedSrc)) {
         throw new ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY({
           message: `cannot overwrite ${resolvedDest} with ${resolvedSrc}`,
@@ -37320,15 +37511,15 @@ var require_cp = __commonJS({
 // ../../node_modules/.pnpm/@npmcli+fs@4.0.0/node_modules/@npmcli/fs/lib/with-temp-dir.js
 var require_with_temp_dir = __commonJS({
   "../../node_modules/.pnpm/@npmcli+fs@4.0.0/node_modules/@npmcli/fs/lib/with-temp-dir.js"(exports, module) {
-    var { join: join21, sep: sep3 } = __require("path");
+    var { join: join22, sep: sep4 } = __require("path");
     var getOptions = require_get_options();
-    var { mkdir: mkdir17, mkdtemp: mkdtemp5, rm: rm8 } = __require("fs/promises");
+    var { mkdir: mkdir17, mkdtemp: mkdtemp5, rm: rm9 } = __require("fs/promises");
     var withTempDir = /* @__PURE__ */ __name(async (root, fn, opts) => {
       const options = getOptions(opts, {
         copy: ["tmpPrefix"]
       });
       await mkdir17(root, { recursive: true });
-      const target = await mkdtemp5(join21(`${root}${sep3}`, options.tmpPrefix || ""));
+      const target = await mkdtemp5(join22(`${root}${sep4}`, options.tmpPrefix || ""));
       let err;
       let result;
       try {
@@ -37337,7 +37528,7 @@ var require_with_temp_dir = __commonJS({
         err = _err;
       }
       try {
-        await rm8(target, { force: true, recursive: true });
+        await rm9(target, { force: true, recursive: true });
       } catch {
       }
       if (err) {
@@ -37352,14 +37543,14 @@ var require_with_temp_dir = __commonJS({
 // ../../node_modules/.pnpm/@npmcli+fs@4.0.0/node_modules/@npmcli/fs/lib/readdir-scoped.js
 var require_readdir_scoped = __commonJS({
   "../../node_modules/.pnpm/@npmcli+fs@4.0.0/node_modules/@npmcli/fs/lib/readdir-scoped.js"(exports, module) {
-    var { readdir: readdir11 } = __require("fs/promises");
-    var { join: join21 } = __require("path");
+    var { readdir: readdir12 } = __require("fs/promises");
+    var { join: join22 } = __require("path");
     var readdirScoped = /* @__PURE__ */ __name(async (dir) => {
       const results = [];
-      for (const item of await readdir11(dir)) {
+      for (const item of await readdir12(dir)) {
         if (item.startsWith("@")) {
-          for (const scopedItem of await readdir11(join21(dir, item))) {
-            results.push(join21(item, scopedItem));
+          for (const scopedItem of await readdir12(join22(dir, item))) {
+            results.push(join22(item, scopedItem));
           }
         } else {
           results.push(item);
@@ -37374,7 +37565,7 @@ var require_readdir_scoped = __commonJS({
 // ../../node_modules/.pnpm/@npmcli+fs@4.0.0/node_modules/@npmcli/fs/lib/move-file.js
 var require_move_file = __commonJS({
   "../../node_modules/.pnpm/@npmcli+fs@4.0.0/node_modules/@npmcli/fs/lib/move-file.js"(exports, module) {
-    var { dirname: dirname15, join: join21, resolve: resolve22, relative: relative19, isAbsolute: isAbsolute16 } = __require("path");
+    var { dirname: dirname15, join: join22, resolve: resolve23, relative: relative20, isAbsolute: isAbsolute17 } = __require("path");
     var fs = __require("fs/promises");
     var pathExists2 = /* @__PURE__ */ __name(async (path3) => {
       try {
@@ -37404,7 +37595,7 @@ var require_move_file = __commonJS({
           if (sourceStat.isDirectory()) {
             const files = await fs.readdir(source);
             await Promise.all(files.map(
-              (file) => moveFile(join21(source, file), join21(destination, file), options, false, symlinks)
+              (file) => moveFile(join22(source, file), join22(destination, file), options, false, symlinks)
             ));
           } else if (sourceStat.isSymbolicLink()) {
             symlinks.push({ source, destination });
@@ -37418,12 +37609,12 @@ var require_move_file = __commonJS({
       if (root) {
         await Promise.all(symlinks.map(async ({ source: symSource, destination: symDestination }) => {
           let target = await fs.readlink(symSource);
-          if (isAbsolute16(target)) {
-            target = resolve22(symDestination, relative19(symSource, target));
+          if (isAbsolute17(target)) {
+            target = resolve23(symDestination, relative20(symSource, target));
           }
           let targetStat = "file";
           try {
-            targetStat = await fs.stat(resolve22(dirname15(symSource), target));
+            targetStat = await fs.stat(resolve23(dirname15(symSource), target));
             if (targetStat.isDirectory()) {
               targetStat = "junction";
             }
@@ -37496,7 +37687,7 @@ async function pMap(iterable, mapper, {
     const cleanup = /* @__PURE__ */ __name(() => {
       signal?.removeEventListener("abort", signalListener);
     }, "cleanup");
-    const resolve22 = /* @__PURE__ */ __name((value) => {
+    const resolve23 = /* @__PURE__ */ __name((value) => {
       resolve_(value);
       cleanup();
     }, "resolve");
@@ -37528,7 +37719,7 @@ async function pMap(iterable, mapper, {
           }
           isResolved = true;
           if (skippedIndexesMap.size === 0) {
-            resolve22(result);
+            resolve23(result);
             return;
           }
           const pureResult = [];
@@ -37538,7 +37729,7 @@ async function pMap(iterable, mapper, {
             }
             pureResult.push(value);
           }
-          resolve22(pureResult);
+          resolve23(pureResult);
         }
         return;
       }
@@ -37678,9 +37869,9 @@ var require_entry_index = __commonJS({
     var {
       appendFile,
       mkdir: mkdir17,
-      readFile: readFile26,
-      readdir: readdir11,
-      rm: rm8,
+      readFile: readFile27,
+      readdir: readdir12,
+      rm: rm9,
       writeFile: writeFile10
     } = __require("fs/promises");
     var { Minipass } = require_commonjs();
@@ -37732,7 +37923,7 @@ var require_entry_index = __commonJS({
       }, "setup");
       const teardown = /* @__PURE__ */ __name(async (tmp2) => {
         if (!tmp2.moved) {
-          return rm8(tmp2.target, { recursive: true, force: true });
+          return rm9(tmp2.target, { recursive: true, force: true });
         }
       }, "teardown");
       const write = /* @__PURE__ */ __name(async (tmp2) => {
@@ -37802,7 +37993,7 @@ ${hashEntry(stringified)}	${stringified}`);
         return insert(cache, key, null, opts);
       }
       const bucket = bucketPath(cache, key);
-      return rm8(bucket, { recursive: true, force: true });
+      return rm9(bucket, { recursive: true, force: true });
     }
     __name(del, "del");
     module.exports.lsStream = lsStream;
@@ -37870,7 +38061,7 @@ ${hashEntry(stringified)}	${stringified}`);
     __name(ls, "ls");
     module.exports.bucketEntries = bucketEntries;
     async function bucketEntries(bucket, filter) {
-      const data = await readFile26(bucket, "utf8");
+      const data = await readFile27(bucket, "utf8");
       return _bucketEntries(data, filter);
     }
     __name(bucketEntries, "bucketEntries");
@@ -37939,7 +38130,7 @@ ${hashEntry(stringified)}	${stringified}`);
     }
     __name(formatEntry, "formatEntry");
     function readdirOrEmpty(dir) {
-      return readdir11(dir).catch((err) => {
+      return readdir12(dir).catch((err) => {
         if (err.code === "ENOENT" || err.code === "ENOTDIR") {
           return [];
         }
@@ -38435,16 +38626,16 @@ var require_read = __commonJS({
     var MAX_SINGLE_READ_SIZE = 64 * 1024 * 1024;
     async function read(cache, integrity, opts = {}) {
       const { size } = opts;
-      const { stat: stat8, cpath, sri } = await withContentSri(cache, integrity, async (cpath2, sri2) => {
-        const stat9 = size ? { size } : await fs.stat(cpath2);
-        return { stat: stat9, cpath: cpath2, sri: sri2 };
+      const { stat: stat9, cpath, sri } = await withContentSri(cache, integrity, async (cpath2, sri2) => {
+        const stat10 = size ? { size } : await fs.stat(cpath2);
+        return { stat: stat10, cpath: cpath2, sri: sri2 };
       });
-      if (stat8.size > MAX_SINGLE_READ_SIZE) {
-        return readPipeline(cpath, stat8.size, sri, new Pipeline()).concat();
+      if (stat9.size > MAX_SINGLE_READ_SIZE) {
+        return readPipeline(cpath, stat9.size, sri, new Pipeline()).concat();
       }
       const data = await fs.readFile(cpath, { encoding: null });
-      if (stat8.size !== data.length) {
-        throw sizeError(stat8.size, data.length);
+      if (stat9.size !== data.length) {
+        throw sizeError(stat9.size, data.length);
       }
       if (!ssri.checkData(data, sri)) {
         throw integrityError(sri, cpath);
@@ -38471,11 +38662,11 @@ var require_read = __commonJS({
       const { size } = opts;
       const stream = new Pipeline();
       Promise.resolve().then(async () => {
-        const { stat: stat8, cpath, sri } = await withContentSri(cache, integrity, async (cpath2, sri2) => {
-          const stat9 = size ? { size } : await fs.stat(cpath2);
-          return { stat: stat9, cpath: cpath2, sri: sri2 };
+        const { stat: stat9, cpath, sri } = await withContentSri(cache, integrity, async (cpath2, sri2) => {
+          const stat10 = size ? { size } : await fs.stat(cpath2);
+          return { stat: stat10, cpath: cpath2, sri: sri2 };
         });
-        return readPipeline(cpath, stat8.size, sri, stream);
+        return readPipeline(cpath, stat9.size, sri, stream);
       }).catch((err) => stream.emit("error", err));
       return stream;
     }
@@ -38494,8 +38685,8 @@ var require_read = __commonJS({
       }
       try {
         return await withContentSri(cache, integrity, async (cpath, sri) => {
-          const stat8 = await fs.stat(cpath);
-          return { size: stat8.size, sri, stat: stat8 };
+          const stat9 = await fs.stat(cpath);
+          return { size: stat9.size, sri, stat: stat9 };
         });
       } catch (err) {
         if (err.code === "ENOENT") {
@@ -41744,9 +41935,9 @@ var require_commonjs5 = __commonJS({
         if (this.#asyncReaddirInFlight) {
           await this.#asyncReaddirInFlight;
         } else {
-          let resolve22 = /* @__PURE__ */ __name(() => {
+          let resolve23 = /* @__PURE__ */ __name(() => {
           }, "resolve");
-          this.#asyncReaddirInFlight = new Promise((res) => resolve22 = res);
+          this.#asyncReaddirInFlight = new Promise((res) => resolve23 = res);
           try {
             for (const e of await this.#fs.promises.readdir(fullpath, {
               withFileTypes: true
@@ -41759,7 +41950,7 @@ var require_commonjs5 = __commonJS({
             children.provisional = 0;
           }
           this.#asyncReaddirInFlight = void 0;
-          resolve22();
+          resolve23();
         }
         return children.slice(0, children.provisional);
       }
@@ -42001,7 +42192,7 @@ var require_commonjs5 = __commonJS({
        *
        * @internal
        */
-      constructor(cwd = process.cwd(), pathImpl, sep3, { nocase, childrenCacheSize = 16 * 1024, fs = defaultFS } = {}) {
+      constructor(cwd = process.cwd(), pathImpl, sep4, { nocase, childrenCacheSize = 16 * 1024, fs = defaultFS } = {}) {
         this.#fs = fsFromOption(fs);
         if (cwd instanceof URL || cwd.startsWith("file://")) {
           cwd = (0, node_url_1.fileURLToPath)(cwd);
@@ -42012,7 +42203,7 @@ var require_commonjs5 = __commonJS({
         this.#resolveCache = new ResolveCache();
         this.#resolvePosixCache = new ResolveCache();
         this.#children = new ChildrenCache(childrenCacheSize);
-        const split = cwdPath.substring(this.rootPath.length).split(sep3);
+        const split = cwdPath.substring(this.rootPath.length).split(sep4);
         if (split.length === 1 && !split[0]) {
           split.pop();
         }
@@ -42870,10 +43061,10 @@ var require_ignore = __commonJS({
       ignored(p) {
         const fullpath = p.fullpath();
         const fullpaths = `${fullpath}/`;
-        const relative19 = p.relative() || ".";
-        const relatives = `${relative19}/`;
+        const relative20 = p.relative() || ".";
+        const relatives = `${relative20}/`;
         for (const m of this.relative) {
-          if (m.match(relative19) || m.match(relatives))
+          if (m.match(relative20) || m.match(relatives))
             return true;
         }
         for (const m of this.absolute) {
@@ -42884,9 +43075,9 @@ var require_ignore = __commonJS({
       }
       childrenIgnored(p) {
         const fullpath = p.fullpath() + "/";
-        const relative19 = (p.relative() || ".") + "/";
+        const relative20 = (p.relative() || ".") + "/";
         for (const m of this.relativeChildren) {
-          if (m.match(relative19))
+          if (m.match(relative20))
             return true;
         }
         for (const m of this.absoluteChildren) {
@@ -43837,8 +44028,8 @@ var require_rm = __commonJS({
     var fs = __require("fs/promises");
     var contentPath = require_path();
     var { hasContent } = require_read();
-    module.exports = rm8;
-    async function rm8(cache, integrity) {
+    module.exports = rm9;
+    async function rm9(cache, integrity) {
       const content = await hasContent(cache, integrity);
       if (content && content.sri) {
         await fs.rm(contentPath(cache, content.sri), { recursive: true, force: true });
@@ -43847,7 +44038,7 @@ var require_rm = __commonJS({
         return false;
       }
     }
-    __name(rm8, "rm");
+    __name(rm9, "rm");
   }
 });
 
@@ -43855,7 +44046,7 @@ var require_rm = __commonJS({
 var require_rm2 = __commonJS({
   "../../node_modules/.pnpm/cacache@19.0.1/node_modules/cacache/lib/rm.js"(exports, module) {
     "use strict";
-    var { rm: rm8 } = __require("fs/promises");
+    var { rm: rm9 } = __require("fs/promises");
     var glob = require_glob2();
     var index = require_entry_index();
     var memo = require_memoization();
@@ -43878,7 +44069,7 @@ var require_rm2 = __commonJS({
     async function all(cache) {
       memo.clearMemoized();
       const paths = await glob(path3.join(cache, "*(content-*|index-*)"), { silent: true, nosort: true });
-      return Promise.all(paths.map((p) => rm8(p, { recursive: true, force: true })));
+      return Promise.all(paths.map((p) => rm9(p, { recursive: true, force: true })));
     }
     __name(all, "all");
   }
@@ -43890,9 +44081,9 @@ var require_verify = __commonJS({
     "use strict";
     var {
       mkdir: mkdir17,
-      readFile: readFile26,
-      rm: rm8,
-      stat: stat8,
+      readFile: readFile27,
+      rm: rm9,
+      stat: stat9,
       truncate,
       writeFile: writeFile10
     } = __require("fs/promises");
@@ -43977,8 +44168,8 @@ var require_verify = __commonJS({
           liveContent.add(integrity[algo].toString());
         }
       });
-      await new Promise((resolve22, reject) => {
-        indexStream.on("end", resolve22).on("error", reject);
+      await new Promise((resolve23, reject) => {
+        indexStream.on("end", resolve23).on("error", reject);
       });
       const contentDir = contentPath.contentDir(cache);
       const files = await glob(path3.join(contentDir, "**"), {
@@ -44012,8 +44203,8 @@ var require_verify = __commonJS({
             }
           } else {
             stats.reclaimedCount++;
-            const s = await stat8(f);
-            await rm8(f, { recursive: true, force: true });
+            const s = await stat9(f);
+            await rm9(f, { recursive: true, force: true });
             stats.reclaimedSize += s.size;
           }
           return stats;
@@ -44026,7 +44217,7 @@ var require_verify = __commonJS({
     async function verifyContent(filepath, sri) {
       const contentInfo = {};
       try {
-        const { size } = await stat8(filepath);
+        const { size } = await stat9(filepath);
         contentInfo.size = size;
         contentInfo.valid = true;
         await ssri.checkStream(new fsm.ReadStream(filepath), sri);
@@ -44037,7 +44228,7 @@ var require_verify = __commonJS({
         if (err.code !== "EINTEGRITY") {
           throw err;
         }
-        await rm8(filepath, { recursive: true, force: true });
+        await rm9(filepath, { recursive: true, force: true });
         contentInfo.valid = false;
       }
       return contentInfo;
@@ -44086,7 +44277,7 @@ var require_verify = __commonJS({
       for (const entry of bucket) {
         const content = contentPath(cache, entry.integrity);
         try {
-          await stat8(content);
+          await stat9(content);
           await index.insert(cache, entry.key, entry.integrity, {
             metadata: entry.metadata,
             size: entry.size,
@@ -44106,7 +44297,7 @@ var require_verify = __commonJS({
     __name(rebuildBucket, "rebuildBucket");
     function cleanTmp(cache, opts) {
       opts.log.silly("verify", "cleaning tmp directory");
-      return rm8(path3.join(cache, "tmp"), { recursive: true, force: true });
+      return rm9(path3.join(cache, "tmp"), { recursive: true, force: true });
     }
     __name(cleanTmp, "cleanTmp");
     async function writeVerifile(cache, opts) {
@@ -44117,7 +44308,7 @@ var require_verify = __commonJS({
     __name(writeVerifile, "writeVerifile");
     module.exports.lastRun = lastRun;
     async function lastRun(cache) {
-      const data = await readFile26(path3.join(cache, "_lastverified"), { encoding: "utf8" });
+      const data = await readFile27(path3.join(cache, "_lastverified"), { encoding: "utf8" });
       return /* @__PURE__ */ new Date(+data);
     }
     __name(lastRun, "lastRun");
@@ -44158,7 +44349,7 @@ var require_lib12 = __commonJS({
     "use strict";
     var get = require_get();
     var put = require_put();
-    var rm8 = require_rm2();
+    var rm9 = require_rm2();
     var verify = require_verify();
     var { clearMemoized } = require_memoization();
     var tmp = require_tmp();
@@ -44178,10 +44369,10 @@ var require_lib12 = __commonJS({
     module.exports.get.hasContent = get.hasContent;
     module.exports.put = put;
     module.exports.put.stream = put.stream;
-    module.exports.rm = rm8.entry;
-    module.exports.rm.all = rm8.all;
+    module.exports.rm = rm9.entry;
+    module.exports.rm.all = rm9.all;
     module.exports.rm.entry = module.exports.rm;
-    module.exports.rm.content = rm8.content;
+    module.exports.rm.content = rm9.content;
     module.exports.clearMemoized = clearMemoized;
     module.exports.tmp = {};
     module.exports.tmp.mkdir = tmp.mkdir;
@@ -44534,7 +44725,7 @@ var require_promise_retry = __commonJS({
         fn = temp;
       }
       operation = retry.operation(options);
-      return new Promise(function(resolve22, reject) {
+      return new Promise(function(resolve23, reject) {
         operation.attempt(function(number) {
           Promise.resolve().then(function() {
             return fn(function(err) {
@@ -44543,7 +44734,7 @@ var require_promise_retry = __commonJS({
               }
               throw errcode(new Error("Retrying"), "EPROMISERETRY", { retried: err });
             }, number);
-          }).then(resolve22, function(err) {
+          }).then(resolve23, function(err) {
             if (isRetryError(err)) {
               err = err.retried;
               if (operation.retry(err || new Error())) {
@@ -45428,8 +45619,8 @@ var require_helpers = __commonJS({
     function req(url, opts = {}) {
       const href = typeof url === "string" ? url : url.href;
       const req2 = (href.startsWith("https:") ? https : http).request(url, opts);
-      const promise = new Promise((resolve22, reject) => {
-        req2.once("response", resolve22).once("error", reject).end();
+      const promise = new Promise((resolve23, reject) => {
+        req2.once("response", resolve23).once("error", reject).end();
       });
       req2.then = promise.then.bind(promise);
       return req2;
@@ -45744,7 +45935,7 @@ var require_parse_proxy_response = __commonJS({
     var debug_1 = __importDefault(require_src());
     var debug = (0, debug_1.default)("https-proxy-agent:parse-proxy-response");
     function parseProxyResponse(socket) {
-      return new Promise((resolve22, reject) => {
+      return new Promise((resolve23, reject) => {
         let buffersLength = 0;
         const buffers = [];
         function read() {
@@ -45814,7 +46005,7 @@ var require_parse_proxy_response = __commonJS({
           }
           debug("got proxy server response: %o %o", firstLine, headers);
           cleanup();
-          resolve22({
+          resolve23({
             connect: {
               statusCode,
               statusText,
@@ -49493,12 +49684,12 @@ var require_socksclient = __commonJS({
     "use strict";
     var __awaiter = exports && exports.__awaiter || function(thisArg, _arguments, P, generator) {
       function adopt(value) {
-        return value instanceof P ? value : new P(function(resolve22) {
-          resolve22(value);
+        return value instanceof P ? value : new P(function(resolve23) {
+          resolve23(value);
         });
       }
       __name(adopt, "adopt");
-      return new (P || (P = Promise))(function(resolve22, reject) {
+      return new (P || (P = Promise))(function(resolve23, reject) {
         function fulfilled(value) {
           try {
             step(generator.next(value));
@@ -49516,7 +49707,7 @@ var require_socksclient = __commonJS({
         }
         __name(rejected, "rejected");
         function step(result) {
-          result.done ? resolve22(result.value) : adopt(result.value).then(fulfilled, rejected);
+          result.done ? resolve23(result.value) : adopt(result.value).then(fulfilled, rejected);
         }
         __name(step, "step");
         step((generator = generator.apply(thisArg, _arguments || [])).next());
@@ -49554,13 +49745,13 @@ var require_socksclient = __commonJS({
        * @returns { Promise }
        */
       static createConnection(options, callback) {
-        return new Promise((resolve22, reject) => {
+        return new Promise((resolve23, reject) => {
           try {
             (0, helpers_1.validateSocksClientOptions)(options, ["connect"]);
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              return resolve22(err);
+              return resolve23(err);
             } else {
               return reject(err);
             }
@@ -49571,16 +49762,16 @@ var require_socksclient = __commonJS({
             client.removeAllListeners();
             if (typeof callback === "function") {
               callback(null, info);
-              resolve22(info);
+              resolve23(info);
             } else {
-              resolve22(info);
+              resolve23(info);
             }
           });
           client.once("error", (err) => {
             client.removeAllListeners();
             if (typeof callback === "function") {
               callback(err);
-              resolve22(err);
+              resolve23(err);
             } else {
               reject(err);
             }
@@ -49597,13 +49788,13 @@ var require_socksclient = __commonJS({
        * @returns { Promise }
        */
       static createConnectionChain(options, callback) {
-        return new Promise((resolve22, reject) => __awaiter(this, void 0, void 0, function* () {
+        return new Promise((resolve23, reject) => __awaiter(this, void 0, void 0, function* () {
           try {
             (0, helpers_1.validateSocksClientChainOptions)(options);
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              return resolve22(err);
+              return resolve23(err);
             } else {
               return reject(err);
             }
@@ -49629,14 +49820,14 @@ var require_socksclient = __commonJS({
             }
             if (typeof callback === "function") {
               callback(null, { socket: sock });
-              resolve22({ socket: sock });
+              resolve23({ socket: sock });
             } else {
-              resolve22({ socket: sock });
+              resolve23({ socket: sock });
             }
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              resolve22(err);
+              resolve23(err);
             } else {
               reject(err);
             }
@@ -50324,12 +50515,12 @@ var require_dist6 = __commonJS({
         let { host } = opts;
         const { port, lookup: lookupFn = dns.lookup } = opts;
         if (shouldLookup) {
-          host = await new Promise((resolve22, reject) => {
+          host = await new Promise((resolve23, reject) => {
             lookupFn(host, {}, (err, res) => {
               if (err) {
                 reject(err);
               } else {
-                resolve22(res);
+                resolve23(res);
               }
             });
           });
@@ -51141,8 +51332,8 @@ var require_entry = __commonJS({
         let body = null;
         if (this.response.status === 200) {
           let cacheWriteResolve, cacheWriteReject;
-          const cacheWritePromise = new Promise((resolve22, reject) => {
-            cacheWriteResolve = resolve22;
+          const cacheWritePromise = new Promise((resolve23, reject) => {
+            cacheWriteResolve = resolve23;
             cacheWriteReject = reject;
           }).catch((err) => {
             body.emit("error", err);
@@ -52657,9 +52848,9 @@ var require_index_min = __commonJS({
 var require_lib17 = __commonJS({
   "../../node_modules/.pnpm/which@5.0.0/node_modules/which/lib/index.js"(exports, module) {
     var { isexe, sync: isexeSync } = require_index_min();
-    var { join: join21, delimiter, sep: sep3, posix: posix3 } = __require("path");
+    var { join: join22, delimiter, sep: sep4, posix: posix3 } = __require("path");
     var isWindows = process.platform === "win32";
-    var rSlash = new RegExp(`[${posix3.sep}${sep3 === posix3.sep ? "" : sep3}]`.replace(/(\\)/g, "\\$1"));
+    var rSlash = new RegExp(`[${posix3.sep}${sep4 === posix3.sep ? "" : sep4}]`.replace(/(\\)/g, "\\$1"));
     var rRel = new RegExp(`^\\.${rSlash.source}`);
     var getNotFoundError = /* @__PURE__ */ __name((cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" }), "getNotFoundError");
     var getPathInfo = /* @__PURE__ */ __name((cmd, {
@@ -52686,7 +52877,7 @@ var require_lib17 = __commonJS({
     var getPathPart = /* @__PURE__ */ __name((raw, cmd) => {
       const pathPart = /^".*"$/.test(raw) ? raw.slice(1, -1) : raw;
       const prefix = !pathPart && rRel.test(cmd) ? cmd.slice(0, 2) : "";
-      return prefix + join21(pathPart, cmd);
+      return prefix + join22(pathPart, cmd);
     }, "getPathPart");
     var which = /* @__PURE__ */ __name(async (cmd, opt = {}) => {
       const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
@@ -52809,9 +53000,9 @@ var require_lib18 = __commonJS({
       if (opts.shell) {
         return spawnWithShell(cmd, args2, opts, extra);
       }
-      let resolve22, reject;
+      let resolve23, reject;
       const promise = new Promise((_resolve, _reject) => {
-        resolve22 = _resolve;
+        resolve23 = _resolve;
         reject = _reject;
       });
       const closeError = new Error("command failed");
@@ -52844,7 +53035,7 @@ var require_lib18 = __commonJS({
         if (code || signal) {
           rejectWithOpts(closeError, { code, signal });
         } else {
-          resolve22(getResult({ code, signal }));
+          resolve23(getResult({ code, signal }));
         }
       });
       return promise;
@@ -53138,7 +53329,7 @@ var require_ini = __commonJS({
           continue;
         }
         if (match[1] !== void 0) {
-          section = unsafe(match[1]);
+          section = unsafe2(match[1]);
           if (section === "__proto__") {
             p = /* @__PURE__ */ Object.create(null);
             continue;
@@ -53146,7 +53337,7 @@ var require_ini = __commonJS({
           p = out[section] = out[section] || /* @__PURE__ */ Object.create(null);
           continue;
         }
-        const keyRaw = unsafe(match[2]);
+        const keyRaw = unsafe2(match[2]);
         let isArray;
         if (opt.bracketedArray) {
           isArray = keyRaw.length > 2 && keyRaw.slice(-2) === "[]";
@@ -53158,7 +53349,7 @@ var require_ini = __commonJS({
         if (key === "__proto__") {
           continue;
         }
-        const valueRaw = match[3] ? unsafe(match[4]) : true;
+        const valueRaw = match[3] ? unsafe2(match[4]) : true;
         const value = valueRaw === "true" || valueRaw === "false" || valueRaw === "null" ? JSON.parse(valueRaw) : valueRaw;
         if (isArray) {
           if (!hasOwnProperty.call(p, key)) {
@@ -53211,7 +53402,7 @@ var require_ini = __commonJS({
       }
       return val.split(";").join("\\;").split("#").join("\\#");
     }, "safe");
-    var unsafe = /* @__PURE__ */ __name((val) => {
+    var unsafe2 = /* @__PURE__ */ __name((val) => {
       val = (val || "").trim();
       if (isQuoted(val)) {
         if (val.charAt(0) === "'") {
@@ -53254,7 +53445,7 @@ var require_ini = __commonJS({
       stringify: encode,
       encode,
       safe,
-      unsafe
+      unsafe: unsafe2
     };
   }
 });
@@ -53709,8 +53900,8 @@ var require_dev_engines = __commonJS({
             depErrors.push(result);
           }
         }
-        const invalid = depErrors.length === dependencies.length;
-        if (invalid) {
+        const invalid5 = depErrors.length === dependencies.length;
+        if (invalid5) {
           const lastDependency = dependencies[dependencies.length - 1];
           let onFail = lastDependency.onFail || "error";
           if (onFail === "download") {
@@ -53825,7 +54016,7 @@ var require_lib19 = __commonJS({
 // ../../node_modules/.pnpm/npm-normalize-package-bin@4.0.0/node_modules/npm-normalize-package-bin/lib/index.js
 var require_lib20 = __commonJS({
   "../../node_modules/.pnpm/npm-normalize-package-bin@4.0.0/node_modules/npm-normalize-package-bin/lib/index.js"(exports, module) {
-    var { join: join21, basename: basename10 } = __require("path");
+    var { join: join22, basename: basename10 } = __require("path");
     var normalize4 = /* @__PURE__ */ __name((pkg) => !pkg.bin ? removeBin(pkg) : typeof pkg.bin === "string" ? normalizeString(pkg) : Array.isArray(pkg.bin) ? normalizeArray(pkg) : typeof pkg.bin === "object" ? normalizeObject(pkg) : removeBin(pkg), "normalize");
     var normalizeString = /* @__PURE__ */ __name((pkg) => {
       if (!pkg.name) {
@@ -53850,11 +54041,11 @@ var require_lib20 = __commonJS({
       const clean = {};
       let hasBins = false;
       Object.keys(orig).forEach((binKey) => {
-        const base = join21("/", basename10(binKey.replace(/\\|:/g, "/"))).slice(1);
+        const base = join22("/", basename10(binKey.replace(/\\|:/g, "/"))).slice(1);
         if (typeof orig[binKey] !== "string" || !base) {
           return;
         }
-        const binTarget = join21("/", orig[binKey].replace(/\\/g, "/")).replace(/\\/g, "/").slice(1);
+        const binTarget = join22("/", orig[binKey].replace(/\\/g, "/")).replace(/\\/g, "/").slice(1);
         if (!binTarget) {
           return;
         }
@@ -54155,8 +54346,8 @@ var require_clone = __commonJS({
 // ../../node_modules/.pnpm/@npmcli+git@6.0.3/node_modules/@npmcli/git/lib/is.js
 var require_is = __commonJS({
   "../../node_modules/.pnpm/@npmcli+git@6.0.3/node_modules/@npmcli/git/lib/is.js"(exports, module) {
-    var { stat: stat8 } = __require("fs/promises");
-    module.exports = ({ cwd = process.cwd() } = {}) => stat8(cwd + "/.git").then(() => true, () => false);
+    var { stat: stat9 } = __require("fs/promises");
+    module.exports = ({ cwd = process.cwd() } = {}) => stat9(cwd + "/.git").then(() => true, () => false);
   }
 });
 
@@ -56395,11 +56586,11 @@ var require_normalize = __commonJS({
 // ../../node_modules/.pnpm/@npmcli+package-json@6.2.0/node_modules/@npmcli/package-json/lib/read-package.js
 var require_read_package = __commonJS({
   "../../node_modules/.pnpm/@npmcli+package-json@6.2.0/node_modules/@npmcli/package-json/lib/read-package.js"(exports, module) {
-    var { readFile: readFile26 } = __require("fs/promises");
+    var { readFile: readFile27 } = __require("fs/promises");
     var parseJSON = require_lib16();
     async function read(filename) {
       try {
-        const data = await readFile26(filename, "utf8");
+        const data = await readFile27(filename, "utf8");
         return data;
       } catch (err) {
         err.message = `Could not read package.json: ${err}`;
@@ -56532,8 +56723,8 @@ var require_sort2 = __commonJS({
 // ../../node_modules/.pnpm/@npmcli+package-json@6.2.0/node_modules/@npmcli/package-json/lib/index.js
 var require_lib23 = __commonJS({
   "../../node_modules/.pnpm/@npmcli+package-json@6.2.0/node_modules/@npmcli/package-json/lib/index.js"(exports, module) {
-    var { readFile: readFile26, writeFile: writeFile10 } = __require("node:fs/promises");
-    var { resolve: resolve22 } = __require("node:path");
+    var { readFile: readFile27, writeFile: writeFile10 } = __require("node:fs/promises");
+    var { resolve: resolve23 } = __require("node:path");
     var parseJSON = require_lib16();
     var updateDeps = require_update_dependencies();
     var updateScripts = require_update_scripts();
@@ -56656,10 +56847,10 @@ var require_lib23 = __commonJS({
           parseErr = err;
         }
         if (parseErr) {
-          const indexFile = resolve22(this.path, "index.js");
+          const indexFile = resolve23(this.path, "index.js");
           let indexFileContent;
           try {
-            indexFileContent = await readFile26(indexFile, "utf8");
+            indexFileContent = await readFile27(indexFile, "utf8");
           } catch (err) {
             throw parseErr;
           }
@@ -56708,7 +56899,7 @@ var require_lib23 = __commonJS({
       }
       get filename() {
         if (this.path) {
-          return resolve22(this.path, "package.json");
+          return resolve23(this.path, "package.json");
         }
         return void 0;
       }
@@ -63634,12 +63825,12 @@ var require_fetcher = __commonJS({
     };
     exports.DefaultFetcher = DefaultFetcher;
     var writeBufferToStream = /* @__PURE__ */ __name(async (stream, buffer) => {
-      return new Promise((resolve22, reject) => {
+      return new Promise((resolve23, reject) => {
         stream.write(buffer, (err) => {
           if (err) {
             reject(err);
           }
-          resolve22(true);
+          resolve23(true);
         });
       });
     }, "writeBufferToStream");
@@ -63858,12 +64049,12 @@ var require_url = __commonJS({
   "../../node_modules/.pnpm/tuf-js@3.1.0/node_modules/tuf-js/dist/utils/url.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.join = join21;
+    exports.join = join22;
     var url_1 = __require("url");
-    function join21(base, path3) {
+    function join22(base, path3) {
       return new url_1.URL(ensureTrailingSlash(base) + removeLeadingSlash(path3)).toString();
     }
-    __name(join21, "join");
+    __name(join22, "join");
     function ensureTrailingSlash(path3) {
       return path3.endsWith("/") ? path3 : path3 + "/";
     }
@@ -64242,7 +64433,7 @@ var require_target = __commonJS({
     var error_1 = require_error8();
     async function readTarget(tuf, targetPath) {
       const path3 = await getTargetPath(tuf, targetPath);
-      return new Promise((resolve22, reject) => {
+      return new Promise((resolve23, reject) => {
         fs_1.default.readFile(path3, "utf-8", (err, data) => {
           if (err) {
             reject(new error_1.TUFError({
@@ -64251,7 +64442,7 @@ var require_target = __commonJS({
               cause: err
             }));
           } else {
-            resolve22(data);
+            resolve23(data);
           }
         });
       });
@@ -65968,7 +66159,7 @@ var require_dist15 = __commonJS({
 var require_provenance = __commonJS({
   "../../node_modules/.pnpm/libnpmpublish@11.1.0/node_modules/libnpmpublish/lib/provenance.js"(exports, module) {
     var sigstore = require_dist15();
-    var { readFile: readFile26 } = __require("node:fs/promises");
+    var { readFile: readFile27 } = __require("node:fs/promises");
     var ci = require_ci_info();
     var { env } = process;
     var INTOTO_PAYLOAD_TYPE = "application/vnd.in-toto+json";
@@ -66160,7 +66351,7 @@ var require_provenance = __commonJS({
     var verifyProvenance = /* @__PURE__ */ __name(async (subject, provenancePath) => {
       let provenanceBundle;
       try {
-        provenanceBundle = JSON.parse(await readFile26(provenancePath));
+        provenanceBundle = JSON.parse(await readFile27(provenancePath));
       } catch (err) {
         err.message = `Invalid provenance provided: ${err.message}`;
         throw err;
@@ -67710,13 +67901,5224 @@ var init_run = __esm({
   }
 });
 
+// src/artifacts/transaction-journal.mjs
+import { readdir as readdir7, readFile as readFile12, rm as rm5, stat as stat4 } from "node:fs/promises";
+import { join as join9 } from "node:path";
+function failSchema(message, details) {
+  throw new ReleaseError(TRANSACTION_INCOMPLETE, message, details);
+}
+function assertClosedObject(value, fields, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    failSchema(`${label} must be an object`);
+  }
+  for (const key of Object.keys(value)) {
+    if (!fields.has(key)) failSchema(`${label} has unknown field: ${key}`);
+  }
+}
+function normaliseMode(mode, label) {
+  if (Number.isSafeInteger(mode) && mode >= 0 && mode <= 511) return mode;
+  const text = String(mode);
+  const suffix = text.slice(-3);
+  if (!/^[0-7]{3}$/.test(suffix)) failSchema(`${label} has invalid mode`);
+  return Number.parseInt(suffix, 8);
+}
+function normaliseDigest(value, label) {
+  if (typeof value !== "string" || !/^(?:sha256:)?[0-9a-f]{64}$/.test(value)) {
+    failSchema(`${label} has invalid sha256`);
+  }
+  return value.startsWith("sha256:") ? value : `sha256:${value}`;
+}
+function decodeJournalBytes(raw, label) {
+  if (Buffer.isBuffer(raw)) return Buffer.from(raw);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.type !== "Buffer" || !Array.isArray(raw.data) || Object.keys(raw).some((key) => !["type", "data"].includes(key))) {
+    failSchema(`${label} has invalid bytes encoding`);
+  }
+  for (let i = 0; i < raw.data.length; i++) {
+    if (!Number.isInteger(raw.data[i]) || raw.data[i] < 0 || raw.data[i] > 255) {
+      failSchema(`${label}.bytes[${i}] must be an integer in range 0..255`);
+    }
+  }
+  return Buffer.from(raw.data);
+}
+function validateManifestItem(item, role, index) {
+  const label = `${role}Manifest[${index}]`;
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    failSchema(`${label} must be an object`);
+  }
+  const canonical = canonicalArtifactPath(item.path);
+  if (canonical.path !== item.path) failSchema(`${label} path is not canonical`);
+  if (item.kind === "absent") {
+    const allowed2 = role === "old" ? /* @__PURE__ */ new Set(["path", "kind", "absent"]) : /* @__PURE__ */ new Set(["path", "kind"]);
+    assertClosedObject(item, allowed2, label);
+    if (role === "old" && item.absent !== true) {
+      failSchema(`${label} must carry an absence tombstone`);
+    }
+    return Object.freeze({ path: canonical.path, kind: "absent" });
+  }
+  if (item.kind !== "regular") failSchema(`${label} has invalid kind`);
+  const allowed = role === "old" ? /* @__PURE__ */ new Set(["path", "kind", "sha256", "size", "mode", "bytes"]) : /* @__PURE__ */ new Set(["path", "kind", "sha256", "size", "mode"]);
+  assertClosedObject(item, allowed, label);
+  for (const required of allowed) {
+    if (!Object.hasOwn(item, required)) failSchema(`${label} missing required field: ${required}`);
+  }
+  const digest = normaliseDigest(item.sha256, label);
+  if (!Number.isSafeInteger(item.size) || item.size < 0) failSchema(`${label} has invalid size`);
+  const mode = normaliseMode(item.mode, label);
+  if (role === "old") {
+    const bytes = decodeJournalBytes(item.bytes, label);
+    if (bytes.length !== item.size) failSchema(`${label} bytes do not match size`);
+    if (`sha256:${sha256Hex(bytes)}` !== digest) failSchema(`${label} bytes do not match sha256`);
+  }
+  return Object.freeze({ path: canonical.path, kind: "regular", digest, size: item.size, mode });
+}
+function canonicalPlanItems(canonicalPlan) {
+  if (canonicalPlan?.apiVersion === "release-skill.dev/artifact-plan/v1") {
+    return canonicalPlan.artifacts;
+  }
+  if (canonicalPlan?.apiVersion === "release-skill.dev/docs-refresh/v1") {
+    return canonicalPlan.files;
+  }
+  return failSchema("journal canonicalPlan apiVersion is unsupported");
+}
+function validateArtifactPlanAuthority(journal, oldItems, newItems) {
+  const plan = journal.canonicalPlan;
+  assertClosedObject(plan, PLAN_SCHEMA_FIELDS, "journal canonicalPlan");
+  for (const field of PLAN_SCHEMA_FIELDS) {
+    if (!Object.hasOwn(plan, field)) failSchema(`journal canonicalPlan missing required field: ${field}`);
+  }
+  const { planDigest: _ignored, ...content } = plan;
+  const actualDigest = `sha256:${sha256Hex(canonicalJson(content))}`;
+  if (plan.planDigest !== journal.planDigest || actualDigest !== journal.planDigest) {
+    failSchema("journal canonicalPlan digest does not match journal planDigest");
+  }
+  if (plan.apiVersion !== "release-skill.dev/artifact-plan/v1" || !["inspect", "status", "apply"].includes(plan.operation) || plan.safeToWrite !== true || plan.targetUnchanged !== true) {
+    failSchema("journal canonicalPlan is not an applyable v1 plan");
+  }
+  const bindingFields = /* @__PURE__ */ new Set([
+    "repositoryIdentity",
+    "policyDigest",
+    "baseManifestDigest",
+    "currentManifestDigest",
+    "producerClosureDigest"
+  ]);
+  assertClosedObject(plan.bindings, bindingFields, "journal canonicalPlan.bindings");
+  for (const field of bindingFields) {
+    if (!DIGEST_RE.test(plan.bindings[field])) {
+      failSchema(`journal canonicalPlan binding ${field} is invalid`);
+    }
+  }
+  assertClosedObject(plan.nextAction, /* @__PURE__ */ new Set(["command"]), "journal canonicalPlan.nextAction");
+  if (typeof plan.nextAction.command !== "string" || !/\bartifacts apply\b/.test(plan.nextAction.command)) {
+    failSchema("journal canonicalPlan nextAction is not apply");
+  }
+  if (!Array.isArray(plan.artifacts) || plan.artifacts.length !== newItems.length) {
+    failSchema("journal canonicalPlan artifacts do not match manifest length");
+  }
+  for (let i = 0; i < plan.artifacts.length; i++) {
+    const artifact = plan.artifacts[i];
+    const label = `journal canonicalPlan.artifacts[${i}]`;
+    assertClosedObject(artifact, ARTIFACT_SCHEMA_FIELDS, label);
+    for (const field of ARTIFACT_SCHEMA_FIELDS) {
+      if (!Object.hasOwn(artifact, field)) failSchema(`${label} missing required field: ${field}`);
+    }
+    if (typeof artifact.id !== "string" || artifact.id.length === 0) failSchema(`${label} has invalid id`);
+    if (artifact.safeToWrite !== true || !(/* @__PURE__ */ new Set([
+      "READY",
+      "CLEAN",
+      "NEW",
+      "HUMAN_CHANGED",
+      "GENERATOR_CHANGED",
+      "MERGEABLE",
+      "RESOLVED"
+    ])).has(artifact.status)) {
+      failSchema(`${label} is not safe to write`);
+    }
+    const canonical = canonicalArtifactPath(artifact.path);
+    if (canonical.path !== artifact.path || canonical.path !== oldItems[i].path) {
+      failSchema(`${label} path does not match manifests`);
+    }
+    for (const [role, entry, manifest] of [
+      ["oldEntry", artifact.oldEntry, oldItems[i]],
+      ["newEntry", artifact.newEntry, newItems[i]]
+    ]) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry) || entry.kind !== manifest.kind) {
+        failSchema(`${label}.${role} does not match manifest kind`);
+      }
+      if (entry.kind === "absent") {
+        if (Object.keys(entry).length !== 1) failSchema(`${label}.${role} absent entry is not closed`);
+        continue;
+      }
+      const entryFields = role === "oldEntry" ? /* @__PURE__ */ new Set(["kind", "sha256", "size", "mode"]) : /* @__PURE__ */ new Set(["kind", "bytes", "sha256", "size", "mode"]);
+      assertClosedObject(entry, entryFields, `${label}.${role}`);
+      for (const field of entryFields) {
+        if (!Object.hasOwn(entry, field)) failSchema(`${label}.${role} missing required field: ${field}`);
+      }
+      if (normaliseDigest(entry.sha256, `${label}.${role}`) !== manifest.digest || entry.size !== manifest.size || normaliseMode(entry.mode, `${label}.${role}`) !== manifest.mode) {
+        failSchema(`${label}.${role} does not match manifest identity`);
+      }
+      if (role === "newEntry") {
+        const bytes = decodeJournalBytes(entry.bytes, `${label}.${role}`);
+        if (bytes.length !== manifest.size || `sha256:${sha256Hex(bytes)}` !== manifest.digest) {
+          failSchema(`${label}.${role} bytes do not match manifest identity`);
+        }
+      }
+    }
+  }
+}
+function validateDocsRefreshAuthority(journal, oldItems, newItems) {
+  const plan = journal.canonicalPlan;
+  assertClosedObject(plan, DOCS_REFRESH_PLAN_FIELDS, "journal canonicalPlan");
+  for (const field of DOCS_REFRESH_PLAN_FIELDS) {
+    if (!Object.hasOwn(plan, field)) failSchema(`journal canonicalPlan missing required field: ${field}`);
+  }
+  if (plan.operation !== "refresh") {
+    failSchema("journal canonicalPlan operation must be refresh");
+  }
+  if (typeof plan.unitId !== "string" || !DOCS_REFRESH_UNIT_ID_RE.test(plan.unitId)) {
+    failSchema("journal canonicalPlan unitId is invalid");
+  }
+  if (typeof plan.version !== "string" || plan.version.length === 0) {
+    failSchema("journal canonicalPlan version is invalid");
+  }
+  if (typeof plan.refreshDigest !== "string" || !DIGEST_RE.test(plan.refreshDigest) || plan.refreshDigest !== journal.planDigest) {
+    failSchema("journal canonicalPlan refreshDigest does not match journal planDigest");
+  }
+  if (!Array.isArray(plan.files) || plan.files.length !== oldItems.length || plan.files.length !== newItems.length) {
+    failSchema("journal canonicalPlan files do not match manifest length");
+  }
+  const seenIds = /* @__PURE__ */ new Set();
+  for (let i = 0; i < plan.files.length; i++) {
+    const file = plan.files[i];
+    const label = `journal canonicalPlan.files[${i}]`;
+    assertClosedObject(file, DOCS_REFRESH_FILE_FIELDS, label);
+    for (const field of DOCS_REFRESH_FILE_FIELDS) {
+      if (!Object.hasOwn(file, field)) failSchema(`${label} missing required field: ${field}`);
+    }
+    if (typeof file.id !== "string" || file.id.length === 0) failSchema(`${label} has invalid id`);
+    if (seenIds.has(file.id)) failSchema(`${label} has duplicate id`);
+    seenIds.add(file.id);
+    const canonical = canonicalArtifactPath(file.path);
+    if (canonical.path !== file.path || canonical.path !== oldItems[i].path || canonical.path !== newItems[i].path) {
+      failSchema(`${label} path does not match manifests`);
+    }
+    if (oldItems[i].kind !== "regular") {
+      failSchema(`${label} old manifest entry is not regular`);
+    }
+    if (normaliseDigest(file.oldDigest, `${label}.oldDigest`) !== oldItems[i].digest) {
+      failSchema(`${label} oldDigest does not match manifest identity`);
+    }
+    if (normaliseDigest(file.newDigest, `${label}.newDigest`) !== newItems[i].digest) {
+      failSchema(`${label} newDigest does not match manifest identity`);
+    }
+    if (file.kind !== "changelog" && file.kind !== "readme") {
+      failSchema(`${label} has invalid kind`);
+    }
+    if (typeof file.locale !== "string" || file.locale.length === 0) {
+      failSchema(`${label} has invalid locale`);
+    }
+    if (file.change !== "insert" && file.change !== "update") {
+      failSchema(`${label} has invalid change`);
+    }
+  }
+}
+function validateCanonicalPlanAuthority(journal, oldItems, newItems) {
+  const plan = journal.canonicalPlan;
+  if (plan.apiVersion === "release-skill.dev/artifact-plan/v1") {
+    validateArtifactPlanAuthority(journal, oldItems, newItems);
+    return;
+  }
+  if (plan.apiVersion === "release-skill.dev/docs-refresh/v1") {
+    validateDocsRefreshAuthority(journal, oldItems, newItems);
+    return;
+  }
+  failSchema("journal canonicalPlan apiVersion is unsupported");
+}
+async function ensurePath(handle, segments, openedHandles = []) {
+  let current = handle;
+  for (const seg of segments) {
+    try {
+      current = await current.openDir(seg);
+      openedHandles.push(current);
+    } catch (openErr) {
+      const entry = await current.readEntry(seg);
+      const absent = entry === null || entry?.kind === "absent";
+      if (!absent) {
+        const isDirectory = entry?.type === "directory" || entry?.kind === "tree";
+        if (isDirectory) throw openErr;
+        throw new ReleaseError(
+          PATH_UNSAFE,
+          `ensurePath: path segment is not a directory: ${entry?.type || entry?.kind || "unknown"}`
+        );
+      }
+      await current.mkdir(seg, 448);
+      await current.fsync();
+      current = await current.openDir(seg);
+      openedHandles.push(current);
+    }
+  }
+  return current;
+}
+async function closeHandlesReverse(handles) {
+  const failures = [];
+  for (let i = handles.length - 1; i >= 0; i--) {
+    try {
+      await handles[i].close();
+    } catch (error) {
+      failures.push(error?.code || error?.message || "close failed");
+    }
+  }
+  if (failures.length > 0) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "transaction handle close failed",
+      { closeFailures: failures }
+    );
+  }
+}
+async function readJsonViaHandle(handle, name) {
+  const result = await handle.readFile(name);
+  if (result === null) return null;
+  const text = result.bytes.toString("utf8");
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `journal file ${name} is corrupt (invalid JSON)`
+    );
+  }
+}
+async function writeJsonViaHandle(handle, name, data) {
+  const bytes = Buffer.from(JSON.stringify(data, null, 2), "utf8");
+  const expectedIdentity = await handle.readFile(name);
+  const token = await handle.createTemp(name, 384, bytes);
+  try {
+    await handle.rename(token, name, expectedIdentity);
+  } catch (error) {
+    try {
+      const aborted = await handle.abortTemp(token);
+      if (!aborted?.removed) {
+        error.details = { ...error.details || {}, abortResult: aborted };
+      }
+    } catch (abortError) {
+      error.details = {
+        ...error.details || {},
+        abortError: abortError?.code || abortError?.message || "abort failed"
+      };
+    }
+    throw error;
+  }
+  await handle.fsync();
+}
+async function abortTempAfterFailure(handle, token, primaryError) {
+  try {
+    const result = await handle.abortTemp(token);
+    if (!result?.removed) {
+      primaryError.details = { ...primaryError.details || {}, abortResult: result };
+    }
+  } catch (abortError) {
+    primaryError.details = {
+      ...primaryError.details || {},
+      abortError: abortError?.code || abortError?.message || "abort failed"
+    };
+  }
+}
+function validateTransitionChain(journal, manifestLength) {
+  if (!Array.isArray(journal.transitions)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal transitions is not an array");
+  }
+  let replayState = "PREPARED";
+  for (let i = 0; i < journal.transitions.length; i++) {
+    const t = journal.transitions[i];
+    if (!t || typeof t !== "object") {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal transition[${i}] is not an object`
+      );
+    }
+    if (t.from === null || t.from === void 0) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal transition[${i}] must not use a null from state`
+      );
+    } else if (typeof t.from !== "string" || !VALID_STATES.has(t.from)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal transition[${i}] has invalid from state: ${t.from}`
+      );
+    }
+    if (typeof t.to !== "string" || !VALID_STATES.has(t.to)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal transition[${i}] has invalid to state: ${t.to}`
+      );
+    }
+    if (t.from !== replayState || !VALID_TRANSITIONS[t.from]?.includes(t.to)) {
+      throw new ReleaseError(
+        INVALID_STATE_TRANSITION,
+        `journal transition[${i}] illegal or discontinuous: ${t.from} -> ${t.to}`,
+        { from: t.from, to: t.to, expectedFrom: replayState }
+      );
+    }
+    replayState = t.to;
+    if (t.entryIndex !== void 0 && t.entryIndex !== null) {
+      if (typeof t.entryIndex !== "number" || t.entryIndex < 0 || !Number.isInteger(t.entryIndex) || t.entryIndex >= manifestLength) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `journal transition[${i}] has invalid entryIndex: ${t.entryIndex}`
+        );
+      }
+    }
+    const TRANSITION_SCHEMA_FIELDS = /* @__PURE__ */ new Set(["from", "to", "entryIndex", "timestamp"]);
+    for (const key of Object.keys(t)) {
+      if (!TRANSITION_SCHEMA_FIELDS.has(key)) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `journal transition[${i}] has unknown field: ${key}`
+        );
+      }
+    }
+    if (typeof t.timestamp !== "string" || !Number.isFinite(Date.parse(t.timestamp))) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal transition[${i}] has invalid timestamp`);
+    }
+  }
+  if (replayState !== journal.state) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `journal state ${journal.state} does not match transition replay ${replayState}`
+    );
+  }
+}
+function validateJournalSchema(journal) {
+  if (!journal || typeof journal !== "object" || Array.isArray(journal)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal is not an object");
+  }
+  if (Object.hasOwn(journal, "terminalReceiptVersion")) {
+    validateTerminalReceiptSchema(journal);
+    return;
+  }
+  for (const key of Object.keys(journal)) {
+    if (!JOURNAL_SCHEMA_FIELDS.has(key)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal has unknown field: ${key}`
+      );
+    }
+  }
+  for (const field of JOURNAL_SCHEMA_FIELDS) {
+    if (!Object.hasOwn(journal, field)) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal missing required field: ${field}`);
+    }
+  }
+  if (typeof journal.transactionId !== "string" || journal.transactionId.length === 0) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal missing transactionId");
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(journal.transactionId)) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "journal transactionId contains unsafe characters",
+      { transactionId: journal.transactionId }
+    );
+  }
+  if (typeof journal.planDigest !== "string" || !DIGEST_RE.test(journal.planDigest)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal missing planDigest");
+  }
+  if (!journal.canonicalPlan || typeof journal.canonicalPlan !== "object" || Array.isArray(journal.canonicalPlan)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal canonicalPlan must be an object");
+  }
+  if (!Array.isArray(journal.oldManifest) || !Array.isArray(journal.newManifest)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal manifests must be arrays");
+  }
+  if (journal.oldManifest.length !== journal.newManifest.length) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal manifest lengths differ");
+  }
+  if (!VALID_STATES.has(journal.state)) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `journal has invalid state: ${journal.state}`
+    );
+  }
+  if (!Array.isArray(journal.entries)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal entries is not an array");
+  }
+  validateTransitionChain(journal, journal.newManifest.length);
+  const manifestPaths = /* @__PURE__ */ new Set();
+  const oldItems = [];
+  const newItems = [];
+  for (let i = 0; i < journal.newManifest.length; i++) {
+    const oldItem = journal.oldManifest[i];
+    const newItem = journal.newManifest[i];
+    const validatedOld = validateManifestItem(oldItem, "old", i);
+    const validatedNew = validateManifestItem(newItem, "new", i);
+    if (validatedOld.path !== validatedNew.path) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal manifest[${i}] paths differ`);
+    }
+    oldItems.push(validatedOld);
+    newItems.push(validatedNew);
+    const { collisionKey } = canonicalArtifactPath(validatedNew.path);
+    if (manifestPaths.has(collisionKey)) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal manifest path is duplicated: ${newItem.path}`);
+    }
+    manifestPaths.add(collisionKey);
+  }
+  validateCanonicalPlanAuthority(journal, oldItems, newItems);
+  const planItems = canonicalPlanItems(journal.canonicalPlan);
+  const seenIndices = /* @__PURE__ */ new Set();
+  const seenPaths = /* @__PURE__ */ new Set();
+  if (journal.entries.length > journal.newManifest.length) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal entries exceed manifest length");
+  }
+  for (let i = 0; i < journal.entries.length; i++) {
+    const e = journal.entries[i];
+    if (e === null || e === void 0) {
+      continue;
+    }
+    if (typeof e !== "object") {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal entries[${i}] is not an object or null`
+      );
+    }
+    if (seenIndices.has(i)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal entries has duplicate index: ${i}`
+      );
+    }
+    seenIndices.add(i);
+    if (typeof e.id !== "string" || e.id.length === 0 || typeof e.path !== "string") {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal entries[${i}] missing id/path`);
+    }
+    const entryPath = canonicalArtifactPath(e.path);
+    if (e.id !== planItems[i].id || entryPath.path !== newItems[i].path) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal entries[${i}] does not match canonical plan authority`
+      );
+    }
+    if (typeof e.path === "string") {
+      if (seenPaths.has(entryPath.collisionKey)) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `journal entries has duplicate path: ${e.path}`
+        );
+      }
+      seenPaths.add(entryPath.collisionKey);
+    }
+    if (!["pending", "applied"].includes(e.status)) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal entries[${i}] has invalid status`);
+    }
+    if (typeof e.appliedAt !== "string" || !Number.isFinite(Date.parse(e.appliedAt))) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal entries[${i}] has invalid appliedAt`);
+    }
+    const ENTRY_SCHEMA_FIELDS = /* @__PURE__ */ new Set(["id", "path", "status", "appliedAt"]);
+    for (const key of Object.keys(e)) {
+      if (!ENTRY_SCHEMA_FIELDS.has(key)) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `journal entries[${i}] has unknown field: ${key}`
+        );
+      }
+    }
+  }
+  if (typeof journal.createdAt !== "string" || !Number.isFinite(Date.parse(journal.createdAt))) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal createdAt must be a timestamp");
+  }
+  if (typeof journal.updatedAt !== "string" || !Number.isFinite(Date.parse(journal.updatedAt))) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal updatedAt must be a timestamp");
+  }
+  if (["APPLIED", "VERIFYING", "COMMITTED"].includes(journal.state)) {
+    if (journal.entries.length !== journal.newManifest.length || journal.entries.some((entry) => !entry || entry.status !== "applied")) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `journal state ${journal.state} requires every manifest entry to be applied`
+      );
+    }
+  }
+}
+function validateReceiptManifestItem(item, role, index) {
+  const label = `receipt ${role}Manifest[${index}]`;
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    failSchema(`${label} must be an object`);
+  }
+  const canonical = canonicalArtifactPath(item.path);
+  if (canonical.path !== item.path) failSchema(`${label} path is not canonical`);
+  if (item.kind === "absent") {
+    const allowed2 = role === "old" ? /* @__PURE__ */ new Set(["path", "kind", "absent"]) : /* @__PURE__ */ new Set(["path", "kind"]);
+    assertClosedObject(item, allowed2, label);
+    if (role === "old" && item.absent !== true) {
+      failSchema(`${label} must carry an absence tombstone`);
+    }
+    return Object.freeze({ path: canonical.path, kind: "absent" });
+  }
+  if (item.kind !== "regular") failSchema(`${label} has invalid kind`);
+  const allowed = /* @__PURE__ */ new Set(["path", "kind", "sha256", "size", "mode"]);
+  assertClosedObject(item, allowed, label);
+  for (const required of allowed) {
+    if (!Object.hasOwn(item, required)) failSchema(`${label} missing required field: ${required}`);
+  }
+  const digest = normaliseDigest(item.sha256, label);
+  if (!Number.isSafeInteger(item.size) || item.size < 0) failSchema(`${label} has invalid size`);
+  const mode = normaliseMode(item.mode, label);
+  return Object.freeze({ path: canonical.path, kind: "regular", digest, size: item.size, mode });
+}
+function validateArtifactPlanReceiptAuthority(journal, oldItems, newItems) {
+  const plan = journal.canonicalPlan;
+  assertClosedObject(plan, PLAN_SCHEMA_FIELDS, "receipt canonicalPlan");
+  for (const field of PLAN_SCHEMA_FIELDS) {
+    if (!Object.hasOwn(plan, field)) failSchema(`receipt canonicalPlan missing required field: ${field}`);
+  }
+  if (typeof plan.planDigest !== "string" || plan.planDigest !== journal.planDigest) {
+    failSchema("receipt canonicalPlan planDigest does not bind the journal planDigest");
+  }
+  if (plan.apiVersion !== "release-skill.dev/artifact-plan/v1" || !["inspect", "status", "apply"].includes(plan.operation) || plan.safeToWrite !== true || plan.targetUnchanged !== true) {
+    failSchema("receipt canonicalPlan is not an applyable v1 plan");
+  }
+  const bindingFields = /* @__PURE__ */ new Set([
+    "repositoryIdentity",
+    "policyDigest",
+    "baseManifestDigest",
+    "currentManifestDigest",
+    "producerClosureDigest"
+  ]);
+  assertClosedObject(plan.bindings, bindingFields, "receipt canonicalPlan.bindings");
+  for (const field of bindingFields) {
+    if (!DIGEST_RE.test(plan.bindings[field])) {
+      failSchema(`receipt canonicalPlan binding ${field} is invalid`);
+    }
+  }
+  assertClosedObject(plan.nextAction, /* @__PURE__ */ new Set(["command"]), "receipt canonicalPlan.nextAction");
+  if (typeof plan.nextAction.command !== "string" || !/\bartifacts apply\b/.test(plan.nextAction.command)) {
+    failSchema("receipt canonicalPlan nextAction is not apply");
+  }
+  if (!Array.isArray(plan.artifacts) || plan.artifacts.length !== newItems.length) {
+    failSchema("receipt canonicalPlan artifacts do not match manifest length");
+  }
+  for (let i = 0; i < plan.artifacts.length; i++) {
+    const artifact = plan.artifacts[i];
+    const label = `receipt canonicalPlan.artifacts[${i}]`;
+    assertClosedObject(artifact, ARTIFACT_SCHEMA_FIELDS, label);
+    for (const field of ARTIFACT_SCHEMA_FIELDS) {
+      if (!Object.hasOwn(artifact, field)) failSchema(`${label} missing required field: ${field}`);
+    }
+    if (typeof artifact.id !== "string" || artifact.id.length === 0) failSchema(`${label} has invalid id`);
+    if (artifact.safeToWrite !== true || !(/* @__PURE__ */ new Set([
+      "READY",
+      "CLEAN",
+      "NEW",
+      "HUMAN_CHANGED",
+      "GENERATOR_CHANGED",
+      "MERGEABLE",
+      "RESOLVED"
+    ])).has(artifact.status)) {
+      failSchema(`${label} is not safe to write`);
+    }
+    const canonical = canonicalArtifactPath(artifact.path);
+    if (canonical.path !== artifact.path || canonical.path !== oldItems[i].path) {
+      failSchema(`${label} path does not match manifests`);
+    }
+    for (const [role, entry, manifest] of [
+      ["oldEntry", artifact.oldEntry, oldItems[i]],
+      ["newEntry", artifact.newEntry, newItems[i]]
+    ]) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry) || entry.kind !== manifest.kind) {
+        failSchema(`${label}.${role} does not match manifest kind`);
+      }
+      if (entry.kind === "absent") {
+        if (Object.keys(entry).length !== 1) failSchema(`${label}.${role} absent entry is not closed`);
+        continue;
+      }
+      const entryFields = /* @__PURE__ */ new Set(["kind", "sha256", "size", "mode"]);
+      assertClosedObject(entry, entryFields, `${label}.${role}`);
+      for (const field of entryFields) {
+        if (!Object.hasOwn(entry, field)) failSchema(`${label}.${role} missing required field: ${field}`);
+      }
+      if (normaliseDigest(entry.sha256, `${label}.${role}`) !== manifest.digest || entry.size !== manifest.size || normaliseMode(entry.mode, `${label}.${role}`) !== manifest.mode) {
+        failSchema(`${label}.${role} does not match manifest identity`);
+      }
+    }
+  }
+}
+function validateReceiptCanonicalPlanAuthority(journal, oldItems, newItems) {
+  const plan = journal.canonicalPlan;
+  if (plan.apiVersion === "release-skill.dev/artifact-plan/v1") {
+    validateArtifactPlanReceiptAuthority(journal, oldItems, newItems);
+    return;
+  }
+  if (plan.apiVersion === "release-skill.dev/docs-refresh/v1") {
+    validateDocsRefreshAuthority(journal, oldItems, newItems);
+    return;
+  }
+  failSchema("receipt canonicalPlan apiVersion is unsupported");
+}
+function validateTerminalReceiptSchema(journal) {
+  for (const key of Object.keys(journal)) {
+    if (!RECEIPT_SCHEMA_FIELDS.has(key)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `terminal receipt has unknown field: ${key}`
+      );
+    }
+  }
+  for (const field of RECEIPT_SCHEMA_FIELDS) {
+    if (!Object.hasOwn(journal, field)) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `terminal receipt missing required field: ${field}`);
+    }
+  }
+  if (!Number.isInteger(journal.terminalReceiptVersion) || journal.terminalReceiptVersion < 1) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "terminal receipt must carry an explicit integer version >= 1"
+    );
+  }
+  if (journal.terminalReceiptVersion !== TERMINAL_RECEIPT_VERSION) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `terminal receipt version ${journal.terminalReceiptVersion} is unsupported`
+    );
+  }
+  if (typeof journal.transactionId !== "string" || journal.transactionId.length === 0) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt missing transactionId");
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(journal.transactionId)) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "terminal receipt transactionId contains unsafe characters",
+      { transactionId: journal.transactionId }
+    );
+  }
+  if (typeof journal.planDigest !== "string" || !DIGEST_RE.test(journal.planDigest)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt missing planDigest");
+  }
+  if (!PRUNABLE_TERMINAL_STATES.has(journal.state)) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `terminal receipt is illegal for non-terminal state: ${journal.state}`
+    );
+  }
+  validateTransitionChain(journal, journal.newManifest.length);
+  if (!journal.canonicalPlan || typeof journal.canonicalPlan !== "object" || Array.isArray(journal.canonicalPlan)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt canonicalPlan must be an object");
+  }
+  if (!Array.isArray(journal.oldManifest) || !Array.isArray(journal.newManifest)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt manifests must be arrays");
+  }
+  if (journal.oldManifest.length !== journal.newManifest.length) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt manifest lengths differ");
+  }
+  const manifestPaths = /* @__PURE__ */ new Set();
+  const oldItems = [];
+  const newItems = [];
+  for (let i = 0; i < journal.newManifest.length; i++) {
+    const validatedOld = validateReceiptManifestItem(journal.oldManifest[i], "old", i);
+    const validatedNew = validateReceiptManifestItem(journal.newManifest[i], "new", i);
+    if (validatedOld.path !== validatedNew.path) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `terminal receipt manifest[${i}] paths differ`);
+    }
+    oldItems.push(validatedOld);
+    newItems.push(validatedNew);
+    const { collisionKey } = canonicalArtifactPath(validatedNew.path);
+    if (manifestPaths.has(collisionKey)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `terminal receipt manifest path is duplicated: ${journal.newManifest[i].path}`
+      );
+    }
+    manifestPaths.add(collisionKey);
+  }
+  validateReceiptCanonicalPlanAuthority(journal, oldItems, newItems);
+  const planItems = canonicalPlanItems(journal.canonicalPlan);
+  assertClosedObject(journal.planSummary, RECEIPT_PLAN_SUMMARY_FIELDS, "terminal receipt planSummary");
+  if (typeof journal.planSummary.apiVersion !== "string" || typeof journal.planSummary.operation !== "string") {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt planSummary fields must be strings");
+  }
+  if (journal.planSummary.apiVersion !== journal.canonicalPlan.apiVersion || journal.planSummary.operation !== journal.canonicalPlan.operation) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "terminal receipt planSummary does not match canonicalPlan authority"
+    );
+  }
+  if (!Array.isArray(journal.entries)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt entries is not an array");
+  }
+  if (journal.entries.length > journal.newManifest.length) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt entries exceed manifest length");
+  }
+  const seenPaths = /* @__PURE__ */ new Set();
+  for (let i = 0; i < journal.entries.length; i++) {
+    const e = journal.entries[i];
+    if (e === null || e === void 0) {
+      continue;
+    }
+    if (typeof e !== "object" || Array.isArray(e)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `terminal receipt entries[${i}] is not an object or null`
+      );
+    }
+    for (const key of Object.keys(e)) {
+      if (!RECEIPT_ENTRY_FIELDS.has(key)) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `terminal receipt entries[${i}] has unknown field: ${key}`
+        );
+      }
+    }
+    if (typeof e.id !== "string" || e.id.length === 0 || typeof e.path !== "string") {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `terminal receipt entries[${i}] missing id/path`);
+    }
+    const entryPath = canonicalArtifactPath(e.path);
+    if (e.id !== planItems[i].id || entryPath.path !== newItems[i].path) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `terminal receipt entries[${i}] does not match canonical plan authority`
+      );
+    }
+    if (seenPaths.has(entryPath.collisionKey)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `terminal receipt entries has duplicate path: ${e.path}`
+      );
+    }
+    seenPaths.add(entryPath.collisionKey);
+    if (!["pending", "applied"].includes(e.status)) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `terminal receipt entries[${i}] has invalid status`);
+    }
+    if (typeof e.appliedAt !== "string" || !Number.isFinite(Date.parse(e.appliedAt))) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `terminal receipt entries[${i}] has invalid appliedAt`);
+    }
+    const digest = e.digest;
+    const digestLabel = `terminal receipt entries[${i}].digest`;
+    assertClosedObject(digest, RECEIPT_DIGEST_FIELDS, digestLabel);
+    const digestPath = canonicalArtifactPath(digest.path);
+    if (digestPath.path !== newItems[i].path) {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `${digestLabel} path does not match manifest`);
+    }
+    if (newItems[i].kind === "absent") {
+      if (digest.kind !== "absent") {
+        throw new ReleaseError(TRANSACTION_INCOMPLETE, `${digestLabel} kind does not match manifest`);
+      }
+    } else {
+      if (digest.kind !== "regular") {
+        throw new ReleaseError(TRANSACTION_INCOMPLETE, `${digestLabel} kind does not match manifest`);
+      }
+      for (const required of ["sha256", "size", "mode"]) {
+        if (!Object.hasOwn(digest, required)) {
+          throw new ReleaseError(TRANSACTION_INCOMPLETE, `${digestLabel} missing required field: ${required}`);
+        }
+      }
+      if (normaliseDigest(digest.sha256, digestLabel) !== newItems[i].digest || digest.size !== newItems[i].size || normaliseMode(digest.mode, digestLabel) !== newItems[i].mode) {
+        throw new ReleaseError(TRANSACTION_INCOMPLETE, `${digestLabel} does not match manifest identity`);
+      }
+    }
+  }
+  if (typeof journal.createdAt !== "string" || !Number.isFinite(Date.parse(journal.createdAt))) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt createdAt must be a timestamp");
+  }
+  if (typeof journal.updatedAt !== "string" || !Number.isFinite(Date.parse(journal.updatedAt))) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "terminal receipt updatedAt must be a timestamp");
+  }
+  if (journal.state === "COMMITTED") {
+    if (journal.entries.length !== journal.newManifest.length || journal.entries.some((entry) => !entry || entry.status !== "applied")) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        "terminal receipt state COMMITTED requires every manifest entry to be applied"
+      );
+    }
+  }
+}
+function stripCanonicalPlanBytes(canonicalPlan) {
+  if (canonicalPlan.apiVersion === "release-skill.dev/artifact-plan/v1") {
+    return {
+      ...canonicalPlan,
+      artifacts: canonicalPlan.artifacts.map((artifact) => {
+        const stripped = { ...artifact };
+        if (stripped.newEntry && stripped.newEntry.kind === "regular") {
+          const { bytes: _dropped, ...digestIdentity } = stripped.newEntry;
+          stripped.newEntry = digestIdentity;
+        }
+        return stripped;
+      })
+    };
+  }
+  return canonicalPlan;
+}
+function buildTerminalReceipt(journal) {
+  const oldManifest = journal.oldManifest.map((item) => {
+    if (item.kind === "absent") {
+      return { path: item.path, kind: "absent", absent: true };
+    }
+    return {
+      path: item.path,
+      kind: "regular",
+      sha256: item.sha256,
+      size: item.size,
+      mode: item.mode
+    };
+  });
+  const newManifest = journal.newManifest.map((item) => {
+    if (item.kind === "absent") return { path: item.path, kind: "absent" };
+    return {
+      path: item.path,
+      kind: "regular",
+      sha256: item.sha256,
+      size: item.size,
+      mode: item.mode
+    };
+  });
+  const entries = journal.entries.map((entry, index) => {
+    if (entry === null || entry === void 0) return null;
+    const manifestItem = journal.newManifest[index];
+    const digest = manifestItem.kind === "absent" ? { path: manifestItem.path, kind: "absent" } : {
+      path: manifestItem.path,
+      kind: "regular",
+      sha256: manifestItem.sha256,
+      size: manifestItem.size,
+      mode: manifestItem.mode
+    };
+    return {
+      id: entry.id,
+      path: entry.path,
+      status: entry.status,
+      appliedAt: entry.appliedAt,
+      digest
+    };
+  });
+  const canonicalPlan = stripCanonicalPlanBytes(journal.canonicalPlan);
+  return {
+    terminalReceiptVersion: TERMINAL_RECEIPT_VERSION,
+    transactionId: journal.transactionId,
+    planDigest: journal.planDigest,
+    canonicalPlan,
+    planSummary: {
+      apiVersion: canonicalPlan.apiVersion,
+      operation: canonicalPlan.operation
+    },
+    oldManifest,
+    newManifest,
+    state: journal.state,
+    transitions: journal.transitions.map((transition) => ({ ...transition })),
+    entries,
+    createdAt: journal.createdAt,
+    // The receipt replaces the full journal atomically; updatedAt records
+    // the convergence instant (the full chain's own timestamps are preserved
+    // verbatim in `transitions`).
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+async function removeTerminalRecoveryResidue(txnHandle, journal) {
+  const marker = await txnHandle.readEntry("RECOVERY_REQUIRED");
+  if (!(marker === null || marker?.kind === "absent")) {
+    await txnHandle.unlink("RECOVERY_REQUIRED");
+  }
+  const backupsEntry = await txnHandle.readEntry("backups");
+  if (backupsEntry === null || backupsEntry?.kind === "absent") {
+    await txnHandle.fsync();
+    return;
+  }
+  const backupCount = Math.max(journal.newManifest.length, journal.entries.length);
+  const backupsHandle = await txnHandle.openDir("backups");
+  try {
+    for (let i = 0; i < backupCount; i += 1) {
+      const name = `${i}.bak`;
+      const bak = await backupsHandle.readEntry(name);
+      if (!(bak === null || bak?.kind === "absent")) {
+        await backupsHandle.unlink(name);
+      }
+    }
+  } finally {
+    await backupsHandle.close();
+  }
+  await txnHandle.rmdir("backups");
+  await txnHandle.fsync();
+}
+async function convergeTerminalRecord({
+  txnHandle,
+  transactionId,
+  faultInjector,
+  recoverCommand
+} = {}) {
+  const journal = await readJournal(txnHandle, transactionId);
+  if (!PRUNABLE_TERMINAL_STATES.has(journal.state)) {
+    return journal;
+  }
+  const recover = typeof recoverCommand === "string" && recoverCommand.length > 0 ? recoverCommand : `release-skill artifacts recover --transaction ${transactionId}`;
+  let receiptPersisted = false;
+  try {
+    if (faultInjector) await faultInjector("before-terminal-receipt-write");
+    const receipt = buildTerminalReceipt(journal);
+    validateTerminalReceiptSchema(receipt);
+    if (receipt.transactionId !== transactionId) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        "terminal receipt transactionId does not match its directory authority"
+      );
+    }
+    const serializedLength = Buffer.byteLength(JSON.stringify(receipt, null, 2), "utf8");
+    if (serializedLength > TERMINAL_RECEIPT_SIZE_CAP) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `terminal receipt exceeds the fixed size cap: ${serializedLength} > ${TERMINAL_RECEIPT_SIZE_CAP}`,
+        { serializedLength, cap: TERMINAL_RECEIPT_SIZE_CAP }
+      );
+    }
+    await writeJsonViaHandle(txnHandle, "journal.json", receipt);
+    receiptPersisted = true;
+    if (faultInjector) await faultInjector("after-terminal-receipt-write");
+    await removeTerminalRecoveryResidue(txnHandle, journal);
+    return receipt;
+  } catch (error) {
+    if (error?.code === "INJECTED_CRASH" || error?.name === "InjectedCrash") {
+      throw error;
+    }
+    const wrapped = new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `terminal receipt convergence failed after the transaction reached ${journal.state}: ` + (receiptPersisted ? "the small terminal receipt is durable but residue cleanup did not complete" : "the complete verifiable journal is retained on disk at its latest durable state") + `. ${recover}`,
+      {
+        transactionId,
+        terminalReceiptPersisted: receiptPersisted,
+        // COMMITTED means the target WAS applied and verified before
+        // convergence; convergence failure must never lie about that.
+        targetApplied: journal.state === "COMMITTED",
+        recover,
+        phase: receiptPersisted ? "terminal-residue-cleanup" : "terminal-receipt-write",
+        cause: error?.code || null,
+        causeMessage: error?.message || null
+      }
+    );
+    wrapped.terminalReceiptConvergenceFailed = true;
+    wrapped.transactionId = transactionId;
+    throw wrapped;
+  }
+}
+async function pruneTerminalTransactionRecords(transactionsRoot, {
+  retentionMax = DEFAULT_TRANSACTION_RETENTION_MAX
+} = {}) {
+  const summary = { considered: 0, terminal: 0, pruned: [], errors: [] };
+  try {
+    if (typeof transactionsRoot !== "string" || transactionsRoot.length === 0) return summary;
+    if (!Number.isInteger(retentionMax) || retentionMax < 0) return summary;
+    let entries;
+    try {
+      entries = await readdir7(transactionsRoot, { withFileTypes: true });
+    } catch (scanErr) {
+      summary.errors.push(`scan: ${scanErr?.code || scanErr?.message || "readdir-failed"}`);
+      return summary;
+    }
+    const txnDirs = entries.filter((entry) => entry.isDirectory() && entry.name.startsWith("txn-"));
+    summary.considered = txnDirs.length;
+    if (txnDirs.length <= retentionMax) return summary;
+    const terminal = [];
+    for (const entry of txnDirs) {
+      const recordDir = join9(transactionsRoot, entry.name);
+      let state = null;
+      let createdAt = null;
+      try {
+        const raw = await readFile12(join9(recordDir, "journal.json"), "utf8");
+        const journal = JSON.parse(raw);
+        if (journal && typeof journal === "object") {
+          state = typeof journal.state === "string" ? journal.state : null;
+          createdAt = typeof journal.createdAt === "string" ? journal.createdAt : null;
+        }
+      } catch {
+        state = null;
+      }
+      if (!PRUNABLE_TERMINAL_STATES.has(state)) continue;
+      let sortTime = Date.parse(createdAt);
+      if (!Number.isFinite(sortTime)) {
+        try {
+          const dirStat = await stat4(recordDir);
+          sortTime = dirStat.mtimeMs;
+        } catch {
+          sortTime = Number.MAX_SAFE_INTEGER;
+        }
+      }
+      summary.terminal += 1;
+      terminal.push({ name: entry.name, dir: recordDir, sortTime });
+    }
+    if (terminal.length <= retentionMax) return summary;
+    terminal.sort((a, b) => a.sortTime - b.sortTime || (a.name < b.name ? -1 : 1));
+    const excess = terminal.length - retentionMax;
+    for (let i = 0; i < excess; i += 1) {
+      const victim = terminal[i];
+      try {
+        await rm5(victim.dir, { recursive: true, force: true, maxRetries: 0 });
+        summary.pruned.push(victim.name);
+      } catch (rmErr) {
+        summary.errors.push(`${victim.name}: ${rmErr?.code || rmErr?.message || "rm-failed"}`);
+      }
+    }
+  } catch (err) {
+    summary.errors.push(`retention: ${err?.code || err?.message || "unexpected"}`);
+  }
+  return summary;
+}
+async function createTransactionJournal({
+  rootHandle,
+  root,
+  transactionId,
+  planDigest,
+  canonicalPlan,
+  oldManifest,
+  newManifest,
+  retentionMax
+} = {}) {
+  if (typeof transactionId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(transactionId)) {
+    throw new ReleaseError(PATH_UNSAFE, "transactionId is not a safe path segment");
+  }
+  if (typeof planDigest !== "string" || !/^sha256:[0-9a-f]{64}$/.test(planDigest)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "planDigest is invalid");
+  }
+  const openedHandles = [];
+  try {
+    const txnParent = await ensurePath(
+      rootHandle,
+      [".release-skill", "transactions"],
+      openedHandles
+    );
+    if (typeof root === "string" && root.length > 0) {
+      await pruneTerminalTransactionRecords(
+        join9(root, ".release-skill", "transactions"),
+        { retentionMax }
+      );
+    }
+    try {
+      await txnParent.mkdir(transactionId, 448);
+    } catch (err) {
+      if (err.code === "EEXIST") {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `transaction directory already exists: ${transactionId}`,
+          { transactionId }
+        );
+      }
+      throw err;
+    }
+    await txnParent.fsync();
+    const txnHandle = await txnParent.openDir(transactionId);
+    openedHandles.push(txnHandle);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const journal = {
+      transactionId,
+      planDigest,
+      canonicalPlan,
+      oldManifest,
+      newManifest,
+      state: "PREPARED",
+      transitions: [],
+      entries: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    validateJournalSchema(journal);
+    await writeJsonViaHandle(txnHandle, "journal.json", journal);
+    return {
+      journal,
+      txnHandle,
+      async close() {
+        await closeHandlesReverse(openedHandles);
+      }
+    };
+  } catch (error) {
+    try {
+      await closeHandlesReverse(openedHandles);
+    } catch (closeError) {
+      error.details = {
+        ...error.details || {},
+        closeFailures: closeError.details?.closeFailures || [closeError.code || closeError.message]
+      };
+    }
+    throw error;
+  }
+}
+async function readJournal(txnHandle, transactionId) {
+  const journal = await readJsonViaHandle(txnHandle, "journal.json");
+  if (journal === null) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "transaction journal does not exist",
+      { transactionId }
+    );
+  }
+  validateJournalSchema(journal);
+  if (journal.transactionId !== transactionId) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "journal transactionId does not match its directory authority",
+      { expected: transactionId, actual: journal.transactionId }
+    );
+  }
+  return journal;
+}
+async function writeJournalTransition({
+  txnHandle,
+  transactionId,
+  from,
+  to,
+  entryIndex,
+  faultInjector,
+  convergeTerminal = true
+} = {}) {
+  if (typeof from !== "string" || !VALID_STATES.has(from)) {
+    throw new ReleaseError(
+      INVALID_STATE_TRANSITION,
+      "journal transitions require a concrete valid from state",
+      { from }
+    );
+  }
+  const journal = await readJournal(txnHandle, transactionId);
+  if (from !== null && journal.state !== from) {
+    throw new ReleaseError(
+      INVALID_STATE_TRANSITION,
+      `invalid state transition: expected ${from}, got ${journal.state}`,
+      { expected: from, actual: journal.state, transactionId }
+    );
+  }
+  if (from !== null && !VALID_TRANSITIONS[from]?.includes(to)) {
+    throw new ReleaseError(
+      INVALID_STATE_TRANSITION,
+      `invalid state transition: ${from} -> ${to}`,
+      { from, to, transactionId }
+    );
+  }
+  if (from !== null) {
+    journal.state = to;
+  }
+  journal.transitions.push({
+    from,
+    to,
+    entryIndex,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  });
+  journal.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  await writeJsonViaHandle(txnHandle, "journal.json", journal);
+  if (convergeTerminal && PRUNABLE_TERMINAL_STATES.has(journal.state)) {
+    return await convergeTerminalRecord({ txnHandle, transactionId, faultInjector });
+  }
+  return journal;
+}
+async function recordAppliedEntry({
+  txnHandle,
+  transactionId,
+  entryIndex,
+  entry
+} = {}) {
+  if (!Number.isInteger(entryIndex) || entryIndex < 0) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "entryIndex must be a non-negative integer");
+  }
+  if (!entry || typeof entry !== "object" || Array.isArray(entry) || Object.keys(entry).some((key) => !["id", "path", "status"].includes(key)) || typeof entry.id !== "string" || typeof entry.path !== "string" || !["pending", "applied"].includes(entry.status)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal entry metadata is invalid");
+  }
+  const journal = await readJournal(txnHandle, transactionId);
+  if (entryIndex >= journal.newManifest.length) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "entryIndex exceeds manifest length");
+  }
+  while (journal.entries.length <= entryIndex) {
+    journal.entries.push(null);
+  }
+  journal.entries[entryIndex] = {
+    ...entry,
+    appliedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  journal.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  await writeJsonViaHandle(txnHandle, "journal.json", journal);
+  return journal;
+}
+async function createBackup({
+  txnHandle,
+  transactionId,
+  entryIndex,
+  oldEntry
+} = {}) {
+  if (!Number.isInteger(entryIndex) || entryIndex < 0) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "backup entryIndex is invalid");
+  }
+  let backupsHandle;
+  try {
+    backupsHandle = await txnHandle.openDir("backups");
+  } catch (openErr) {
+    const entry = await txnHandle.readEntry("backups");
+    const absent = entry === null || entry?.kind === "absent";
+    if (!absent) {
+      const isDirectory = entry?.type === "directory" || entry?.kind === "tree";
+      if (isDirectory) throw openErr;
+      throw new ReleaseError(PATH_UNSAFE, "backups path is not a directory");
+    }
+    await txnHandle.mkdir("backups", 448);
+    await txnHandle.fsync();
+    backupsHandle = await txnHandle.openDir("backups");
+  }
+  let primaryError;
+  try {
+    const backupData = oldEntry.kind === "regular" && oldEntry.bytes ? Buffer.from(oldEntry.bytes) : Buffer.from(JSON.stringify({ absent: true, entryIndex, timestamp: (/* @__PURE__ */ new Date()).toISOString() }), "utf8");
+    const backupName = `${entryIndex}.bak`;
+    const token = await backupsHandle.createTemp(backupName, 384, backupData);
+    try {
+      await backupsHandle.rename(token, backupName);
+    } catch (error) {
+      await abortTempAfterFailure(backupsHandle, token, error);
+      throw error;
+    }
+    await backupsHandle.fsync();
+  } catch (error) {
+    primaryError = error;
+  } finally {
+    try {
+      await backupsHandle.close();
+    } catch (closeError) {
+      if (primaryError) {
+        primaryError.details = {
+          ...primaryError.details || {},
+          closeError: closeError?.code || closeError?.message || "close failed"
+        };
+      } else {
+        throw closeError;
+      }
+    }
+  }
+  if (primaryError) throw primaryError;
+}
+async function writeRecoveryRequiredFile({
+  txnHandle,
+  transactionId,
+  targetUnchanged,
+  recover
+} = {}) {
+  const data = {
+    transactionId,
+    targetUnchanged,
+    recover,
+    failedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  const bytes = Buffer.from(JSON.stringify(data, null, 2), "utf8");
+  const expectedIdentity = await txnHandle.readFile("RECOVERY_REQUIRED");
+  const token = await txnHandle.createTemp("RECOVERY_REQUIRED", 384, bytes);
+  try {
+    await txnHandle.rename(token, "RECOVERY_REQUIRED", expectedIdentity);
+  } catch (error) {
+    await abortTempAfterFailure(txnHandle, token, error);
+    throw error;
+  }
+  await txnHandle.fsync();
+}
+var VALID_STATES, VALID_TRANSITIONS, PRUNABLE_TERMINAL_STATES, DEFAULT_TRANSACTION_RETENTION_MAX, TERMINAL_RECEIPT_VERSION, TERMINAL_RECEIPT_SIZE_CAP, TERMINAL_RECEIPT_DELTA_CAP, JOURNAL_SCHEMA_FIELDS, RECEIPT_SCHEMA_FIELDS, RECEIPT_ENTRY_FIELDS, RECEIPT_DIGEST_FIELDS, RECEIPT_PLAN_SUMMARY_FIELDS, DIGEST_RE, PLAN_SCHEMA_FIELDS, ARTIFACT_SCHEMA_FIELDS, DOCS_REFRESH_PLAN_FIELDS, DOCS_REFRESH_FILE_FIELDS, DOCS_REFRESH_UNIT_ID_RE;
+var init_transaction_journal = __esm({
+  "src/artifacts/transaction-journal.mjs"() {
+    init_errors();
+    init_digest();
+    init_path_key();
+    VALID_STATES = Object.freeze(/* @__PURE__ */ new Set([
+      "PREPARED",
+      "APPLYING",
+      "APPLIED",
+      "VERIFYING",
+      "COMMITTED",
+      "RECOVERY_REQUIRED",
+      "ROLLING_BACK",
+      "ROLLED_BACK",
+      "RECOVERY_CONFLICT"
+    ]));
+    VALID_TRANSITIONS = Object.freeze({
+      PREPARED: ["APPLYING", "RECOVERY_REQUIRED"],
+      APPLYING: ["APPLIED", "RECOVERY_REQUIRED"],
+      APPLIED: ["VERIFYING", "RECOVERY_REQUIRED"],
+      VERIFYING: ["COMMITTED", "RECOVERY_REQUIRED"],
+      COMMITTED: [],
+      RECOVERY_REQUIRED: ["ROLLING_BACK", "APPLYING"],
+      ROLLING_BACK: ["ROLLED_BACK", "RECOVERY_CONFLICT"],
+      ROLLED_BACK: [],
+      RECOVERY_CONFLICT: []
+    });
+    PRUNABLE_TERMINAL_STATES = Object.freeze(/* @__PURE__ */ new Set(["COMMITTED", "ROLLED_BACK"]));
+    DEFAULT_TRANSACTION_RETENTION_MAX = 50;
+    TERMINAL_RECEIPT_VERSION = 1;
+    TERMINAL_RECEIPT_SIZE_CAP = 256 * 1024;
+    TERMINAL_RECEIPT_DELTA_CAP = 64 * 1024;
+    JOURNAL_SCHEMA_FIELDS = /* @__PURE__ */ new Set([
+      "transactionId",
+      "planDigest",
+      "canonicalPlan",
+      "oldManifest",
+      "newManifest",
+      "state",
+      "transitions",
+      "entries",
+      "createdAt",
+      "updatedAt"
+    ]);
+    RECEIPT_SCHEMA_FIELDS = /* @__PURE__ */ new Set([
+      "terminalReceiptVersion",
+      "transactionId",
+      "planDigest",
+      "canonicalPlan",
+      "planSummary",
+      "oldManifest",
+      "newManifest",
+      "state",
+      "transitions",
+      "entries",
+      "createdAt",
+      "updatedAt"
+    ]);
+    RECEIPT_ENTRY_FIELDS = /* @__PURE__ */ new Set(["id", "path", "status", "appliedAt", "digest"]);
+    RECEIPT_DIGEST_FIELDS = /* @__PURE__ */ new Set(["path", "kind", "sha256", "size", "mode"]);
+    RECEIPT_PLAN_SUMMARY_FIELDS = /* @__PURE__ */ new Set(["apiVersion", "operation"]);
+    DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
+    PLAN_SCHEMA_FIELDS = /* @__PURE__ */ new Set([
+      "apiVersion",
+      "operation",
+      "bindings",
+      "safeToWrite",
+      "targetUnchanged",
+      "nextAction",
+      "artifacts",
+      "planDigest"
+    ]);
+    ARTIFACT_SCHEMA_FIELDS = /* @__PURE__ */ new Set([
+      "id",
+      "path",
+      "oldEntry",
+      "newEntry",
+      "status",
+      "safeToWrite"
+    ]);
+    DOCS_REFRESH_PLAN_FIELDS = /* @__PURE__ */ new Set([
+      "apiVersion",
+      "operation",
+      "unitId",
+      "version",
+      "refreshDigest",
+      "files"
+    ]);
+    DOCS_REFRESH_FILE_FIELDS = /* @__PURE__ */ new Set([
+      "id",
+      "path",
+      "kind",
+      "locale",
+      "oldDigest",
+      "newDigest",
+      "change"
+    ]);
+    DOCS_REFRESH_UNIT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+    __name(failSchema, "failSchema");
+    __name(assertClosedObject, "assertClosedObject");
+    __name(normaliseMode, "normaliseMode");
+    __name(normaliseDigest, "normaliseDigest");
+    __name(decodeJournalBytes, "decodeJournalBytes");
+    __name(validateManifestItem, "validateManifestItem");
+    __name(canonicalPlanItems, "canonicalPlanItems");
+    __name(validateArtifactPlanAuthority, "validateArtifactPlanAuthority");
+    __name(validateDocsRefreshAuthority, "validateDocsRefreshAuthority");
+    __name(validateCanonicalPlanAuthority, "validateCanonicalPlanAuthority");
+    __name(ensurePath, "ensurePath");
+    __name(closeHandlesReverse, "closeHandlesReverse");
+    __name(readJsonViaHandle, "readJsonViaHandle");
+    __name(writeJsonViaHandle, "writeJsonViaHandle");
+    __name(abortTempAfterFailure, "abortTempAfterFailure");
+    __name(validateTransitionChain, "validateTransitionChain");
+    __name(validateJournalSchema, "validateJournalSchema");
+    __name(validateReceiptManifestItem, "validateReceiptManifestItem");
+    __name(validateArtifactPlanReceiptAuthority, "validateArtifactPlanReceiptAuthority");
+    __name(validateReceiptCanonicalPlanAuthority, "validateReceiptCanonicalPlanAuthority");
+    __name(validateTerminalReceiptSchema, "validateTerminalReceiptSchema");
+    __name(stripCanonicalPlanBytes, "stripCanonicalPlanBytes");
+    __name(buildTerminalReceipt, "buildTerminalReceipt");
+    __name(removeTerminalRecoveryResidue, "removeTerminalRecoveryResidue");
+    __name(convergeTerminalRecord, "convergeTerminalRecord");
+    __name(pruneTerminalTransactionRecords, "pruneTerminalTransactionRecords");
+    __name(createTransactionJournal, "createTransactionJournal");
+    __name(readJournal, "readJournal");
+    __name(writeJournalTransition, "writeJournalTransition");
+    __name(recordAppliedEntry, "recordAppliedEntry");
+    __name(createBackup, "createBackup");
+    __name(writeRecoveryRequiredFile, "writeRecoveryRequiredFile");
+  }
+});
+
+// src/artifacts/transaction.mjs
+var transaction_exports = {};
+__export(transaction_exports, {
+  applyArtifactPlan: () => applyArtifactPlan,
+  applyWriteSetUnderLock: () => applyWriteSetUnderLock
+});
+import { randomBytes as randomBytes2 } from "node:crypto";
+import { relative as relative13 } from "node:path";
+function computeCanonicalPlanDigest(plan) {
+  const { planDigest: _ignored, ...content } = plan;
+  return `sha256:${sha256Hex(canonicalJson(content))}`;
+}
+function decodeBytes(raw) {
+  if (Buffer.isBuffer(raw)) {
+    return raw;
+  }
+  if (raw && typeof raw === "object" && raw.type === "Buffer" && Array.isArray(raw.data)) {
+    for (let i = 0; i < raw.data.length; i++) {
+      if (!Number.isInteger(raw.data[i]) || raw.data[i] < 0 || raw.data[i] > 255) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `bytes[${i}] must be an integer in range 0..255`,
+          { index: i }
+        );
+      }
+    }
+    return Buffer.from(raw.data);
+  }
+  throw new ReleaseError(PATH_UNSAFE, "bytes field has invalid format");
+}
+function validatePath(path3) {
+  canonicalArtifactPath(path3);
+}
+async function withParentHandle(rootHandle, path3, operation) {
+  const canonical = canonicalArtifactPath(path3).path;
+  const segments = canonical.split("/");
+  const opened = [];
+  let current = rootHandle;
+  let result;
+  let primaryError;
+  try {
+    for (let i = 0; i < segments.length - 1; i++) {
+      current = await current.openDir(segments[i]);
+      opened.push(current);
+    }
+    result = await operation(current, segments[segments.length - 1]);
+  } catch (error) {
+    primaryError = error;
+  }
+  const closeFailures = [];
+  for (let i = opened.length - 1; i >= 0; i--) {
+    try {
+      await opened[i].close();
+    } catch (error) {
+      closeFailures.push(error?.code || error?.message || "close failed");
+    }
+  }
+  if (primaryError) {
+    if (closeFailures.length > 0 && primaryError && typeof primaryError === "object") {
+      primaryError.details = { ...primaryError.details || {}, closeFailures };
+    }
+    throw primaryError;
+  }
+  if (closeFailures.length > 0) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "safe filesystem child handle close failed",
+      { closeFailures }
+    );
+  }
+  return result;
+}
+function validatePathUniqueness(artifacts) {
+  const paths = [];
+  for (const a of artifacts) {
+    if (!a.path || typeof a.path !== "string") {
+      throw new ReleaseError(TRANSACTION_INCOMPLETE, `artifact ${a.id} missing path`);
+    }
+    const { path: canonical, collisionKey } = canonicalArtifactPath(a.path);
+    paths.push({ id: a.id, canonical, collisionKey });
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const p of paths) {
+    if (seen.has(p.collisionKey)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `duplicate canonical path: ${p.canonical}`,
+        { path: p.canonical }
+      );
+    }
+    seen.add(p.collisionKey);
+  }
+  for (let i = 0; i < paths.length; i++) {
+    for (let j = i + 1; j < paths.length; j++) {
+      const a = paths[i].canonical;
+      const b = paths[j].canonical;
+      if (b.startsWith(a + "/") || a.startsWith(b + "/")) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `parent-child path overlap: ${a} and ${b}`,
+          { pathA: a, pathB: b }
+        );
+      }
+    }
+  }
+}
+function validateAndDecodeEntry(entry, label) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, `${label} must be an object`);
+  }
+  const ENTRY_SCHEMA_FIELDS = /* @__PURE__ */ new Set(["kind", "bytes", "sha256", "size", "mode"]);
+  for (const key of Object.keys(entry)) {
+    if (!ENTRY_SCHEMA_FIELDS.has(key)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `${label} has unknown field: ${key}`,
+        { field: key }
+      );
+    }
+  }
+  const VALID_KINDS = /* @__PURE__ */ new Set(["absent", "regular"]);
+  if (!VALID_KINDS.has(entry.kind)) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `${label} has invalid kind: ${entry.kind}`,
+      { kind: entry.kind }
+    );
+  }
+  if (entry.kind === "absent") {
+    if (Object.keys(entry).length !== 1) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `${label} absent entry must contain only kind`
+      );
+    }
+    return;
+  }
+  if (entry.kind !== "regular") return;
+  const isNewEntry = label === "newEntry";
+  if (isNewEntry && entry.bytes !== void 0 && entry.bytes !== null) {
+    entry.bytes = decodeBytes(entry.bytes);
+    for (let i = 0; i < entry.bytes.length; i++) {
+      if (entry.bytes[i] < 0 || entry.bytes[i] > 255) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `${label} bytes[${i}] is out of range 0..255: ${entry.bytes[i]}`,
+          { index: i, value: entry.bytes[i] }
+        );
+      }
+    }
+    if (typeof entry.sha256 === "string" && /^(?:sha256:)?[0-9a-f]{64}$/.test(entry.sha256)) {
+      const expected = entry.sha256.replace(/^sha256:/, "");
+      const actual = sha256Hex(entry.bytes);
+      if (actual !== expected) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `${label} sha256 mismatch: expected ${expected}, got ${actual}`
+        );
+      }
+    } else {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `${label} regular entry with bytes must have sha256 in sha256:hex format`
+      );
+    }
+    if (entry.size !== void 0 && entry.size !== null) {
+      if (Number(entry.size) !== entry.bytes.length) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `${label} size mismatch: expected ${entry.size}, got ${entry.bytes.length}`
+        );
+      }
+    } else {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `${label} regular entry with bytes must have size`
+      );
+    }
+  } else if (isNewEntry) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `${label} regular entry must have bytes`
+    );
+  } else if (entry.bytes !== void 0) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `${label} regular entry must not contain bytes`
+    );
+  }
+  if (typeof entry.sha256 !== "string" || !/^(?:sha256:)?[0-9a-f]{64}$/.test(entry.sha256)) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `${label} regular entry must have a valid sha256`
+    );
+  }
+  if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `${label} regular entry must have a non-negative integer size`
+    );
+  }
+  if (entry.mode !== void 0 && entry.mode !== null) {
+    const modeStr = String(entry.mode);
+    const last3 = modeStr.slice(-3);
+    if (!/^[0-7]{3}$/.test(last3)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `${label} has invalid mode: ${entry.mode}`
+      );
+    }
+  } else {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `${label} regular entry must have mode`
+    );
+  }
+}
+async function assertFullCas(handle, oldEntry, canonicalPath2) {
+  if (!oldEntry || typeof oldEntry !== "object") return;
+  const current = await readCurrentEntry(handle, canonicalPath2);
+  if (oldEntry.kind === "absent") {
+    if (current.kind !== "absent") {
+      throw new ReleaseError(
+        PLAN_STALE,
+        `CAS mismatch: ${canonicalPath2} expected absent, got ${current.kind}`,
+        { path: canonicalPath2, expected: "absent", actual: current.kind }
+      );
+    }
+    return current;
+  }
+  if (oldEntry.kind === "regular") {
+    if (current.kind !== "regular") {
+      throw new ReleaseError(
+        PLAN_STALE,
+        `CAS mismatch: ${canonicalPath2} expected regular, got ${current.kind}`,
+        { path: canonicalPath2, expected: "regular", actual: current.kind }
+      );
+    }
+    if (typeof oldEntry.sha256 === "string") {
+      const expected = oldEntry.sha256.startsWith("sha256:") ? oldEntry.sha256 : `sha256:${oldEntry.sha256}`;
+      if (current.sha256 !== expected) {
+        throw new ReleaseError(
+          PLAN_STALE,
+          `CAS mismatch: ${canonicalPath2} sha256 changed`,
+          { path: canonicalPath2, expected, actual: current.sha256 }
+        );
+      }
+    }
+    if (oldEntry.size !== void 0 && oldEntry.size !== null) {
+      if (Number(oldEntry.size) !== current.size) {
+        throw new ReleaseError(
+          PLAN_STALE,
+          `CAS mismatch: ${canonicalPath2} size changed`,
+          { path: canonicalPath2, expected: Number(oldEntry.size), actual: current.size }
+        );
+      }
+    }
+    if (oldEntry.mode !== void 0 && oldEntry.mode !== null) {
+      const modeStr = String(oldEntry.mode);
+      const last3 = modeStr.slice(-3);
+      if (/^[0-7]{3}$/.test(last3)) {
+        const expectedMode = parseInt(last3, 8);
+        const maskedExpected = expectedMode & 73 ? expectedMode : expectedMode & ~73;
+        const maskedActual = current.mode & 73 ? current.mode : current.mode & ~73;
+        if (maskedExpected !== maskedActual) {
+          throw new ReleaseError(
+            PLAN_STALE,
+            `CAS mismatch: ${canonicalPath2} mode changed`,
+            {
+              path: canonicalPath2,
+              expected: `0o${maskedExpected.toString(8)}`,
+              actual: `0o${maskedActual.toString(8)}`
+            }
+          );
+        }
+      }
+    }
+    return current;
+  }
+  return current;
+}
+async function readCurrentEntry(handle, path3) {
+  return withParentHandle(handle, path3, async (current, leaf) => {
+    const entry = await current.readEntry(leaf);
+    if (!entry || entry.kind === "absent") {
+      return { kind: "absent" };
+    }
+    if (entry.type === "directory" || entry.kind === "tree") {
+      return { kind: "tree", entries: [] };
+    }
+    const isRegular = entry.type === "file" || entry.type === "blob" || entry.kind === "regular";
+    if (!isRegular) {
+      throw new ReleaseError(
+        PATH_UNSAFE,
+        `artifact path is not a regular file: ${entry.type}`,
+        { path: path3, type: entry.type }
+      );
+    }
+    const fileData = await current.readFile(leaf);
+    if (!fileData) return { kind: "absent" };
+    if (Number(fileData.nlink) !== 1) {
+      throw new ReleaseError(
+        PATH_UNSAFE,
+        `artifact path has unexpected hard link count: ${path3}`,
+        { path: path3, nlink: Number(fileData.nlink) }
+      );
+    }
+    return {
+      kind: "regular",
+      bytes: fileData.bytes,
+      sha256: `sha256:${sha256Hex(fileData.bytes)}`,
+      size: fileData.size,
+      mode: fileData.mode,
+      identityToken: fileData
+    };
+  });
+}
+function assertArtifactPlanClosedSchema(plan, planPath) {
+  if (!plan || typeof plan !== "object") {
+    throw new ReleaseError(PLAN_STALE, "plan is not a valid object", { path: redactSensitivePaths(planPath) });
+  }
+  if (plan.apiVersion !== "release-skill.dev/artifact-plan/v1") {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "plan apiVersion is missing or unsupported",
+      { apiVersion: plan.apiVersion }
+    );
+  }
+  if (typeof plan.bindings !== "object" || plan.bindings === null || Array.isArray(plan.bindings)) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "plan bindings must be an object"
+    );
+  }
+  const bindingFields = [
+    "repositoryIdentity",
+    "policyDigest",
+    "baseManifestDigest",
+    "currentManifestDigest",
+    "producerClosureDigest"
+  ];
+  if (Object.keys(plan.bindings).length !== bindingFields.length) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "plan bindings must use the closed v1 schema");
+  }
+  for (const field of bindingFields) {
+    if (typeof plan.bindings[field] !== "string" || !/^sha256:[0-9a-f]{64}$/.test(plan.bindings[field])) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `plan binding ${field} must be a sha256 digest`
+      );
+    }
+  }
+  if (!plan.safeToWrite) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "plan is not safe to write",
+      { safeToWrite: plan.safeToWrite }
+    );
+  }
+  if (!["inspect", "status", "apply"].includes(plan.operation)) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      `plan operation is not applyable: ${plan.operation}`
+    );
+  }
+  if (plan.targetUnchanged !== true) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "plan targetUnchanged must be true");
+  }
+  if (!plan.nextAction || typeof plan.nextAction !== "object" || Array.isArray(plan.nextAction) || Object.keys(plan.nextAction).length !== 1 || typeof plan.nextAction.command !== "string" || !/\bartifacts apply\b/.test(plan.nextAction.command)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "plan nextAction must be the apply command");
+  }
+  if (!Array.isArray(plan.artifacts)) {
+    throw new ReleaseError(PLAN_STALE, "plan missing artifacts array", { path: redactSensitivePaths(planPath) });
+  }
+  const PLAN_SCHEMA_FIELDS2 = /* @__PURE__ */ new Set([
+    "apiVersion",
+    "operation",
+    "bindings",
+    "safeToWrite",
+    "targetUnchanged",
+    "nextAction",
+    "artifacts",
+    "planDigest"
+  ]);
+  for (const key of Object.keys(plan)) {
+    if (!PLAN_SCHEMA_FIELDS2.has(key)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `plan has unknown field: ${key}`,
+        { field: key }
+      );
+    }
+  }
+  for (const artifact of plan.artifacts) {
+    if (!artifact.id || typeof artifact.id !== "string") {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        "artifact missing id or id is not a string",
+        { artifact }
+      );
+    }
+    const ARTIFACT_SCHEMA_FIELDS2 = /* @__PURE__ */ new Set([
+      "id",
+      "path",
+      "oldEntry",
+      "newEntry",
+      "status",
+      "safeToWrite"
+    ]);
+    for (const key of Object.keys(artifact)) {
+      if (!ARTIFACT_SCHEMA_FIELDS2.has(key)) {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          `artifact has unknown field: ${key}`,
+          { artifactId: artifact.id, field: key }
+        );
+      }
+    }
+    const VALID_ARTIFACT_STATUSES = /* @__PURE__ */ new Set([
+      "READY",
+      "CLEAN",
+      "NEW",
+      "HUMAN_CHANGED",
+      "GENERATOR_CHANGED",
+      "MERGEABLE",
+      "RESOLVED"
+    ]);
+    if (!VALID_ARTIFACT_STATUSES.has(artifact.status)) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `artifact has invalid or blocking status: ${artifact.status}`,
+        { artifactId: artifact.id, status: artifact.status }
+      );
+    }
+    if (artifact.safeToWrite !== true) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        `artifact is not explicitly safe to write: ${artifact.id}`,
+        { artifactId: artifact.id, safeToWrite: artifact.safeToWrite }
+      );
+    }
+    validateAndDecodeEntry(artifact.newEntry, "newEntry");
+    validateAndDecodeEntry(artifact.oldEntry, "oldEntry");
+  }
+}
+async function performWriteSetPreflightAndCas(handle, writeSet) {
+  if (!Array.isArray(writeSet) || writeSet.length === 0) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "writeSet must be a non-empty array");
+  }
+  for (const item of writeSet) {
+    if (!item || typeof item !== "object" || Array.isArray(item) || typeof item.id !== "string" || item.id.length === 0) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        "writeSet item missing id or id is not a string"
+      );
+    }
+    validateAndDecodeEntry(item.newEntry, "newEntry");
+    validateAndDecodeEntry(item.oldEntry, "oldEntry");
+  }
+  for (const item of writeSet) {
+    validatePath(item.path);
+  }
+  validatePathUniqueness(writeSet);
+  for (const item of writeSet) {
+    const canonicalPath2 = item.path.endsWith("/") ? item.path.slice(0, -1) : item.path;
+    await assertFullCas(handle, item.oldEntry, canonicalPath2);
+  }
+}
+async function buildOldManifest(handle, artifacts) {
+  const manifest = [];
+  for (const artifact of artifacts) {
+    const canonicalPath2 = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
+    const current = await assertFullCas(handle, artifact.oldEntry, canonicalPath2);
+    if (artifact.oldEntry && artifact.oldEntry.kind === "regular") {
+      manifest.push({
+        path: canonicalPath2,
+        kind: "regular",
+        sha256: current.sha256,
+        size: current.size,
+        mode: current.mode,
+        bytes: current.bytes
+      });
+    } else {
+      manifest.push({
+        path: canonicalPath2,
+        kind: "absent",
+        absent: true
+      });
+    }
+  }
+  return manifest;
+}
+function buildNewManifest(artifacts) {
+  return artifacts.map((a) => {
+    const canonicalPath2 = a.path.endsWith("/") ? a.path.slice(0, -1) : a.path;
+    if (a.newEntry && a.newEntry.kind === "regular") {
+      return {
+        path: canonicalPath2,
+        kind: "regular",
+        sha256: a.newEntry.sha256.startsWith("sha256:") ? a.newEntry.sha256 : `sha256:${a.newEntry.sha256}`,
+        size: a.newEntry.size,
+        mode: a.newEntry.mode
+      };
+    }
+    return { path: canonicalPath2, kind: "absent" };
+  });
+}
+async function applySingleArtifact(handle, artifact, expectedIdentity = null) {
+  const canonicalPath2 = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
+  return withParentHandle(handle, canonicalPath2, async (parent, leaf) => {
+    if (artifact.newEntry && artifact.newEntry.kind === "absent") {
+      await parent.unlink(leaf);
+      await parent.fsync();
+      return;
+    }
+    if (artifact.newEntry && artifact.newEntry.kind === "regular") {
+      const bytes = Buffer.from(artifact.newEntry.bytes);
+      const mode = parseMode(artifact.newEntry.mode);
+      const token = await parent.createTemp(leaf, mode, bytes);
+      try {
+        await parent.rename(token, leaf, expectedIdentity);
+      } catch (renameError) {
+        try {
+          const abortResult = await parent.abortTemp(token);
+          if (!abortResult?.removed) {
+            renameError.details = {
+              ...renameError.details || {},
+              abortResult
+            };
+          }
+        } catch (abortError) {
+          renameError.details = {
+            ...renameError.details || {},
+            abortError: abortError?.code || abortError?.message || "abort failed"
+          };
+        }
+        throw renameError;
+      }
+      await parent.fsync();
+    }
+  });
+}
+function parseMode(mode) {
+  if (mode === void 0 || mode === null) return 384;
+  const modeStr = String(mode);
+  const last3 = modeStr.slice(-3);
+  if (/^[0-7]{3}$/.test(last3)) {
+    return parseInt(last3, 8);
+  }
+  return 384;
+}
+async function verifyManifest(handle, artifacts) {
+  for (const artifact of artifacts) {
+    const canonicalPath2 = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
+    if (artifact.newEntry && artifact.newEntry.kind === "absent") {
+      await assertFullCas(handle, { kind: "absent" }, canonicalPath2);
+    }
+    if (artifact.newEntry && artifact.newEntry.kind === "regular") {
+      const expected = {
+        kind: "regular",
+        sha256: artifact.newEntry.sha256,
+        size: artifact.newEntry.size,
+        mode: artifact.newEntry.mode
+      };
+      await assertFullCas(handle, expected, canonicalPath2);
+    }
+  }
+}
+async function checkTargetUnchanged(handle, artifacts) {
+  try {
+    for (const artifact of artifacts) {
+      const canonicalPath2 = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
+      if (artifact.oldEntry && artifact.oldEntry.kind === "regular") {
+        await assertFullCas(handle, artifact.oldEntry, canonicalPath2);
+      }
+      if (artifact.oldEntry && artifact.oldEntry.kind === "absent") {
+        await assertFullCas(handle, { kind: "absent" }, canonicalPath2);
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function tryRecoveryProtocol({
+  rootHandle,
+  txnHandle,
+  transactionId,
+  originalError,
+  artifacts,
+  journalCreated,
+  recoverCommand
+}) {
+  if (!journalCreated) {
+    return { recoveryError: null, targetUnchanged: false };
+  }
+  let targetUnchanged = false;
+  try {
+    targetUnchanged = await checkTargetUnchanged(rootHandle, artifacts);
+  } catch {
+    targetUnchanged = false;
+  }
+  let journalState = "unknown";
+  try {
+    const journal = await readJournal(txnHandle, transactionId);
+    journalState = journal.state;
+  } catch {
+    journalState = "unreadable";
+  }
+  const recover = typeof recoverCommand === "string" && recoverCommand.length > 0 ? recoverCommand : `release-skill artifacts recover --transaction ${transactionId}`;
+  let recoveryStatePersisted = journalState === "RECOVERY_REQUIRED";
+  let transitionErrorCode = null;
+  if (["PREPARED", "APPLYING", "APPLIED", "VERIFYING"].includes(journalState)) {
+    try {
+      await writeJournalTransition({
+        txnHandle,
+        transactionId,
+        from: journalState,
+        to: "RECOVERY_REQUIRED"
+      });
+      recoveryStatePersisted = true;
+    } catch (error) {
+      transitionErrorCode = error?.code || "UNKNOWN";
+    }
+  }
+  let recoveryMarkerPersisted = false;
+  let markerErrorCode = null;
+  try {
+    await writeRecoveryRequiredFile({
+      txnHandle,
+      transactionId,
+      targetUnchanged,
+      recover
+    });
+    recoveryMarkerPersisted = true;
+  } catch (error) {
+    markerErrorCode = error?.code || "UNKNOWN";
+  }
+  const recoveryError = new ReleaseError(
+    TRANSACTION_INCOMPLETE,
+    recoveryStatePersisted ? `${originalError.message}. ${recover}` : `transaction failed and RECOVERY_REQUIRED could not be persisted. ${recover}`,
+    {
+      transactionId,
+      targetUnchanged,
+      recover,
+      cause: originalError.code || null,
+      causeMessage: originalError.message || null,
+      recoveryDurable: recoveryStatePersisted,
+      recoveryMarkerPersisted,
+      journalState,
+      transitionErrorCode,
+      markerErrorCode
+    }
+  );
+  recoveryError.transactionId = transactionId;
+  return { recoveryError, targetUnchanged };
+}
+function generateTransactionId(clock) {
+  const timeSeed = clock ? clock() : Date.now();
+  const timeDigest = sha256Hex(String(timeSeed)).slice(0, 12);
+  return `txn-${timeDigest}-${randomBytes2(8).toString("hex")}`;
+}
+async function applyWriteSetUnderLock({
+  root,
+  writeSet,
+  canonicalPlan,
+  planDigest,
+  safeFs,
+  faultInjector,
+  clock,
+  assertLockOwner = /* @__PURE__ */ __name(async () => {
+  }, "assertLockOwner"),
+  recoverCommand,
+  rootHandle = null,
+  transactionRetentionMax
+} = {}) {
+  if (!root || typeof root !== "string") {
+    throw new ReleaseError(PATH_UNSAFE, "root must be a non-empty string");
+  }
+  if (!safeFs) {
+    throw new ReleaseError(
+      SAFE_WRITE_UNAVAILABLE,
+      "safe filesystem backend is required"
+    );
+  }
+  if (typeof planDigest !== "string" || !/^sha256:[0-9a-f]{64}$/.test(planDigest)) {
+    throw new ReleaseError(PLAN_STALE, "planDigest must be a sha256 digest");
+  }
+  if (!Array.isArray(writeSet) || writeSet.length === 0) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "writeSet must be a non-empty array");
+  }
+  if (!canonicalPlan || typeof canonicalPlan !== "object" || Array.isArray(canonicalPlan)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, "canonicalPlan must be an object");
+  }
+  const handle = rootHandle ?? await safeFs.openRoot(root);
+  const ownsRootHandle = rootHandle === null;
+  let txnResult;
+  const assertLockAuthority = /* @__PURE__ */ __name(async () => {
+    try {
+      await assertLockOwner();
+    } catch (error) {
+      if (error && typeof error === "object") error.lockOwnershipLost = true;
+      throw error;
+    }
+  }, "assertLockAuthority");
+  try {
+    await performWriteSetPreflightAndCas(handle, writeSet);
+    if (faultInjector) {
+      await faultInjector("preflight-complete");
+    }
+    const probeResult = await safeFs.probe(root);
+    if (!probeResult.supported) {
+      throw new ReleaseError(
+        SAFE_WRITE_UNAVAILABLE,
+        "safe write primitives are not functional on this platform",
+        { platform: process.platform }
+      );
+    }
+    if (faultInjector) await faultInjector("after-probe");
+    await assertLockAuthority();
+    const transactionId = generateTransactionId(clock);
+    let journalCreated = false;
+    const oldManifest = await buildOldManifest(handle, writeSet);
+    const newManifest = buildNewManifest(writeSet);
+    await assertLockAuthority();
+    txnResult = await createTransactionJournal({
+      rootHandle: handle,
+      root,
+      transactionId,
+      planDigest,
+      canonicalPlan,
+      oldManifest,
+      newManifest,
+      retentionMax: transactionRetentionMax
+    });
+    journalCreated = true;
+    const { txnHandle } = txnResult;
+    try {
+      if (faultInjector) await faultInjector("after-prepared");
+      await assertLockAuthority();
+      await writeJournalTransition({
+        txnHandle,
+        transactionId,
+        from: "PREPARED",
+        to: "APPLYING"
+      });
+      if (faultInjector) await faultInjector("after-applying-transition");
+      const results = [];
+      for (let i = 0; i < writeSet.length; i++) {
+        const item = writeSet[i];
+        await assertLockAuthority();
+        await recordAppliedEntry({
+          txnHandle,
+          transactionId,
+          entryIndex: i,
+          entry: { id: item.id, path: item.path, status: "pending" }
+        });
+        if (faultInjector) await faultInjector(`after-entry-pending:${i}`);
+        const canonicalPath2 = item.path.endsWith("/") ? item.path.slice(0, -1) : item.path;
+        const current = await assertFullCas(handle, item.oldEntry, canonicalPath2);
+        if (item.oldEntry && item.oldEntry.kind === "regular") {
+          const expectedOldSha = item.oldEntry.sha256.startsWith("sha256:") ? item.oldEntry.sha256 : `sha256:${item.oldEntry.sha256}`;
+          if (current.sha256 !== expectedOldSha) {
+            throw new ReleaseError(
+              PLAN_STALE,
+              `CAS mismatch during backup read: ${canonicalPath2} sha256 changed`,
+              { path: canonicalPath2 }
+            );
+          }
+          await assertLockAuthority();
+          await createBackup({
+            txnHandle,
+            transactionId,
+            entryIndex: i,
+            oldEntry: { ...item.oldEntry, bytes: current.bytes }
+          });
+        } else {
+          await assertLockAuthority();
+          await createBackup({
+            txnHandle,
+            transactionId,
+            entryIndex: i,
+            oldEntry: { kind: "absent" }
+          });
+        }
+        if (faultInjector) await faultInjector(`after-entry-backup:${i}`);
+        if (faultInjector) await faultInjector(`before-entry-mutation:${i}`);
+        await assertLockAuthority();
+        await applySingleArtifact(
+          handle,
+          item,
+          current?.kind === "regular" ? current.identityToken : null
+        );
+        if (faultInjector) await faultInjector(`after-entry-mutation:${i}`);
+        await assertLockAuthority();
+        await recordAppliedEntry({
+          txnHandle,
+          transactionId,
+          entryIndex: i,
+          entry: { id: item.id, path: item.path, status: "applied" }
+        });
+        if (faultInjector) await faultInjector(`after-entry-applied:${i}`);
+        results.push({ id: item.id, path: item.path, applied: true });
+      }
+      await assertLockAuthority();
+      await writeJournalTransition({
+        txnHandle,
+        transactionId,
+        from: "APPLYING",
+        to: "APPLIED"
+      });
+      if (faultInjector) await faultInjector("after-applied-transition");
+      await assertLockAuthority();
+      await writeJournalTransition({
+        txnHandle,
+        transactionId,
+        from: "APPLIED",
+        to: "VERIFYING"
+      });
+      if (faultInjector) await faultInjector("after-verifying-transition");
+      await verifyManifest(handle, writeSet);
+      if (faultInjector) await faultInjector("after-verify");
+      await assertLockAuthority();
+      await writeJournalTransition({
+        txnHandle,
+        transactionId,
+        from: "VERIFYING",
+        to: "COMMITTED",
+        convergeTerminal: false
+      });
+      if (faultInjector) await faultInjector("after-committed");
+      await assertLockAuthority();
+      const finalJournal = await convergeTerminalRecord({
+        txnHandle,
+        transactionId,
+        faultInjector,
+        recoverCommand
+      });
+      return Object.freeze({
+        transactionId,
+        state: "COMMITTED",
+        results: Object.freeze(results),
+        journal: finalJournal
+      });
+    } catch (applyErr) {
+      if (applyErr?.code === "INJECTED_CRASH" || applyErr?.name === "InjectedCrash") {
+        throw applyErr;
+      }
+      if (applyErr?.lockOwnershipLost === true) {
+        throw applyErr;
+      }
+      if (applyErr?.terminalReceiptConvergenceFailed === true) {
+        throw applyErr;
+      }
+      const { recoveryError } = await tryRecoveryProtocol({
+        rootHandle: handle,
+        txnHandle,
+        transactionId,
+        originalError: applyErr instanceof ReleaseError ? applyErr : new ReleaseError(
+          typeof applyErr?.code === "string" ? applyErr.code : TRANSACTION_INCOMPLETE,
+          applyErr?.message || "safe filesystem operation failed"
+        ),
+        artifacts: writeSet,
+        journalCreated,
+        recoverCommand
+      });
+      if (recoveryError) {
+        throw recoveryError;
+      }
+      throw applyErr;
+    }
+  } finally {
+    let closeError;
+    if (txnResult?.close) {
+      try {
+        await txnResult.close();
+      } catch (error) {
+        closeError = error;
+      }
+    }
+    if (ownsRootHandle) {
+      try {
+        await handle.close();
+      } catch (error) {
+        closeError ??= error;
+      }
+    }
+    if (closeError) throw closeError;
+  }
+}
+async function applyArtifactPlanUnderLock({
+  root,
+  planPath,
+  planDigest,
+  safeFs,
+  faultInjector,
+  clock,
+  assertLockOwner = /* @__PURE__ */ __name(async () => {
+  }, "assertLockOwner")
+} = {}) {
+  if (!root || typeof root !== "string") {
+    throw new ReleaseError(PATH_UNSAFE, "root must be a non-empty string");
+  }
+  if (!planPath || typeof planPath !== "string") {
+    throw new ReleaseError(MISSING_PARAMETERS, "planPath is required");
+  }
+  if (!planDigest || typeof planDigest !== "string") {
+    throw new ReleaseError(MISSING_PARAMETERS, "planDigest is required");
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(planDigest)) {
+    throw new ReleaseError(PLAN_STALE, "planDigest must be a sha256 digest");
+  }
+  if (!safeFs) {
+    throw new ReleaseError(
+      SAFE_WRITE_UNAVAILABLE,
+      "safe filesystem backend is required"
+    );
+  }
+  const handle = await safeFs.openRoot(root);
+  try {
+    const relPlanPath = canonicalArtifactPath(relative13(root, planPath)).path;
+    const planFileData = await withParentHandle(handle, relPlanPath, async (parent, leaf) => {
+      const planEntry = await parent.readEntry(leaf);
+      if (!planEntry || planEntry.kind === "absent") {
+        throw new ReleaseError(PLAN_STALE, "plan file does not exist", { path: redactSensitivePaths(planPath) });
+      }
+      const planIsRegular = planEntry.kind === "regular" || planEntry.type === "file" || planEntry.type === "blob";
+      if (!planIsRegular) {
+        throw new ReleaseError(PATH_UNSAFE, "plan path is not a regular file", { path: redactSensitivePaths(planPath) });
+      }
+      if (typeof planEntry.nlink === "number" && planEntry.nlink !== 1) {
+        throw new ReleaseError(PATH_UNSAFE, "plan file has unexpected hard link count");
+      }
+      const data = await parent.readFile(leaf);
+      if (!data) {
+        throw new ReleaseError(PLAN_STALE, "plan file is unreadable", { path: redactSensitivePaths(planPath) });
+      }
+      if (Number(data.nlink) !== 1) {
+        throw new ReleaseError(PATH_UNSAFE, "plan file has unexpected hard link count");
+      }
+      return data;
+    });
+    let plan;
+    try {
+      plan = JSON.parse(planFileData.bytes.toString("utf8"));
+    } catch (err) {
+      throw new ReleaseError(
+        PLAN_STALE,
+        "plan file is not valid JSON",
+        { path: redactSensitivePaths(planPath), error: err.message }
+      );
+    }
+    const recomputedDigest = computeCanonicalPlanDigest(plan);
+    if (plan.planDigest !== planDigest || recomputedDigest !== planDigest) {
+      throw new ReleaseError(
+        PLAN_STALE,
+        "plan digest does not match expected",
+        { expected: planDigest, embedded: plan.planDigest, actual: recomputedDigest }
+      );
+    }
+    assertArtifactPlanClosedSchema(plan, planPath);
+    const writeSet = plan.artifacts.map((artifact) => ({
+      id: artifact.id,
+      path: artifact.path,
+      oldEntry: artifact.oldEntry,
+      newEntry: artifact.newEntry
+    }));
+    return await applyWriteSetUnderLock({
+      root,
+      writeSet,
+      canonicalPlan: plan,
+      planDigest,
+      safeFs,
+      faultInjector,
+      clock,
+      assertLockOwner,
+      rootHandle: handle
+    });
+  } finally {
+    await handle.close();
+  }
+}
+async function applyArtifactPlan(options = {}) {
+  const { root } = options;
+  if (!root || typeof root !== "string") {
+    throw new ReleaseError(PATH_UNSAFE, "root must be a non-empty string");
+  }
+  const lock = await acquireProjectLock({
+    root,
+    command: "artifacts apply",
+    mode: "exclusive"
+  });
+  let result;
+  let primaryError;
+  try {
+    result = await lock.capture(() => applyArtifactPlanUnderLock({
+      ...options,
+      assertLockOwner: /* @__PURE__ */ __name(() => lock.assertOwner(), "assertLockOwner")
+    }));
+  } catch (error) {
+    primaryError = error;
+  }
+  try {
+    await lock.release();
+  } catch (releaseError) {
+    if (primaryError) {
+      const combined = new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        "artifact apply failed and project lock release also failed",
+        {
+          businessErrorCode: primaryError?.code || null,
+          releaseErrorCode: releaseError?.code || null
+        }
+      );
+      combined.cause = primaryError;
+      combined.releaseCause = releaseError;
+      throw combined;
+    }
+    throw releaseError;
+  }
+  if (primaryError) throw primaryError;
+  return result;
+}
+var init_transaction = __esm({
+  "src/artifacts/transaction.mjs"() {
+    init_digest();
+    init_redact();
+    init_path_key();
+    init_project_lock();
+    init_errors();
+    init_transaction_journal();
+    __name(computeCanonicalPlanDigest, "computeCanonicalPlanDigest");
+    __name(decodeBytes, "decodeBytes");
+    __name(validatePath, "validatePath");
+    __name(withParentHandle, "withParentHandle");
+    __name(validatePathUniqueness, "validatePathUniqueness");
+    __name(validateAndDecodeEntry, "validateAndDecodeEntry");
+    __name(assertFullCas, "assertFullCas");
+    __name(readCurrentEntry, "readCurrentEntry");
+    __name(assertArtifactPlanClosedSchema, "assertArtifactPlanClosedSchema");
+    __name(performWriteSetPreflightAndCas, "performWriteSetPreflightAndCas");
+    __name(buildOldManifest, "buildOldManifest");
+    __name(buildNewManifest, "buildNewManifest");
+    __name(applySingleArtifact, "applySingleArtifact");
+    __name(parseMode, "parseMode");
+    __name(verifyManifest, "verifyManifest");
+    __name(checkTargetUnchanged, "checkTargetUnchanged");
+    __name(tryRecoveryProtocol, "tryRecoveryProtocol");
+    __name(generateTransactionId, "generateTransactionId");
+    __name(applyWriteSetUnderLock, "applyWriteSetUnderLock");
+    __name(applyArtifactPlanUnderLock, "applyArtifactPlanUnderLock");
+    __name(applyArtifactPlan, "applyArtifactPlan");
+  }
+});
+
+// src/docs/config.mjs
+function invalid(message, details = {}) {
+  throw new ReleaseError(RELEASE_DOCS_INVALID, message, details);
+}
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function foldKey(value) {
+  return value.normalize("NFC").toLocaleLowerCase("en-US");
+}
+function assertClosed(obj, allowed, where) {
+  const allowedSet = new Set(allowed);
+  for (const key of Object.keys(obj)) {
+    if (!allowedSet.has(key)) {
+      invalid(`releaseDocuments: unknown field "${key}" in ${where}`, { where, key });
+    }
+  }
+}
+function canonicalPath(raw, where) {
+  if (typeof raw !== "string" || raw.length === 0) {
+    invalid(`releaseDocuments: ${where} must be a non-empty string`, { where, path: raw });
+  }
+  try {
+    return canonicalArtifactPath(raw).path;
+  } catch (err) {
+    invalid(`releaseDocuments: unsafe path in ${where}: ${err.message}`, {
+      where,
+      path: raw,
+      cause: err.code ?? "PATH_UNSAFE"
+    });
+  }
+}
+function assertVersionPattern(pattern, where) {
+  if (/[\r\n\0]/.test(pattern)) {
+    invalid("releaseDocuments: versionMarker pattern must not contain CR, LF, or NUL", { where });
+  }
+  const start = pattern.indexOf(VERSION_PLACEHOLDER);
+  const next = start === -1 ? -1 : pattern.indexOf(VERSION_PLACEHOLDER, start + VERSION_PLACEHOLDER.length);
+  if (start === -1 || next !== -1) {
+    invalid("releaseDocuments: versionMarker pattern must contain exactly one {version} placeholder", { where });
+  }
+  if (start === 0) {
+    invalid("releaseDocuments: versionMarker pattern must have non-empty bytes before {version}", { where });
+  }
+  if (start + VERSION_PLACEHOLDER.length === pattern.length) {
+    invalid("releaseDocuments: versionMarker pattern must have non-empty bytes after {version}", { where });
+  }
+}
+function deepFreeze(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) deepFreeze(item);
+    return Object.freeze(value);
+  }
+  if (value !== null && typeof value === "object") {
+    for (const item of Object.values(value)) deepFreeze(item);
+    return Object.freeze(value);
+  }
+  return value;
+}
+function normalizeReleaseDocumentsConfig(config) {
+  if (!isPlainObject(config)) {
+    invalid("releaseDocuments must be an object", { actual: Array.isArray(config) ? "array" : typeof config });
+  }
+  assertClosed(config, ROOT_KEYS, "releaseDocuments");
+  for (const key of ROOT_KEYS) {
+    if (!(key in config)) {
+      invalid(`releaseDocuments: missing required field "${key}"`, { field: key });
+    }
+  }
+  const { notesSource, locales, changelogs, readmes } = config;
+  const canonicalNotesSource = canonicalPath(notesSource, "releaseDocuments.notesSource");
+  if (!Array.isArray(locales) || locales.length === 0) {
+    invalid("releaseDocuments: locales must be a non-empty array", { field: "locales" });
+  }
+  const localeNamespace = new UniqueNamespace("locale", "releaseDocuments.locales");
+  const declaredLocales = /* @__PURE__ */ new Set();
+  for (const locale of locales) {
+    if (typeof locale !== "string" || !LOCALE_PATTERN.test(locale)) {
+      invalid("releaseDocuments: invalid locale identifier", { field: "locales", locale });
+    }
+    localeNamespace.register(locale);
+    declaredLocales.add(locale);
+  }
+  const targetNamespace = new UniqueNamespace("target path", "releaseDocuments");
+  if (!Array.isArray(changelogs) || changelogs.length === 0) {
+    invalid("releaseDocuments: changelogs must be a non-empty array", { field: "changelogs" });
+  }
+  const canonicalChangelogs = changelogs.map((item, index) => {
+    const where = `releaseDocuments.changelogs[${index}]`;
+    if (!isPlainObject(item)) invalid(`releaseDocuments: changelog item must be an object`, { where });
+    assertClosed(item, CHANGELOG_KEYS, where);
+    for (const key of CHANGELOG_KEYS) {
+      if (!(key in item)) invalid(`releaseDocuments: changelog item missing "${key}"`, { where, field: key });
+    }
+    const path3 = targetNamespace.register(canonicalPath(item.path, `${where}.path`));
+    const { locale } = item;
+    if (typeof locale !== "string" || !declaredLocales.has(locale)) {
+      invalid(`releaseDocuments: changelog locale is not declared in locales`, { where, locale });
+    }
+    return { path: path3, locale };
+  });
+  if (!Array.isArray(readmes) || readmes.length === 0) {
+    invalid("releaseDocuments: readmes must be a non-empty array", { field: "readmes" });
+  }
+  const canonicalReadmes = readmes.map((item, index) => {
+    const where = `releaseDocuments.readmes[${index}]`;
+    if (!isPlainObject(item)) invalid("releaseDocuments: readme item must be an object", { where });
+    assertClosed(item, README_KEYS, where);
+    for (const key of ["path", "locale", "regions"]) {
+      if (!(key in item)) invalid(`releaseDocuments: readme item missing "${key}"`, { where, field: key });
+    }
+    const path3 = targetNamespace.register(canonicalPath(item.path, `${where}.path`));
+    const { locale } = item;
+    if (typeof locale !== "string" || !declaredLocales.has(locale)) {
+      invalid("releaseDocuments: readme locale is not declared in locales", { where, locale });
+    }
+    const { regions } = item;
+    if (!Array.isArray(regions) || regions.length === 0) {
+      invalid("releaseDocuments: regions must be a non-empty array", { where });
+    }
+    const regionNamespace = new UniqueNamespace("region", where);
+    const canonicalRegions = regions.map((region) => {
+      if (typeof region !== "string" || !ID_PATTERN.test(region)) {
+        invalid("releaseDocuments: invalid region id", { where, region });
+      }
+      return regionNamespace.register(region);
+    });
+    const canonical = { path: path3, locale, regions: canonicalRegions };
+    if ("versionMarkers" in item) {
+      const { versionMarkers } = item;
+      if (!Array.isArray(versionMarkers) || versionMarkers.length === 0) {
+        invalid("releaseDocuments: versionMarkers must be a non-empty array when present", { where });
+      }
+      const markerNamespace = new UniqueNamespace("versionMarker id", where);
+      canonical.versionMarkers = versionMarkers.map((marker, markerIndex) => {
+        const markerWhere = `${where}.versionMarkers[${markerIndex}]`;
+        if (!isPlainObject(marker)) {
+          invalid("releaseDocuments: versionMarker item must be an object", { where: markerWhere });
+        }
+        assertClosed(marker, MARKER_KEYS, markerWhere);
+        for (const key of MARKER_KEYS) {
+          if (!(key in marker)) {
+            invalid(`releaseDocuments: versionMarker item missing "${key}"`, { where: markerWhere, field: key });
+          }
+        }
+        const { id, pattern } = marker;
+        if (typeof id !== "string" || !ID_PATTERN.test(id)) {
+          invalid("releaseDocuments: invalid versionMarker id", { where: markerWhere, id });
+        }
+        if (typeof pattern !== "string" || pattern.length === 0) {
+          invalid("releaseDocuments: versionMarker pattern must be a non-empty string", { where: markerWhere });
+        }
+        assertVersionPattern(pattern, markerWhere);
+        return { id: markerNamespace.register(id), pattern };
+      });
+    }
+    return canonical;
+  });
+  return deepFreeze({
+    notesSource: canonicalNotesSource,
+    locales: [...locales],
+    changelogs: canonicalChangelogs,
+    readmes: canonicalReadmes
+  });
+}
+var ROOT_KEYS, CHANGELOG_KEYS, README_KEYS, MARKER_KEYS, LOCALE_PATTERN, ID_PATTERN, VERSION_PLACEHOLDER, UniqueNamespace;
+var init_config2 = __esm({
+  "src/docs/config.mjs"() {
+    init_path_key();
+    init_errors();
+    ROOT_KEYS = Object.freeze(["notesSource", "locales", "changelogs", "readmes"]);
+    CHANGELOG_KEYS = Object.freeze(["path", "locale"]);
+    README_KEYS = Object.freeze(["path", "locale", "regions", "versionMarkers"]);
+    MARKER_KEYS = Object.freeze(["id", "pattern"]);
+    LOCALE_PATTERN = /^[a-zA-Z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
+    ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+    VERSION_PLACEHOLDER = "{version}";
+    __name(invalid, "invalid");
+    __name(isPlainObject, "isPlainObject");
+    __name(foldKey, "foldKey");
+    __name(assertClosed, "assertClosed");
+    UniqueNamespace = class {
+      static {
+        __name(this, "UniqueNamespace");
+      }
+      constructor(kind, where) {
+        this.kind = kind;
+        this.where = where;
+        this.exact = /* @__PURE__ */ new Set();
+        this.folded = /* @__PURE__ */ new Map();
+      }
+      /**
+       * @param {string} canonical  Already-canonicalized (NFC) value.
+       * @returns {string} the canonical value.
+       */
+      register(canonical) {
+        if (this.exact.has(canonical)) {
+          invalid(`releaseDocuments: duplicate ${this.kind} "${canonical}" in ${this.where}`, {
+            where: this.where,
+            kind: this.kind,
+            value: canonical
+          });
+        }
+        this.exact.add(canonical);
+        const key = foldKey(canonical);
+        const existing = this.folded.get(key);
+        if (existing !== void 0 && existing !== canonical) {
+          invalid(
+            `releaseDocuments: case/Unicode collision in ${this.kind}: "${canonical}" and "${existing}" in ${this.where}`,
+            { where: this.where, kind: this.kind, value: canonical, existing }
+          );
+        }
+        this.folded.set(key, canonical);
+        return canonical;
+      }
+    };
+    __name(canonicalPath, "canonicalPath");
+    __name(assertVersionPattern, "assertVersionPattern");
+    __name(deepFreeze, "deepFreeze");
+    __name(normalizeReleaseDocumentsConfig, "normalizeReleaseDocumentsConfig");
+  }
+});
+
+// src/docs/notes.mjs
+function invalid2(reason, message, details = {}) {
+  throw new ReleaseError(RELEASE_DOCS_INVALID, message, { reason, ...details });
+}
+function translationMissing(missingLocales) {
+  throw new ReleaseError(
+    RELEASE_DOCS_TRANSLATION_MISSING,
+    `release notes are missing configured locales: ${missingLocales.join(", ")}`,
+    { reason: "MISSING_LOCALE", locales: missingLocales }
+  );
+}
+function isPlainObject2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function deepFreeze2(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) deepFreeze2(item);
+    return Object.freeze(value);
+  }
+  if (value !== null && typeof value === "object") {
+    for (const item of Object.values(value)) deepFreeze2(item);
+    return Object.freeze(value);
+  }
+  return value;
+}
+function isValidCalendarDate(text) {
+  if (!DATE_PATTERN.test(text)) return false;
+  const [year, month, day] = text.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+function normalizeDate(value) {
+  if (typeof value === "string") {
+    if (isValidCalendarDate(value)) return value;
+    invalid2("INVALID_DATE", "release notes date must be a YYYY-MM-DD calendar date", { date: value });
+  }
+  if (value instanceof Date) {
+    let iso;
+    try {
+      iso = value.toISOString();
+    } catch {
+      invalid2("INVALID_DATE", "release notes date is not a representable date", {});
+    }
+    if (!iso.endsWith("T00:00:00.000Z")) {
+      invalid2("INVALID_DATE", "release notes date must be a YYYY-MM-DD calendar date", {});
+    }
+    const text = iso.slice(0, 10);
+    if (!isValidCalendarDate(text)) {
+      invalid2("INVALID_DATE", "release notes date must be a YYYY-MM-DD calendar date", { date: text });
+    }
+    return text;
+  }
+  return invalid2("INVALID_DATE", "release notes date must be a YYYY-MM-DD string", {});
+}
+function collectYamlViolations(node, found) {
+  if (node === null || node === void 0 || typeof node !== "object") return;
+  if (node.constructor?.name === "Alias" || node.type === "ALIAS") {
+    found.add("alias");
+    return;
+  }
+  if (node.anchor !== void 0) found.add("anchor");
+  if (node.tag !== void 0) found.add("tag");
+  if (node.items && Array.isArray(node.items)) {
+    for (const item of node.items) {
+      if (item && typeof item === "object" && "key" in item) {
+        const key = item.key;
+        if (key && typeof key === "object") {
+          const isScalarKey = key.type === "SCALAR" || key.constructor?.name === "Scalar";
+          if (!isScalarKey) {
+            found.add("complex-key");
+          } else if (key.value === "<<") {
+            found.add("merge");
+          } else if (typeof key.value !== "string") {
+            found.add("complex-key");
+          }
+        } else if (typeof key !== "string") {
+          found.add("complex-key");
+        } else if (key === "<<") {
+          found.add("merge");
+        }
+        collectYamlViolations(key, found);
+        collectYamlViolations(item.value, found);
+      } else {
+        collectYamlViolations(item, found);
+      }
+    }
+  }
+}
+function parseStrictYaml(text) {
+  const docs = import_yaml3.default.parseAllDocuments(text, { uniqueKeys: true, merge: false });
+  if (docs.length === 0) {
+    invalid2("EMPTY_SOURCE", "release notes source is empty", {});
+  }
+  if (docs.length > 1) {
+    invalid2("MULTI_DOCUMENT", "release notes must contain exactly one YAML document", { documents: docs.length });
+  }
+  const doc = docs[0];
+  const duplicate = doc.errors.find((err) => err.message && err.message.includes("unique"));
+  if (duplicate) {
+    invalid2("DUPLICATE_KEY", "duplicate keys are not allowed in release notes", {
+      line: duplicate.line ?? null
+    });
+  }
+  if (doc.errors.length > 0) {
+    invalid2("PARSE_FAILED", "release notes YAML cannot be parsed", {
+      line: doc.errors[0].line ?? null
+    });
+  }
+  if (!doc.contents) {
+    invalid2("EMPTY_SOURCE", "release notes source is empty", {});
+  }
+  const violations = /* @__PURE__ */ new Set();
+  collectYamlViolations(doc.contents, violations);
+  for (const [kind, reason, message] of YAML_VIOLATION_ORDER) {
+    if (violations.has(kind)) invalid2(reason, message, {});
+  }
+  return doc.toJS();
+}
+function assertJsonNoDuplicateKeys(text) {
+  const scopes = [];
+  const length = text.length;
+  let i = 0;
+  while (i < length) {
+    const c = text[i];
+    if (c === '"') {
+      const start = i;
+      i += 1;
+      while (i < length) {
+        if (text[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (text[i] === '"') break;
+        i += 1;
+      }
+      const raw = text.slice(start, i + 1);
+      i += 1;
+      let k = i;
+      while (k < length && (text[k] === " " || text[k] === "	" || text[k] === "\n" || text[k] === "\r")) k += 1;
+      if (text[k] === ":" && scopes.length > 0 && scopes[scopes.length - 1] !== null) {
+        let key = raw;
+        try {
+          key = JSON.parse(raw);
+        } catch {
+        }
+        const set = scopes[scopes.length - 1];
+        if (set.has(key)) {
+          invalid2("DUPLICATE_KEY", "duplicate keys are not allowed in release notes", { key });
+        }
+        set.add(key);
+      }
+      continue;
+    }
+    if (c === "{") {
+      scopes.push(/* @__PURE__ */ new Set());
+      i += 1;
+      continue;
+    }
+    if (c === "}") {
+      scopes.pop();
+      i += 1;
+      continue;
+    }
+    if (c === "[") {
+      scopes.push(null);
+      i += 1;
+      continue;
+    }
+    if (c === "]") {
+      scopes.pop();
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+}
+function parseStrictJson(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    invalid2("PARSE_FAILED", "release notes JSON cannot be parsed", {});
+  }
+  assertJsonNoDuplicateKeys(text);
+  return parsed;
+}
+function normalizeLocaleEntry(entry, locale) {
+  if (!isPlainObject2(entry)) {
+    invalid2("ENTRY_NOT_OBJECT", `release notes locale entry must be a mapping`, { locale });
+  }
+  for (const key of Object.keys(entry)) {
+    if (!ENTRY_KEYS.has(key)) {
+      invalid2("UNKNOWN_FIELD", `unknown field in release notes locale entry`, { locale, field: key });
+    }
+  }
+  for (const key of ["summary", "changes"]) {
+    if (!Object.hasOwn(entry, key)) {
+      invalid2("MISSING_FIELD", `release notes locale entry missing required field`, { locale, field: key });
+    }
+  }
+  const { summary } = entry;
+  if (typeof summary !== "string") {
+    invalid2("INVALID_SUMMARY", "release notes summary must be a string", { locale });
+  }
+  const trimmedSummary = summary.trim();
+  if (trimmedSummary.length === 0) {
+    invalid2("EMPTY_SUMMARY", "release notes summary must not be empty", { locale });
+  }
+  const { changes } = entry;
+  if (!isPlainObject2(changes)) {
+    invalid2("CHANGES_NOT_OBJECT", "release notes changes must be a mapping of categories", { locale });
+  }
+  const canonicalChanges = {};
+  let totalEntries = 0;
+  for (const category of RELEASE_NOTES_CATEGORIES) {
+    if (!Object.hasOwn(changes, category)) continue;
+    const items = changes[category];
+    if (!Array.isArray(items)) {
+      invalid2("CHANGES_CATEGORY_NOT_ARRAY", "release notes change category must be an array", { locale, category });
+    }
+    const trimmedItems = [];
+    for (const item of items) {
+      if (typeof item !== "string") {
+        invalid2("INVALID_CHANGE_ENTRY", "release notes change entries must be strings", { locale, category });
+      }
+      const trimmed = item.trim();
+      if (trimmed.length === 0) {
+        invalid2("EMPTY_CHANGE_ENTRY", "release notes change entries must not be empty", { locale, category });
+      }
+      trimmedItems.push(trimmed);
+    }
+    totalEntries += trimmedItems.length;
+    if (trimmedItems.length > 0) canonicalChanges[category] = trimmedItems;
+  }
+  for (const key of Object.keys(changes)) {
+    if (!CATEGORY_SET.has(key)) {
+      invalid2("UNKNOWN_CATEGORY", "release notes contain an unknown change category", { locale, category: key });
+    }
+  }
+  if (totalEntries === 0) {
+    invalid2("EMPTY_CHANGES", "release notes must contain at least one non-empty change category", { locale });
+  }
+  const canonical = { summary: trimmedSummary, changes: canonicalChanges };
+  if (Object.hasOwn(entry, "upgradeNotes")) {
+    const { upgradeNotes } = entry;
+    if (typeof upgradeNotes !== "string") {
+      invalid2("INVALID_UPGRADE_NOTES", "release notes upgradeNotes must be a string", { locale });
+    }
+    const trimmedNotes = upgradeNotes.trim();
+    if (trimmedNotes.length === 0) {
+      invalid2("EMPTY_UPGRADE_NOTES", "release notes upgradeNotes must not be empty when present", { locale });
+    }
+    canonical.upgradeNotes = trimmedNotes;
+  }
+  return canonical;
+}
+function validateNotesModel(root, { expectedVersion, locales }) {
+  if (!isPlainObject2(root)) {
+    invalid2("ROOT_NOT_OBJECT", "release notes root must be a mapping", {});
+  }
+  for (const key of Object.keys(root)) {
+    if (!ROOT_KEYS2.has(key)) {
+      invalid2("UNKNOWN_FIELD", "unknown field in release notes root", { field: key });
+    }
+  }
+  for (const key of ROOT_KEYS2) {
+    if (!Object.hasOwn(root, key)) {
+      invalid2("MISSING_FIELD", "release notes missing required field", { field: key });
+    }
+  }
+  const { version } = root;
+  if (typeof version !== "string" || version.length === 0) {
+    invalid2("INVALID_VERSION", "release notes version must be a non-empty string", {});
+  }
+  if (version !== expectedVersion) {
+    invalid2("VERSION_MISMATCH", "release notes version does not match the expected version", {
+      expected: expectedVersion,
+      actual: version
+    });
+  }
+  const date = normalizeDate(root.date);
+  const localesMap = root.locales;
+  if (!isPlainObject2(localesMap)) {
+    invalid2("LOCALES_NOT_OBJECT", "release notes locales must be a mapping keyed by locale", {});
+  }
+  const expectedSet = new Set(locales);
+  for (const key of Object.keys(localesMap)) {
+    if (!expectedSet.has(key)) {
+      invalid2("EXTRA_LOCALE", "release notes contain a locale that is not configured", { locale: key });
+    }
+  }
+  const missing = locales.filter((locale) => !Object.hasOwn(localesMap, locale));
+  if (missing.length > 0) {
+    translationMissing(missing);
+  }
+  const canonicalLocales = {};
+  for (const locale of locales) {
+    canonicalLocales[locale] = normalizeLocaleEntry(localesMap[locale], locale);
+  }
+  return { version, date, locales: canonicalLocales };
+}
+function parseReleaseNotes(bytes, options = {}) {
+  const { format, expectedVersion, locales } = options;
+  if (!SUPPORTED_FORMATS.has(format)) {
+    invalid2("UNSUPPORTED_FORMAT", "release notes format must be one of: yaml, yml, json", { format: String(format) });
+  }
+  if (typeof expectedVersion !== "string" || expectedVersion.length === 0) {
+    invalid2("INVALID_OPTIONS", "expectedVersion must be a non-empty string", {});
+  }
+  if (!Array.isArray(locales) || locales.length === 0) {
+    invalid2("INVALID_OPTIONS", "locales must be a non-empty array", {});
+  }
+  const localeSet = /* @__PURE__ */ new Set();
+  for (const locale of locales) {
+    if (typeof locale !== "string" || locale.length === 0) {
+      invalid2("INVALID_OPTIONS", "locale identifiers must be non-empty strings", {});
+    }
+    if (localeSet.has(locale)) {
+      invalid2("INVALID_OPTIONS", "locale identifiers must be unique", { locale });
+    }
+    localeSet.add(locale);
+  }
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_NOTES_BYTES;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    invalid2("INVALID_OPTIONS", "maxBytes must be a positive integer", {});
+  }
+  if (!(bytes instanceof Uint8Array)) {
+    invalid2("INVALID_OPTIONS", "bytes must be a Uint8Array/Buffer", {});
+  }
+  if (bytes.length === 0) {
+    invalid2("EMPTY_SOURCE", "release notes source is empty", {});
+  }
+  if (bytes.length > maxBytes) {
+    invalid2("INPUT_TOO_LARGE", "release notes source exceeds the size limit", {
+      size: bytes.length,
+      maxBytes
+    });
+  }
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    invalid2("NOT_UTF8", "release notes source is not valid UTF-8", {});
+  }
+  if (text.charCodeAt(0) === 65279) {
+    invalid2("BOM", "release notes source must not start with a byte order mark", {});
+  }
+  if (text.includes("\0")) {
+    invalid2("NUL_BYTE", "release notes source must not contain NUL bytes", {});
+  }
+  const parsed = format === "json" ? parseStrictJson(text) : parseStrictYaml(text);
+  const canonical = validateNotesModel(parsed, { expectedVersion, locales: [...localeSet] });
+  return deepFreeze2(canonical);
+}
+var import_yaml3, RELEASE_NOTES_CATEGORIES, DEFAULT_MAX_NOTES_BYTES, CATEGORY_SET, ROOT_KEYS2, ENTRY_KEYS, DATE_PATTERN, SUPPORTED_FORMATS, YAML_VIOLATION_ORDER;
+var init_notes = __esm({
+  "src/docs/notes.mjs"() {
+    import_yaml3 = __toESM(require_dist(), 1);
+    init_errors();
+    RELEASE_NOTES_CATEGORIES = Object.freeze([
+      "security",
+      "breaking",
+      "added",
+      "changed",
+      "deprecated",
+      "removed",
+      "fixed"
+    ]);
+    DEFAULT_MAX_NOTES_BYTES = 1024 * 1024;
+    CATEGORY_SET = new Set(RELEASE_NOTES_CATEGORIES);
+    ROOT_KEYS2 = /* @__PURE__ */ new Set(["version", "date", "locales"]);
+    ENTRY_KEYS = /* @__PURE__ */ new Set(["summary", "changes", "upgradeNotes"]);
+    DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+    SUPPORTED_FORMATS = /* @__PURE__ */ new Set(["yaml", "yml", "json"]);
+    __name(invalid2, "invalid");
+    __name(translationMissing, "translationMissing");
+    __name(isPlainObject2, "isPlainObject");
+    __name(deepFreeze2, "deepFreeze");
+    __name(isValidCalendarDate, "isValidCalendarDate");
+    __name(normalizeDate, "normalizeDate");
+    __name(collectYamlViolations, "collectYamlViolations");
+    YAML_VIOLATION_ORDER = [
+      ["alias", "ALIAS", "YAML aliases are not allowed in release notes"],
+      ["merge", "MERGE_KEY", "YAML merge keys (<<) are not allowed in release notes"],
+      ["anchor", "ANCHOR", "YAML anchors are not allowed in release notes"],
+      ["tag", "CUSTOM_TAG", "explicit or custom YAML tags are not allowed in release notes"],
+      ["complex-key", "COMPLEX_KEY", "non-scalar or non-string YAML keys are not allowed in release notes"]
+    ];
+    __name(parseStrictYaml, "parseStrictYaml");
+    __name(assertJsonNoDuplicateKeys, "assertJsonNoDuplicateKeys");
+    __name(parseStrictJson, "parseStrictJson");
+    __name(normalizeLocaleEntry, "normalizeLocaleEntry");
+    __name(validateNotesModel, "validateNotesModel");
+    __name(parseReleaseNotes, "parseReleaseNotes");
+  }
+});
+
+// src/docs/notes-loader.mjs
+function unsafe(reason, message, details = {}) {
+  throw new ReleaseError(PATH_UNSAFE, message, { reason, ...details });
+}
+function invalid3(reason, message, details = {}) {
+  throw new ReleaseError(RELEASE_DOCS_INVALID, message, { reason, ...details });
+}
+function unsafeCause(reason, message, err, details = {}) {
+  throw new ReleaseError(PATH_UNSAFE, message, {
+    reason,
+    cause: err?.code ?? "BACKEND_ERROR",
+    ...details
+  });
+}
+function resolveNotesPath(notesSource, version) {
+  if (version.includes("/")) {
+    invalid3(
+      "UNSAFE_VERSION_SEGMENT",
+      "version is not a safe file-name fragment for notesSource substitution",
+      { version, cause: "PATH_UNSAFE" }
+    );
+  }
+  try {
+    canonicalArtifactPath(version);
+  } catch (err) {
+    invalid3(
+      "UNSAFE_VERSION_SEGMENT",
+      "version is not a safe file-name fragment for notesSource substitution",
+      { version, cause: err.code ?? "PATH_UNSAFE" }
+    );
+  }
+  const substituted = notesSource.split("{version}").join(version);
+  if (substituted.includes("{") || substituted.includes("}")) {
+    invalid3(
+      "RESIDUAL_PLACEHOLDER",
+      "notesSource contains a placeholder other than {version}",
+      { notesSource }
+    );
+  }
+  let relativePath;
+  try {
+    relativePath = canonicalArtifactPath(substituted).path;
+  } catch (err) {
+    invalid3(
+      "UNSAFE_NOTES_PATH",
+      `notesSource is unsafe after version substitution: ${err.message}`,
+      { notesSource, cause: err.code ?? "PATH_UNSAFE" }
+    );
+  }
+  const dot = relativePath.lastIndexOf(".");
+  const suffix = dot >= 0 ? relativePath.slice(dot + 1) : "";
+  const format = FORMAT_BY_SUFFIX[suffix];
+  if (!format) {
+    invalid3(
+      "UNSUPPORTED_SUFFIX",
+      "notesSource must end with .yaml, .yml, or .json after version substitution",
+      { notesSource, suffix }
+    );
+  }
+  return { relativePath, format };
+}
+function validateIdentity(entry, relativePath, { withBytes = false } = {}, subject = "notes source") {
+  for (const field of IDENTITY_FIELDS) {
+    const value = entry[field];
+    if (!Number.isSafeInteger(value) || value < 0) {
+      unsafe("UNSAFE_IDENTITY", `${subject} metadata is not a trustworthy identity`, {
+        relativePath,
+        field
+      });
+    }
+  }
+  if (withBytes && !Buffer.isBuffer(entry.bytes)) {
+    unsafe("UNSAFE_IDENTITY", `${subject} read did not return bytes`, {
+      relativePath,
+      field: "bytes"
+    });
+  }
+}
+async function readSafeFileThroughHandles(backend, unitRoot, relativePath, limit, seam, subject = "notes source") {
+  const segments = relativePath.split("/");
+  const handleStack = [];
+  let readResult = null;
+  let primaryError = null;
+  try {
+    let rootHandle;
+    try {
+      rootHandle = await backend.openRoot(unitRoot);
+    } catch (err) {
+      unsafeCause("ROOT_OPEN_FAILED", "release unit root cannot be opened safely", err, { relativePath });
+    }
+    handleStack.push(rootHandle);
+    for (let i = 0; i < segments.length - 1; i += 1) {
+      const segment = segments[i];
+      const parent = handleStack[handleStack.length - 1];
+      let entry;
+      try {
+        entry = await parent.readEntry(segment);
+      } catch (err) {
+        unsafeCause("ANCESTOR_READ_FAILED", `${subject} path component cannot be inspected`, err, { relativePath });
+      }
+      if (entry === null || entry === void 0) {
+        unsafe("MISSING", `${subject} path component does not exist`, { relativePath });
+      }
+      if (entry.type === "symlink") {
+        unsafe("ANCESTOR_SYMLINK", `${subject} path contains a symlinked directory`, { relativePath });
+      }
+      if (entry.type !== "directory") {
+        unsafe("ANCESTOR_NOT_DIRECTORY", `${subject} path component is not a directory`, { relativePath });
+      }
+      let child;
+      try {
+        child = await parent.openDir(segment);
+      } catch (err) {
+        unsafeCause("ANCESTOR_OPEN_FAILED", `${subject} directory cannot be opened safely`, err, { relativePath });
+      }
+      handleStack.push(child);
+    }
+    if (seam && typeof seam.beforeLeafRead === "function") {
+      const parentDir = segments.length > 1 ? segments.slice(0, -1).join("/") : ".";
+      await seam.beforeLeafRead({ parentDir });
+    }
+    const leaf = segments[segments.length - 1];
+    const parentHandle = handleStack[handleStack.length - 1];
+    let leafEntry;
+    try {
+      leafEntry = await parentHandle.readEntry(leaf);
+    } catch (err) {
+      unsafeCause("LEAF_READ_FAILED", `${subject} file cannot be inspected`, err, { relativePath });
+    }
+    if (leafEntry === null || leafEntry === void 0) {
+      unsafe("MISSING", `${subject} file does not exist`, { relativePath });
+    }
+    if (leafEntry.type === "symlink") {
+      unsafe("TARGET_SYMLINK", `${subject} target must not be a symlink`, { relativePath });
+    }
+    if (leafEntry.type !== "file") {
+      unsafe("NOT_REGULAR_FILE", `${subject} target must be a regular file`, { relativePath });
+    }
+    validateIdentity(leafEntry, relativePath, {}, subject);
+    if (leafEntry.nlink !== 1) {
+      unsafe("HARDLINK", `${subject} target must not be hardlinked`, { relativePath, nlink: leafEntry.nlink });
+    }
+    if (leafEntry.size > limit) {
+      invalid3("INPUT_TOO_LARGE", `${subject} exceeds the size limit`, {
+        size: leafEntry.size,
+        maxBytes: limit
+      });
+    }
+    try {
+      readResult = await parentHandle.readFile(leaf);
+    } catch (err) {
+      unsafeCause("LEAF_READ_FAILED", `${subject} file cannot be read safely`, err, { relativePath });
+    }
+    if (readResult === null || readResult === void 0) {
+      unsafe("MISSING", `${subject} file disappeared during read`, { relativePath });
+    }
+    validateIdentity(readResult, relativePath, { withBytes: true }, subject);
+    if (readResult.nlink !== 1) {
+      unsafe("HARDLINK", `${subject} target must not be hardlinked`, { relativePath, nlink: readResult.nlink });
+    }
+    if (readResult.size > limit) {
+      invalid3("INPUT_TOO_LARGE", `${subject} exceeds the size limit`, {
+        size: readResult.size,
+        maxBytes: limit
+      });
+    }
+    if (readResult.bytes.length !== readResult.size) {
+      unsafe("CHANGED_DURING_READ", `${subject} bytes disagree with reported size`, { relativePath });
+    }
+    if (readResult.size !== leafEntry.size || readResult.dev !== leafEntry.dev || readResult.ino !== leafEntry.ino) {
+      unsafe("CHANGED_DURING_READ", `${subject} identity changed between inspection and read`, { relativePath });
+    }
+  } catch (err) {
+    primaryError = err instanceof ReleaseError ? err : new ReleaseError(PATH_UNSAFE, `${subject} read failed`, { reason: "READ_FAILED" });
+  }
+  const closeFailures = [];
+  for (let i = handleStack.length - 1; i >= 0; i -= 1) {
+    try {
+      await handleStack[i].close();
+    } catch (closeErr) {
+      closeFailures.push(closeErr?.code ?? "CLOSE_FAILED");
+    }
+  }
+  if (primaryError) {
+    throw primaryError;
+  }
+  if (closeFailures.length > 0) {
+    unsafe("CLOSE_FAILED", `${subject} handle close failed after read`, {
+      relativePath,
+      closeFailures
+    });
+  }
+  return Object.freeze({ bytes: Buffer.from(readResult.bytes), mode: readResult.mode });
+}
+async function loadReleaseNotesSource({
+  unitRoot,
+  config,
+  version,
+  maxBytes,
+  seam,
+  backendFactory
+} = {}) {
+  if (typeof unitRoot !== "string" || unitRoot.length === 0) {
+    invalid3("INVALID_OPTIONS", "unitRoot must be a non-empty string", {});
+  }
+  if (typeof version !== "string" || version.length === 0) {
+    invalid3("INVALID_OPTIONS", "version must be a non-empty string", {});
+  }
+  const limit = maxBytes ?? DEFAULT_MAX_NOTES_BYTES;
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    invalid3("INVALID_OPTIONS", "maxBytes must be a positive integer", {});
+  }
+  const normalized = normalizeReleaseDocumentsConfig(config);
+  const { relativePath, format } = resolveNotesPath(normalized.notesSource, version);
+  const factory = backendFactory ?? loadSafeFs;
+  const backend = await factory();
+  const { bytes } = await readSafeFileThroughHandles(backend, unitRoot, relativePath, limit, seam);
+  const notes = parseReleaseNotes(bytes, {
+    format,
+    expectedVersion: version,
+    locales: [...normalized.locales],
+    maxBytes: limit
+  });
+  return Object.freeze({
+    relativePath,
+    bytesDigest: `sha256:${sha256Hex(bytes)}`,
+    notes
+  });
+}
+var FORMAT_BY_SUFFIX, IDENTITY_FIELDS;
+var init_notes_loader = __esm({
+  "src/docs/notes-loader.mjs"() {
+    init_safe_fs();
+    init_path_key();
+    init_digest();
+    init_errors();
+    init_config2();
+    init_notes();
+    __name(unsafe, "unsafe");
+    __name(invalid3, "invalid");
+    __name(unsafeCause, "unsafeCause");
+    FORMAT_BY_SUFFIX = Object.freeze({ yaml: "yaml", yml: "yml", json: "json" });
+    __name(resolveNotesPath, "resolveNotesPath");
+    IDENTITY_FIELDS = Object.freeze(["size", "dev", "ino", "nlink"]);
+    __name(validateIdentity, "validateIdentity");
+    __name(readSafeFileThroughHandles, "readSafeFileThroughHandles");
+    __name(loadReleaseNotesSource, "loadReleaseNotesSource");
+  }
+});
+
+// src/docs/changelog-renderer.mjs
+function structureError(message, details = {}) {
+  throw new ReleaseError(STRUCTURE_INVALID, message, details);
+}
+function docsError(message, details = {}) {
+  throw new ReleaseError(RELEASE_DOCS_INVALID, message, details);
+}
+function translationMissing2(locale) {
+  throw new ReleaseError(
+    RELEASE_DOCS_TRANSLATION_MISSING,
+    `release notes are missing locale: ${locale}`,
+    { reason: "MISSING_LOCALE", locales: [locale] }
+  );
+}
+function conflictError(message, details = {}) {
+  throw new ReleaseError(RELEASE_DOCS_CONFLICT, message, details);
+}
+function isPlainObject3(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function deepFreeze3(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) deepFreeze3(item);
+    return Object.freeze(value);
+  }
+  if (value !== null && typeof value === "object") {
+    if (ArrayBuffer.isView(value)) return value;
+    for (const item of Object.values(value)) deepFreeze3(item);
+    return Object.freeze(value);
+  }
+  return value;
+}
+function valueLines(value) {
+  return value.split(/\r\n|\r|\n/);
+}
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function validateTarget(target) {
+  if (!isPlainObject3(target)) {
+    docsError("changelog target must be an object", { field: "target" });
+  }
+  if (typeof target.path !== "string" || target.path.length === 0) {
+    docsError("changelog target path must be a non-empty string", { field: "target.path" });
+  }
+  if (typeof target.locale !== "string" || target.locale.length === 0) {
+    docsError("changelog target locale must be a non-empty string", { field: "target.locale" });
+  }
+  return { locale: target.locale };
+}
+function validateNotes(notes, locale) {
+  if (!isPlainObject3(notes)) {
+    docsError("release notes must be an object", { field: "notes" });
+  }
+  const { version, date, locales } = notes;
+  if (typeof version !== "string" || version.length === 0) {
+    docsError("release notes version must be a non-empty string", { field: "notes.version" });
+  }
+  if (UNSAFE_TOKEN_CHARS.test(version)) {
+    docsError("release notes version must not contain whitespace, brackets, angle brackets, or NUL", {
+      field: "notes.version"
+    });
+  }
+  if (typeof date !== "string" || date.length === 0) {
+    docsError("release notes date must be a non-empty string", { field: "notes.date" });
+  }
+  if (UNSAFE_TOKEN_CHARS.test(date)) {
+    docsError("release notes date must not contain whitespace, brackets, angle brackets, or NUL", {
+      field: "notes.date"
+    });
+  }
+  if (!isPlainObject3(locales)) {
+    docsError("release notes locales must be an object", { field: "notes.locales" });
+  }
+  if (!Object.hasOwn(locales, locale)) {
+    translationMissing2(locale);
+  }
+  const entry = locales[locale];
+  if (!isPlainObject3(entry)) {
+    docsError("release notes locale entry must be an object", { locale });
+  }
+  if (typeof entry.summary !== "string" || entry.summary.trim().length === 0) {
+    docsError("release notes summary must be a non-empty string", { locale });
+  }
+  const summary = entry.summary.trim();
+  if (!isPlainObject3(entry.changes)) {
+    docsError("release notes changes must be a mapping of categories", { locale });
+  }
+  const changes = {};
+  let totalEntries = 0;
+  for (const category of RELEASE_NOTES_CATEGORIES) {
+    if (!Object.hasOwn(entry.changes, category)) continue;
+    const items = entry.changes[category];
+    if (!Array.isArray(items)) {
+      docsError("release notes change category must be an array", { locale, category });
+    }
+    const clean = [];
+    for (const item of items) {
+      if (typeof item !== "string" || item.trim().length === 0) {
+        docsError("release notes change entries must be non-empty strings", { locale, category });
+      }
+      clean.push(item.trim());
+    }
+    if (clean.length > 0) {
+      changes[category] = clean;
+      totalEntries += clean.length;
+    }
+  }
+  for (const key of Object.keys(entry.changes)) {
+    if (!CATEGORY_SET2.has(key)) {
+      docsError("release notes contain an unknown change category", { locale, category: key });
+    }
+  }
+  if (totalEntries === 0) {
+    docsError("release notes must contain at least one non-empty change category", { locale });
+  }
+  let upgradeNotes;
+  if (Object.hasOwn(entry, "upgradeNotes")) {
+    if (typeof entry.upgradeNotes !== "string" || entry.upgradeNotes.trim().length === 0) {
+      docsError("release notes upgradeNotes must be a non-empty string when present", { locale });
+    }
+    upgradeNotes = entry.upgradeNotes.trim();
+  }
+  const categories = RELEASE_NOTES_CATEGORIES.filter(
+    (category) => (changes[category]?.length ?? 0) > 0
+  );
+  return { version, date, summary, changes, upgradeNotes, categories };
+}
+function assertBodySafe(entry) {
+  const allValues = [entry.summary, entry.upgradeNotes ?? "", ...Object.values(entry.changes).flat()];
+  for (const value of allValues) {
+    if (value.includes(RESERVED_STRUCTURE_PREFIX)) {
+      structureError("release notes body must not contain managed structure markers", {
+        reason: "BODY_INJECTS_STRUCTURE"
+      });
+    }
+  }
+  const unindented = [entry.summary, entry.upgradeNotes ?? ""];
+  for (const value of unindented) {
+    for (const line of valueLines(value)) {
+      if (line.startsWith("#")) {
+        structureError("release notes body must not contain heading lines", {
+          reason: "BODY_INJECTS_HEADING"
+        });
+      }
+    }
+  }
+}
+function detectEol(bytes) {
+  let crlf = 0;
+  let lf = 0;
+  let cr = 0;
+  for (let i = 0; i < bytes.length; i += 1) {
+    const byte = bytes[i];
+    if (byte === 10) {
+      lf += 1;
+    } else if (byte === 13) {
+      cr += 1;
+      if (bytes[i + 1] === 10) crlf += 1;
+    }
+  }
+  const bareLf = lf - crlf;
+  const bareCr = cr - crlf;
+  if (bareCr > 0) {
+    structureError("CHANGELOG contains bare CR line endings", { reason: "MIXED_LINE_ENDINGS" });
+  }
+  if (crlf > 0 && bareLf > 0) {
+    structureError("CHANGELOG mixes CRLF and LF line endings", { reason: "MIXED_LINE_ENDINGS" });
+  }
+  return crlf > 0 ? "\r\n" : "\n";
+}
+function isH1Line(text) {
+  return text.length >= 1 && text.charCodeAt(0) === 35 && (text.length === 1 || text[1] === " " || text[1] === "	");
+}
+function splitLines(text, eol) {
+  const lines = text.split(eol);
+  const eolByteLen = Buffer.byteLength(eol, "utf8");
+  const infos = [];
+  let cursor = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const byteLen = Buffer.byteLength(lines[i], "utf8");
+    infos.push({ text: lines[i], byteStart: cursor, byteLen, terminated: i < lines.length - 1 });
+    cursor += byteLen + eolByteLen;
+  }
+  return infos;
+}
+function scanMarkers(bytes, version) {
+  const prefixLen = Buffer.byteLength(MARKER_PREFIX, "utf8");
+  const currentVersionPattern = new RegExp(`version=${escapeRegExp(version)}(?=[\\s]|$)`);
+  const markers = [];
+  let offset = 0;
+  while (offset <= bytes.length) {
+    const idx = bytes.indexOf(MARKER_PREFIX, offset, "utf8");
+    if (idx < 0) break;
+    const closeIdx = bytes.indexOf("-->", idx + prefixLen, "utf8");
+    const regionEnd = closeIdx < 0 || closeIdx - idx > MARKER_MAX_BYTES ? Math.min(idx + MARKER_MAX_BYTES, bytes.length) : closeIdx + 3;
+    const regionText = bytes.toString("utf8", idx, regionEnd);
+    const match = closeIdx >= 0 && closeIdx - idx <= MARKER_MAX_BYTES ? WELL_FORMED_MARKER.exec(regionText) : null;
+    const wellFormed = match !== null && (match[1] === "start" && match[5] !== void 0 || match[1] === "end" && match[5] === void 0);
+    if (!wellFormed) {
+      if (currentVersionPattern.test(regionText)) {
+        conflictError("CHANGELOG contains a corrupt current-version marker", {
+          reason: "CORRUPT_CURRENT_MARKER",
+          offset: idx
+        });
+      }
+      structureError("CHANGELOG contains a corrupt managed-entry marker", {
+        reason: "CORRUPT_MARKER",
+        offset: idx
+      });
+    }
+    markers.push({
+      kind: match[1],
+      version: match[2],
+      locale: match[3],
+      baseline: match[1] === "start" ? match[5] : void 0,
+      start: idx,
+      end: idx + Buffer.byteLength(match[0], "utf8")
+    });
+    offset = idx + 1;
+  }
+  return markers;
+}
+function pairMarkers(markers, version) {
+  const openStarts = [];
+  const entries = [];
+  for (const marker of markers) {
+    if (marker.kind === "start") {
+      openStarts.push(marker);
+      continue;
+    }
+    let foundIdx = -1;
+    for (let i = openStarts.length - 1; i >= 0; i -= 1) {
+      if (openStarts[i].version === marker.version && openStarts[i].locale === marker.locale) {
+        foundIdx = i;
+        break;
+      }
+    }
+    if (foundIdx === -1) {
+      let nearIdx = -1;
+      for (let i = openStarts.length - 1; i >= 0; i -= 1) {
+        if (openStarts[i].version === marker.version || openStarts[i].locale === marker.locale) {
+          nearIdx = i;
+          break;
+        }
+      }
+      if (nearIdx !== -1) {
+        if (openStarts[nearIdx].version === version || marker.version === version) {
+          conflictError("CHANGELOG current-version markers are crossed or metadata-mismatched", {
+            reason: "CURRENT_ENTRY_CROSSED",
+            offset: marker.start
+          });
+        }
+        structureError("CHANGELOG managed-entry markers are crossed or metadata-mismatched", {
+          reason: "MARKER_CROSSED",
+          offset: marker.start
+        });
+      }
+      if (marker.version === version) {
+        conflictError("CHANGELOG current-version end marker has no start marker", {
+          reason: "INCOMPLETE_CURRENT_ENTRY",
+          offset: marker.start
+        });
+      }
+      structureError("CHANGELOG end marker has no start marker", {
+        reason: "INCOMPLETE_ENTRY",
+        offset: marker.start
+      });
+    }
+    const open10 = openStarts[foundIdx];
+    openStarts.splice(foundIdx, 1);
+    entries.push({
+      version: open10.version,
+      locale: open10.locale,
+      baseline: open10.baseline,
+      start: open10.start,
+      bodyStart: open10.end,
+      bodyEnd: marker.start,
+      end: marker.end
+    });
+  }
+  for (const open10 of openStarts) {
+    if (open10.version === version) {
+      conflictError("CHANGELOG current-version start marker has no end marker", {
+        reason: "INCOMPLETE_CURRENT_ENTRY",
+        offset: open10.start
+      });
+    }
+    structureError("CHANGELOG start marker has no end marker", {
+      reason: "INCOMPLETE_ENTRY",
+      offset: open10.start
+    });
+  }
+  const sorted = [...entries].sort((a, b) => a.start - b.start || a.end - b.end);
+  for (let i = 1; i < sorted.length; i += 1) {
+    const outer = sorted[i - 1];
+    const inner = sorted[i];
+    if (inner.start >= outer.end) continue;
+    const involvesCurrent = outer.version === version || inner.version === version;
+    if (inner.end > outer.end) {
+      if (involvesCurrent) {
+        conflictError("CHANGELOG current-version managed entries are crossed", {
+          reason: "CURRENT_ENTRY_CROSSED",
+          offset: inner.start
+        });
+      }
+      structureError("CHANGELOG managed entries are crossed", {
+        reason: "MARKER_CROSSED",
+        offset: inner.start
+      });
+    }
+    if (involvesCurrent) {
+      conflictError("CHANGELOG current-version managed entries are nested", {
+        reason: "CURRENT_ENTRY_NESTED",
+        offset: inner.start
+      });
+    }
+    structureError("CHANGELOG managed entries are nested", {
+      reason: "MARKER_NESTED",
+      offset: inner.start
+    });
+  }
+  return entries;
+}
+function renderBodyLines(entry, locale, version, date) {
+  const labels = CATEGORY_LABELS[locale] ?? CATEGORY_LABELS[FALLBACK_LABEL_LOCALE];
+  const upgradeLabel = UPGRADE_NOTES_LABELS[locale] ?? UPGRADE_NOTES_LABELS[FALLBACK_LABEL_LOCALE];
+  const lines = [];
+  lines.push(`## [${version}] - ${date}`);
+  lines.push("");
+  lines.push(...valueLines(entry.summary));
+  for (const category of RELEASE_NOTES_CATEGORIES) {
+    const items = entry.changes[category];
+    if (!items || items.length === 0) continue;
+    lines.push("");
+    lines.push(`### ${labels[category]}`);
+    lines.push("");
+    for (const item of items) {
+      const itemLines = valueLines(item);
+      lines.push(`- ${itemLines[0]}`);
+      for (let i = 1; i < itemLines.length; i += 1) {
+        lines.push(`  ${itemLines[i]}`);
+      }
+    }
+  }
+  if (entry.upgradeNotes !== void 0) {
+    lines.push("");
+    lines.push(`### ${upgradeLabel}`);
+    lines.push("");
+    lines.push(...valueLines(entry.upgradeNotes));
+  }
+  return lines;
+}
+function renderChangelogRelease({ bytes, target, notes } = {}) {
+  if (!(bytes instanceof Uint8Array)) {
+    structureError("changelog bytes must be a Uint8Array/Buffer", { reason: "INVALID_BYTES" });
+  }
+  const input = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  const { locale } = validateTarget(target);
+  const { version, date, summary, changes, upgradeNotes, categories } = validateNotes(notes, locale);
+  assertBodySafe({ summary, changes, upgradeNotes });
+  const eol = detectEol(input);
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(input);
+  } catch {
+    structureError("CHANGELOG is not valid UTF-8", { reason: "NOT_UTF8" });
+  }
+  const lines = splitLines(text, eol);
+  const eolByteLen = Buffer.byteLength(eol, "utf8");
+  const h1Lines = lines.filter((line) => isH1Line(line.text));
+  if (h1Lines.length === 0) {
+    structureError("CHANGELOG must contain exactly one level-1 heading", { reason: "NO_H1" });
+  }
+  if (h1Lines.length > 1) {
+    structureError("CHANGELOG must contain exactly one level-1 heading", {
+      reason: "MULTIPLE_H1",
+      count: h1Lines.length
+    });
+  }
+  const h1 = h1Lines[0];
+  const markers = scanMarkers(input, version);
+  const entries = pairMarkers(markers, version);
+  const sameVersionEntries = entries.filter((entry) => entry.version === version);
+  if (sameVersionEntries.some((entry) => entry.locale !== locale)) {
+    conflictError("CHANGELOG current-version entry has the wrong locale for this target", {
+      reason: "CURRENT_ENTRY_WRONG_LOCALE",
+      version,
+      locale
+    });
+  }
+  const exactEntries = sameVersionEntries.filter((entry) => entry.locale === locale);
+  if (exactEntries.length > 1) {
+    conflictError("CHANGELOG contains duplicate current-version managed entries", {
+      reason: "DUPLICATE_CURRENT_ENTRY",
+      version,
+      locale,
+      count: exactEntries.length
+    });
+  }
+  const current = exactEntries.length === 1 ? exactEntries[0] : null;
+  const headingPrefix = `## [${version}]`;
+  let outsideHeadings = 0;
+  for (const line of lines) {
+    if (!line.text.startsWith(headingPrefix)) continue;
+    const insideCurrent = current !== null && line.byteStart >= current.start && line.byteStart < current.end;
+    if (!insideCurrent) outsideHeadings += 1;
+  }
+  const bodyLines = renderBodyLines({ summary, changes, upgradeNotes }, locale, version, date);
+  const canonicalBody = bodyLines.join(eol);
+  const baseline = sha256Hex(canonicalBody);
+  const startMarker = `<!-- release-skill:changelog:start version=${version} locale=${locale} baseline=sha256:${baseline} -->`;
+  const endMarker = `<!-- release-skill:changelog:end version=${version} locale=${locale} -->`;
+  const entryBytes = Buffer.from(`${startMarker}${eol}${canonicalBody}${eol}${endMarker}`, "utf8");
+  let out;
+  let change;
+  if (current === null) {
+    if (outsideHeadings === 1) {
+      conflictError("CHANGELOG has an unmanaged heading for the current version", {
+        reason: "UNMANAGED_CURRENT_HEADING",
+        version,
+        locale
+      });
+    }
+    if (outsideHeadings >= 2) {
+      conflictError("CHANGELOG has multiple headings for the current version", {
+        reason: "MULTIPLE_CURRENT_HEADINGS",
+        version,
+        locale,
+        count: outsideHeadings
+      });
+    }
+    const insertAt = h1.terminated ? h1.byteStart + h1.byteLen + eolByteLen : input.length;
+    const terminator = h1.terminated ? "" : eol;
+    const insertion = Buffer.from(
+      `${terminator}${eol}${startMarker}${eol}${canonicalBody}${eol}${endMarker}${eol}${eol}`,
+      "utf8"
+    );
+    out = Buffer.concat([input.subarray(0, insertAt), insertion, input.subarray(insertAt)]);
+    change = "insert";
+  } else {
+    if (outsideHeadings >= 1) {
+      conflictError("CHANGELOG has multiple headings for the current version", {
+        reason: "MULTIPLE_CURRENT_HEADINGS",
+        version,
+        locale,
+        count: outsideHeadings + 1
+      });
+    }
+    const between = input.subarray(current.bodyStart, current.bodyEnd);
+    const eolBuf = Buffer.from(eol, "utf8");
+    let candidate = null;
+    if (between.length >= 2 * eolBuf.length && between.subarray(0, eolBuf.length).equals(eolBuf) && between.subarray(between.length - eolBuf.length).equals(eolBuf)) {
+      candidate = between.subarray(eolBuf.length, between.length - eolBuf.length);
+    }
+    const digest = candidate === null ? null : sha256Hex(candidate);
+    if (digest !== current.baseline) {
+      conflictError("CHANGELOG current-version entry was modified by hand (baseline mismatch)", {
+        reason: "BASELINE_MISMATCH",
+        version,
+        locale
+      });
+    }
+    const oldSpan = input.subarray(current.start, current.end);
+    change = oldSpan.equals(entryBytes) ? "none" : "update";
+    out = Buffer.concat([input.subarray(0, current.start), entryBytes, input.subarray(current.end)]);
+  }
+  const changed = !input.equals(out);
+  return deepFreeze3({
+    kind: "changelog",
+    locale,
+    version,
+    date,
+    categories,
+    changed,
+    change,
+    bytes: out
+  });
+}
+var MARKER_PREFIX, WELL_FORMED_MARKER, MARKER_MAX_BYTES, RESERVED_STRUCTURE_PREFIX, CATEGORY_LABELS, UPGRADE_NOTES_LABELS, FALLBACK_LABEL_LOCALE, CATEGORY_SET2, UNSAFE_TOKEN_CHARS;
+var init_changelog_renderer = __esm({
+  "src/docs/changelog-renderer.mjs"() {
+    init_notes();
+    init_digest();
+    init_errors();
+    MARKER_PREFIX = "<!-- release-skill:changelog:";
+    WELL_FORMED_MARKER = /^<!-- release-skill:changelog:(start|end) version=([^\s<>]+) locale=([^\s<>]+)( baseline=sha256:([0-9a-f]{64}))? -->$/;
+    MARKER_MAX_BYTES = 512;
+    RESERVED_STRUCTURE_PREFIX = "<!-- release-skill:";
+    CATEGORY_LABELS = Object.freeze({
+      en: Object.freeze({
+        security: "Security",
+        breaking: "Breaking Changes",
+        added: "Added",
+        changed: "Changed",
+        deprecated: "Deprecated",
+        removed: "Removed",
+        fixed: "Fixed"
+      }),
+      "zh-CN": Object.freeze({
+        security: "\u5B89\u5168",
+        breaking: "\u7834\u574F\u6027\u53D8\u66F4",
+        added: "\u65B0\u589E",
+        changed: "\u53D8\u66F4",
+        deprecated: "\u5F03\u7528",
+        removed: "\u79FB\u9664",
+        fixed: "\u4FEE\u590D"
+      })
+    });
+    UPGRADE_NOTES_LABELS = Object.freeze({
+      en: "Upgrade Notes",
+      "zh-CN": "\u5347\u7EA7\u8BF4\u660E"
+    });
+    FALLBACK_LABEL_LOCALE = "en";
+    CATEGORY_SET2 = new Set(RELEASE_NOTES_CATEGORIES);
+    UNSAFE_TOKEN_CHARS = /[\s[\]<>\0]/;
+    __name(structureError, "structureError");
+    __name(docsError, "docsError");
+    __name(translationMissing2, "translationMissing");
+    __name(conflictError, "conflictError");
+    __name(isPlainObject3, "isPlainObject");
+    __name(deepFreeze3, "deepFreeze");
+    __name(valueLines, "valueLines");
+    __name(escapeRegExp, "escapeRegExp");
+    __name(validateTarget, "validateTarget");
+    __name(validateNotes, "validateNotes");
+    __name(assertBodySafe, "assertBodySafe");
+    __name(detectEol, "detectEol");
+    __name(isH1Line, "isH1Line");
+    __name(splitLines, "splitLines");
+    __name(scanMarkers, "scanMarkers");
+    __name(pairMarkers, "pairMarkers");
+    __name(renderBodyLines, "renderBodyLines");
+    __name(renderChangelogRelease, "renderChangelogRelease");
+  }
+});
+
+// src/artifacts/merge/regions.mjs
+function parseManagedRegions(bytes, declarations) {
+  const result = /* @__PURE__ */ new Map();
+  for (const decl of declarations) {
+    if (!decl.start || !decl.end) {
+      throw new ReleaseError(
+        STRUCTURE_INVALID,
+        `managed region '${decl.id}' has empty start or end marker`,
+        { regionId: decl.id }
+      );
+    }
+  }
+  const seenIds = /* @__PURE__ */ new Set();
+  for (const decl of declarations) {
+    if (seenIds.has(decl.id)) {
+      throw new ReleaseError(
+        STRUCTURE_INVALID,
+        `duplicate declaration id '${decl.id}' in managed region declarations`,
+        { regionId: decl.id }
+      );
+    }
+    seenIds.add(decl.id);
+  }
+  const markers = [];
+  for (const decl of declarations) {
+    let offset = 0;
+    while (offset <= bytes.length) {
+      const idx = bytes.indexOf(decl.start, offset, "utf8");
+      if (idx < 0) break;
+      markers.push({ id: decl.id, kind: "start", offset: idx });
+      offset = idx + Buffer.byteLength(decl.start, "utf8");
+    }
+    offset = 0;
+    while (offset <= bytes.length) {
+      const idx = bytes.indexOf(decl.end, offset, "utf8");
+      if (idx < 0) break;
+      markers.push({ id: decl.id, kind: "end", offset: idx });
+      offset = idx + Buffer.byteLength(decl.end, "utf8");
+    }
+  }
+  for (const decl of declarations) {
+    const hasStart = markers.some((m) => m.id === decl.id && m.kind === "start");
+    const hasEnd = markers.some((m) => m.id === decl.id && m.kind === "end");
+    if (!hasStart && !hasEnd) {
+      throw new ReleaseError(
+        STRUCTURE_INVALID,
+        `managed region '${decl.id}' markers not found in content`,
+        { regionId: decl.id }
+      );
+    }
+  }
+  markers.sort((a, b) => a.offset - b.offset || (a.kind === "start" ? -1 : 1));
+  const openRegions = /* @__PURE__ */ new Map();
+  for (const marker of markers) {
+    if (marker.kind === "start") {
+      if (openRegions.has(marker.id)) {
+        throw new ReleaseError(
+          STRUCTURE_INVALID,
+          `duplicate start marker for managed region '${marker.id}'`,
+          { regionId: marker.id, offset: marker.offset }
+        );
+      }
+      for (const [openId, openInfo] of openRegions) {
+        if (openId !== marker.id && openInfo.startOffset < marker.offset) {
+          throw new ReleaseError(
+            STRUCTURE_INVALID,
+            `managed region '${marker.id}' overlaps with open region '${openId}'`,
+            { regionId: marker.id, overlappingWith: openId }
+          );
+        }
+      }
+      openRegions.set(marker.id, { startOffset: marker.offset });
+    } else {
+      if (!openRegions.has(marker.id)) {
+        throw new ReleaseError(
+          STRUCTURE_INVALID,
+          `end marker for managed region '${marker.id}' found without matching start`,
+          { regionId: marker.id, offset: marker.offset }
+        );
+      }
+      const openInfo = openRegions.get(marker.id);
+      const decl = declarations.find((d) => d.id === marker.id);
+      const endMarkerLen = Buffer.byteLength(decl.end, "utf8");
+      result.set(marker.id, {
+        start: openInfo.startOffset,
+        end: marker.offset + endMarkerLen
+      });
+      openRegions.delete(marker.id);
+    }
+  }
+  for (const [id] of openRegions) {
+    throw new ReleaseError(
+      STRUCTURE_INVALID,
+      `managed region '${id}' has start marker but no end marker`,
+      { regionId: id }
+    );
+  }
+  return result;
+}
+var init_regions = __esm({
+  "src/artifacts/merge/regions.mjs"() {
+    init_errors();
+    __name(parseManagedRegions, "parseManagedRegions");
+  }
+});
+
+// src/docs/readme-renderer.mjs
+function structureError2(message, details = {}) {
+  throw new ReleaseError(STRUCTURE_INVALID, message, details);
+}
+function docsError2(message, details = {}) {
+  throw new ReleaseError(RELEASE_DOCS_INVALID, message, details);
+}
+function translationMissing3(locale) {
+  throw new ReleaseError(
+    RELEASE_DOCS_TRANSLATION_MISSING,
+    `release notes are missing locale: ${locale}`,
+    { reason: "MISSING_LOCALE", locales: [locale] }
+  );
+}
+function isPlainObject4(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function deepFreeze4(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) deepFreeze4(item);
+    return Object.freeze(value);
+  }
+  if (value !== null && typeof value === "object") {
+    if (ArrayBuffer.isView(value)) return value;
+    for (const item of Object.values(value)) deepFreeze4(item);
+    return Object.freeze(value);
+  }
+  return value;
+}
+function valueLines2(value) {
+  return value.split(/\r\n|\r|\n/);
+}
+function validateTarget2(target) {
+  if (!isPlainObject4(target)) {
+    docsError2("readme target must be an object", { field: "target" });
+  }
+  if (typeof target.path !== "string" || target.path.length === 0) {
+    docsError2("readme target path must be a non-empty string", { field: "target.path" });
+  }
+  if (typeof target.locale !== "string" || target.locale.length === 0) {
+    docsError2("readme target locale must be a non-empty string", { field: "target.locale" });
+  }
+  if (!Array.isArray(target.regions) || target.regions.length === 0) {
+    docsError2("readme target regions must be a non-empty array", { field: "target.regions" });
+  }
+  for (const region of target.regions) {
+    if (typeof region !== "string" || region.length === 0) {
+      docsError2("readme target region ids must be non-empty strings", { field: "target.regions" });
+    }
+  }
+  const markers = [];
+  if ("versionMarkers" in target) {
+    const { versionMarkers } = target;
+    if (!Array.isArray(versionMarkers) || versionMarkers.length === 0) {
+      docsError2("readme target versionMarkers must be a non-empty array when present", {
+        field: "target.versionMarkers"
+      });
+    }
+    for (const marker of versionMarkers) {
+      if (!isPlainObject4(marker)) {
+        docsError2("readme versionMarker must be an object", { field: "target.versionMarkers" });
+      }
+      if (typeof marker.id !== "string" || marker.id.length === 0) {
+        docsError2("readme versionMarker id must be a non-empty string", { field: "target.versionMarkers" });
+      }
+      const { pattern } = marker;
+      if (typeof pattern !== "string" || pattern.length === 0) {
+        docsError2("readme versionMarker pattern must be a non-empty string", {
+          markerId: marker.id
+        });
+      }
+      if (/[\r\n\0]/.test(pattern)) {
+        docsError2("readme versionMarker pattern must not contain CR, LF, or NUL", {
+          markerId: marker.id
+        });
+      }
+      const start = pattern.indexOf(VERSION_PLACEHOLDER2);
+      const next = start === -1 ? -1 : pattern.indexOf(VERSION_PLACEHOLDER2, start + VERSION_PLACEHOLDER2.length);
+      if (start === -1 || next !== -1 || start === 0 || start + VERSION_PLACEHOLDER2.length === pattern.length) {
+        docsError2(
+          "readme versionMarker pattern must contain exactly one {version} placeholder with non-empty fixed bytes on both sides",
+          { markerId: marker.id }
+        );
+      }
+      markers.push({
+        id: marker.id,
+        prefix: pattern.slice(0, start),
+        suffix: pattern.slice(start + VERSION_PLACEHOLDER2.length)
+      });
+    }
+  }
+  return { locale: target.locale, regions: [...target.regions], markers };
+}
+function validateNotes2(notes, locale) {
+  if (!isPlainObject4(notes)) {
+    docsError2("release notes must be an object", { field: "notes" });
+  }
+  const { version, date, locales } = notes;
+  if (typeof version !== "string" || version.length === 0) {
+    docsError2("release notes version must be a non-empty string", { field: "notes.version" });
+  }
+  if (/[\r\n\0]/.test(version)) {
+    docsError2("release notes version must not contain CR, LF, or NUL", { field: "notes.version" });
+  }
+  if (typeof date !== "string" || date.length === 0) {
+    docsError2("release notes date must be a non-empty string", { field: "notes.date" });
+  }
+  if (!isPlainObject4(locales)) {
+    docsError2("release notes locales must be an object", { field: "notes.locales" });
+  }
+  if (!Object.hasOwn(locales, locale)) {
+    translationMissing3(locale);
+  }
+  const entry = locales[locale];
+  if (!isPlainObject4(entry)) {
+    docsError2("release notes locale entry must be an object", { locale });
+  }
+  if (typeof entry.summary !== "string" || entry.summary.trim().length === 0) {
+    docsError2("release notes summary must be a non-empty string", { locale });
+  }
+  const summary = entry.summary.trim();
+  if (!isPlainObject4(entry.changes)) {
+    docsError2("release notes changes must be a mapping of categories", { locale });
+  }
+  const changes = {};
+  let totalEntries = 0;
+  for (const category of RELEASE_NOTES_CATEGORIES) {
+    if (!Object.hasOwn(entry.changes, category)) continue;
+    const items = entry.changes[category];
+    if (!Array.isArray(items)) {
+      docsError2("release notes change category must be an array", { locale, category });
+    }
+    const clean = [];
+    for (const item of items) {
+      if (typeof item !== "string" || item.trim().length === 0) {
+        docsError2("release notes change entries must be non-empty strings", { locale, category });
+      }
+      clean.push(item.trim());
+    }
+    if (clean.length > 0) {
+      changes[category] = clean;
+      totalEntries += clean.length;
+    }
+  }
+  for (const key of Object.keys(entry.changes)) {
+    if (!CATEGORY_SET3.has(key)) {
+      docsError2("release notes contain an unknown change category", { locale, category: key });
+    }
+  }
+  if (totalEntries === 0) {
+    docsError2("release notes must contain at least one non-empty change category", { locale });
+  }
+  let upgradeNotes;
+  if (Object.hasOwn(entry, "upgradeNotes")) {
+    if (typeof entry.upgradeNotes !== "string" || entry.upgradeNotes.trim().length === 0) {
+      docsError2("release notes upgradeNotes must be a non-empty string when present", { locale });
+    }
+    upgradeNotes = entry.upgradeNotes.trim();
+  }
+  const categories = RELEASE_NOTES_CATEGORIES.filter(
+    (category) => (changes[category]?.length ?? 0) > 0
+  );
+  return { version, date, summary, changes, upgradeNotes, categories };
+}
+function assertBodySafe2(values) {
+  for (const value of values) {
+    if (value.includes(RESERVED_STRUCTURE_PREFIX2)) {
+      structureError2("release notes body must not contain managed structure markers", {
+        reason: "BODY_INJECTS_STRUCTURE"
+      });
+    }
+  }
+}
+function detectEol2(bytes) {
+  let crlf = 0;
+  let lf = 0;
+  let cr = 0;
+  for (let i = 0; i < bytes.length; i += 1) {
+    const byte = bytes[i];
+    if (byte === 10) {
+      lf += 1;
+    } else if (byte === 13) {
+      cr += 1;
+      if (bytes[i + 1] === 10) crlf += 1;
+    }
+  }
+  const bareLf = lf - crlf;
+  const bareCr = cr - crlf;
+  if (bareCr > 0) {
+    structureError2("README contains bare CR line endings", { reason: "MIXED_LINE_ENDINGS" });
+  }
+  if (crlf > 0 && bareLf > 0) {
+    structureError2("README mixes CRLF and LF line endings", { reason: "MIXED_LINE_ENDINGS" });
+  }
+  return crlf > 0 ? "\r\n" : "\n";
+}
+function managedDeclarations(regions) {
+  return regions.map((id) => ({
+    id,
+    start: `${MANAGED_START_PREFIX}${id} -->`,
+    end: `${MANAGED_END_PREFIX}${id} -->`
+  }));
+}
+function assertNoUnknownManagedMarkers(bytes, declarations) {
+  for (const kind of ["start", "end"]) {
+    const prefix = kind === "start" ? MANAGED_START_PREFIX : MANAGED_END_PREFIX;
+    let offset = 0;
+    while (offset <= bytes.length) {
+      const idx = bytes.indexOf(prefix, offset, "utf8");
+      if (idx < 0) break;
+      const known = declarations.some((decl) => {
+        const marker = kind === "start" ? decl.start : decl.end;
+        return bytes.indexOf(marker, idx, "utf8") === idx;
+      });
+      if (!known) {
+        structureError2("README contains a corrupt or undeclared managed region marker", {
+          reason: "UNKNOWN_MANAGED_MARKER",
+          offset: idx
+        });
+      }
+      offset = idx + 1;
+    }
+  }
+}
+function findVersionMarkerMatches(bytes, prefix, suffix) {
+  const matches = [];
+  const prefixLength = Buffer.byteLength(prefix, "utf8");
+  const suffixLength = Buffer.byteLength(suffix, "utf8");
+  let offset = 0;
+  while (offset <= bytes.length) {
+    const prefixStart = bytes.indexOf(prefix, offset, "utf8");
+    if (prefixStart < 0) break;
+    const suffixStart = bytes.indexOf(suffix, prefixStart + prefixLength, "utf8");
+    if (suffixStart >= 0) {
+      matches.push({
+        prefixStart,
+        valueStart: prefixStart + prefixLength,
+        valueEnd: suffixStart,
+        suffixEnd: suffixStart + suffixLength
+      });
+    }
+    offset = prefixStart + 1;
+  }
+  return matches;
+}
+function renderBodyLines2(entry, locale, version, date) {
+  const labels = CATEGORY_LABELS2[locale] ?? CATEGORY_LABELS2[FALLBACK_LABEL_LOCALE2];
+  const upgradeLabel = UPGRADE_NOTES_LABELS2[locale] ?? UPGRADE_NOTES_LABELS2[FALLBACK_LABEL_LOCALE2];
+  const lines = [];
+  lines.push(`**${version}** (${date})`);
+  lines.push("");
+  lines.push(...valueLines2(entry.summary));
+  for (const category of RELEASE_NOTES_CATEGORIES) {
+    const items = entry.changes[category];
+    if (!items || items.length === 0) continue;
+    lines.push("");
+    lines.push(`**${labels[category]}**`);
+    lines.push("");
+    for (const item of items) {
+      const itemLines = valueLines2(item);
+      lines.push(`- ${itemLines[0]}`);
+      for (let i = 1; i < itemLines.length; i += 1) {
+        lines.push(`  ${itemLines[i]}`);
+      }
+    }
+  }
+  if (entry.upgradeNotes !== void 0) {
+    lines.push("");
+    lines.push(`**${upgradeLabel}**`);
+    lines.push("");
+    lines.push(...valueLines2(entry.upgradeNotes));
+  }
+  return lines;
+}
+function renderReadmeRelease({ bytes, target, notes } = {}) {
+  if (!(bytes instanceof Uint8Array)) {
+    structureError2("readme bytes must be a Uint8Array/Buffer", { reason: "INVALID_BYTES" });
+  }
+  const input = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  const { locale, regions, markers } = validateTarget2(target);
+  const { version, date, summary, changes, upgradeNotes, categories } = validateNotes2(notes, locale);
+  assertBodySafe2([summary, upgradeNotes ?? "", ...Object.values(changes).flat()]);
+  const eol = detectEol2(input);
+  const declarations = managedDeclarations(regions);
+  assertNoUnknownManagedMarkers(input, declarations);
+  const ranges = parseManagedRegions(input, declarations);
+  const bodyLines = renderBodyLines2({ summary, changes, upgradeNotes }, locale, version, date);
+  const innerBytes = Buffer.concat([
+    Buffer.from(eol, "utf8"),
+    Buffer.from(bodyLines.join(eol), "utf8"),
+    Buffer.from(eol, "utf8")
+  ]);
+  const protectedSpans = [];
+  const edits = [];
+  for (const decl of declarations) {
+    const range = ranges.get(decl.id);
+    protectedSpans.push({ id: `region:${decl.id}`, start: range.start, end: range.end });
+    edits.push({
+      start: range.start + Buffer.byteLength(decl.start, "utf8"),
+      end: range.end - Buffer.byteLength(decl.end, "utf8"),
+      replacement: innerBytes
+    });
+  }
+  const versionBytes = Buffer.from(version, "utf8");
+  for (const marker of markers) {
+    const matches = findVersionMarkerMatches(input, marker.prefix, marker.suffix);
+    if (matches.length === 0) {
+      structureError2(`version marker '${marker.id}' has no match in README`, {
+        reason: "VERSION_MARKER_NO_MATCH",
+        markerId: marker.id
+      });
+    }
+    if (matches.length > 1) {
+      structureError2(`version marker '${marker.id}' matches more than once in README`, {
+        reason: "VERSION_MARKER_AMBIGUOUS",
+        markerId: marker.id,
+        matches: matches.length
+      });
+    }
+    const match = matches[0];
+    if (match.valueStart === match.valueEnd) {
+      structureError2(`version marker '${marker.id}' has an empty machine value`, {
+        reason: "VERSION_MARKER_EMPTY_VALUE",
+        markerId: marker.id
+      });
+    }
+    const value = input.subarray(match.valueStart, match.valueEnd);
+    if (value.includes(13) || value.includes(10) || value.includes(0)) {
+      structureError2(`version marker '${marker.id}' machine value spans lines or contains NUL`, {
+        reason: "VERSION_MARKER_MULTILINE_VALUE",
+        markerId: marker.id
+      });
+    }
+    protectedSpans.push({
+      id: `versionMarker:${marker.id}`,
+      start: match.prefixStart,
+      end: match.suffixEnd
+    });
+    edits.push({
+      start: match.valueStart,
+      end: match.valueEnd,
+      replacement: versionBytes
+    });
+  }
+  const sortedSpans = [...protectedSpans].sort((a, b) => a.start - b.start || a.end - b.end);
+  for (let i = 1; i < sortedSpans.length; i += 1) {
+    if (sortedSpans[i].start < sortedSpans[i - 1].end) {
+      structureError2("managed regions and version markers must not overlap", {
+        reason: "OVERLAPPING_RANGES",
+        spans: [sortedSpans[i - 1].id, sortedSpans[i].id]
+      });
+    }
+  }
+  let out = input;
+  const sortedEdits = [...edits].sort((a, b) => b.start - a.start);
+  for (const edit of sortedEdits) {
+    out = Buffer.concat([out.subarray(0, edit.start), edit.replacement, out.subarray(edit.end)]);
+  }
+  const changed = !input.equals(out);
+  return deepFreeze4({
+    kind: "readme",
+    locale,
+    version,
+    date,
+    categories,
+    regions: [...regions],
+    changed,
+    bytes: out
+  });
+}
+var VERSION_PLACEHOLDER2, MANAGED_START_PREFIX, MANAGED_END_PREFIX, RESERVED_STRUCTURE_PREFIX2, CATEGORY_LABELS2, UPGRADE_NOTES_LABELS2, FALLBACK_LABEL_LOCALE2, CATEGORY_SET3;
+var init_readme_renderer = __esm({
+  "src/docs/readme-renderer.mjs"() {
+    init_regions();
+    init_notes();
+    init_errors();
+    VERSION_PLACEHOLDER2 = "{version}";
+    MANAGED_START_PREFIX = "<!-- release-skill:managed:start id=";
+    MANAGED_END_PREFIX = "<!-- release-skill:managed:end id=";
+    RESERVED_STRUCTURE_PREFIX2 = "<!-- release-skill:";
+    CATEGORY_LABELS2 = Object.freeze({
+      en: Object.freeze({
+        security: "Security",
+        breaking: "Breaking Changes",
+        added: "Added",
+        changed: "Changed",
+        deprecated: "Deprecated",
+        removed: "Removed",
+        fixed: "Fixed"
+      }),
+      "zh-CN": Object.freeze({
+        security: "\u5B89\u5168",
+        breaking: "\u7834\u574F\u6027\u53D8\u66F4",
+        added: "\u65B0\u589E",
+        changed: "\u53D8\u66F4",
+        deprecated: "\u5F03\u7528",
+        removed: "\u79FB\u9664",
+        fixed: "\u4FEE\u590D"
+      })
+    });
+    UPGRADE_NOTES_LABELS2 = Object.freeze({
+      en: "Upgrade Notes",
+      "zh-CN": "\u5347\u7EA7\u8BF4\u660E"
+    });
+    FALLBACK_LABEL_LOCALE2 = "en";
+    CATEGORY_SET3 = new Set(RELEASE_NOTES_CATEGORIES);
+    __name(structureError2, "structureError");
+    __name(docsError2, "docsError");
+    __name(translationMissing3, "translationMissing");
+    __name(isPlainObject4, "isPlainObject");
+    __name(deepFreeze4, "deepFreeze");
+    __name(valueLines2, "valueLines");
+    __name(validateTarget2, "validateTarget");
+    __name(validateNotes2, "validateNotes");
+    __name(assertBodySafe2, "assertBodySafe");
+    __name(detectEol2, "detectEol");
+    __name(managedDeclarations, "managedDeclarations");
+    __name(assertNoUnknownManagedMarkers, "assertNoUnknownManagedMarkers");
+    __name(findVersionMarkerMatches, "findVersionMarkerMatches");
+    __name(renderBodyLines2, "renderBodyLines");
+    __name(renderReadmeRelease, "renderReadmeRelease");
+  }
+});
+
+// src/docs/refresh-planner.mjs
+function invalid4(message, details = {}) {
+  throw new ReleaseError(RELEASE_DOCS_INVALID, message, details);
+}
+function isPlainObject5(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function deepFreeze5(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) deepFreeze5(item);
+    return Object.freeze(value);
+  }
+  if (value !== null && typeof value === "object") {
+    if (ArrayBuffer.isView(value)) return value;
+    for (const item of Object.values(value)) deepFreeze5(item);
+    return Object.freeze(value);
+  }
+  return value;
+}
+function assertDigest(value, field) {
+  if (typeof value !== "string" || !DIGEST_PATTERN.test(value)) {
+    invalid4(`${field} must be a sha256:<64 lowercase hex> digest`, { field });
+  }
+}
+function comparePaths(a, b) {
+  return Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
+}
+function validateConfig2(config) {
+  if (!isPlainObject5(config)) {
+    invalid4("releaseDocuments config must be an object", { field: "config" });
+  }
+  if (typeof config.notesSource !== "string" || config.notesSource.length === 0) {
+    invalid4("releaseDocuments config notesSource must be a non-empty string", {
+      field: "config.notesSource"
+    });
+  }
+  if (!Array.isArray(config.locales) || config.locales.length === 0) {
+    invalid4("releaseDocuments config locales must be a non-empty array", { field: "config.locales" });
+  }
+  for (const locale of config.locales) {
+    if (typeof locale !== "string" || locale.length === 0) {
+      invalid4("releaseDocuments config locale identifiers must be non-empty strings", {
+        field: "config.locales"
+      });
+    }
+  }
+  const targets = /* @__PURE__ */ new Map();
+  const register = /* @__PURE__ */ __name((kind, target, where) => {
+    if (!isPlainObject5(target)) {
+      invalid4(`releaseDocuments ${kind} target must be an object`, { where });
+    }
+    if (typeof target.path !== "string" || target.path.length === 0) {
+      invalid4(`releaseDocuments ${kind} target path must be a non-empty string`, { where });
+    }
+    if (typeof target.locale !== "string" || target.locale.length === 0) {
+      invalid4(`releaseDocuments ${kind} target locale must be a non-empty string`, { where });
+    }
+    if (targets.has(target.path)) {
+      invalid4("releaseDocuments config has a duplicate target path", { where, path: target.path });
+    }
+    targets.set(target.path, { kind, locale: target.locale, target });
+  }, "register");
+  if (!Array.isArray(config.changelogs) || config.changelogs.length === 0) {
+    invalid4("releaseDocuments config changelogs must be a non-empty array", {
+      field: "config.changelogs"
+    });
+  }
+  config.changelogs.forEach(
+    (target, index) => register("changelog", target, `config.changelogs[${index}]`)
+  );
+  if (!Array.isArray(config.readmes) || config.readmes.length === 0) {
+    invalid4("releaseDocuments config readmes must be a non-empty array", {
+      field: "config.readmes"
+    });
+  }
+  config.readmes.forEach((target, index) => {
+    const where = `config.readmes[${index}]`;
+    if (!Array.isArray(target.regions) || target.regions.length === 0) {
+      invalid4("releaseDocuments readme target regions must be a non-empty array", { where });
+    }
+    for (const region of target.regions) {
+      if (typeof region !== "string" || region.length === 0) {
+        invalid4("releaseDocuments readme region ids must be non-empty strings", { where });
+      }
+    }
+    if ("versionMarkers" in target) {
+      const { versionMarkers } = target;
+      if (!Array.isArray(versionMarkers) || versionMarkers.length === 0) {
+        invalid4("releaseDocuments readme versionMarkers must be a non-empty array when present", {
+          where
+        });
+      }
+      for (const marker of versionMarkers) {
+        if (!isPlainObject5(marker) || typeof marker.id !== "string" || marker.id.length === 0 || typeof marker.pattern !== "string" || marker.pattern.length === 0) {
+          invalid4("releaseDocuments readme versionMarker must carry a non-empty id and pattern", {
+            where
+          });
+        }
+      }
+    }
+    register("readme", target, where);
+  });
+  return { targets, locales: [...config.locales] };
+}
+function validateOldFiles(oldFiles, targets) {
+  if (!Array.isArray(oldFiles)) {
+    invalid4("oldFiles must be an array of per-target inputs", { field: "oldFiles" });
+  }
+  const bytesByPath = /* @__PURE__ */ new Map();
+  oldFiles.forEach((entry, index) => {
+    const where = `oldFiles[${index}]`;
+    if (!isPlainObject5(entry)) {
+      invalid4("oldFiles entries must be objects", { where });
+    }
+    if (typeof entry.path !== "string" || entry.path.length === 0) {
+      invalid4("oldFiles entry path must be a non-empty string", { where });
+    }
+    if (typeof entry.kind !== "string" || !KINDS.has(entry.kind)) {
+      invalid4('oldFiles entry kind must be "changelog" or "readme"', { where, kind: entry.kind });
+    }
+    if (typeof entry.locale !== "string" || entry.locale.length === 0) {
+      invalid4("oldFiles entry locale must be a non-empty string", { where });
+    }
+    if (!(entry.bytes instanceof Uint8Array)) {
+      invalid4("oldFiles entry bytes must be a Uint8Array/Buffer", { where });
+    }
+    if (bytesByPath.has(entry.path)) {
+      invalid4("oldFiles contains a duplicate target path", { where, path: entry.path });
+    }
+    const expected = targets.get(entry.path);
+    if (expected === void 0) {
+      invalid4("oldFiles contains a target that is not configured", { where, path: entry.path });
+    }
+    if (expected.kind !== entry.kind) {
+      invalid4("oldFiles entry kind does not match the configured target", {
+        where,
+        path: entry.path,
+        expected: expected.kind,
+        actual: entry.kind
+      });
+    }
+    if (expected.locale !== entry.locale) {
+      invalid4("oldFiles entry locale does not match the configured target", {
+        where,
+        path: entry.path,
+        expected: expected.locale,
+        actual: entry.locale
+      });
+    }
+    bytesByPath.set(entry.path, entry.bytes);
+  });
+  for (const path3 of targets.keys()) {
+    if (!bytesByPath.has(path3)) {
+      invalid4("oldFiles is missing an input for a configured target", {
+        reason: "MISSING_TARGET",
+        path: path3
+      });
+    }
+  }
+  return bytesByPath;
+}
+function createReleaseDocsRefreshPlan({
+  unitId,
+  version,
+  config,
+  notes,
+  notesSourceDigest,
+  oldFiles
+} = {}) {
+  if (typeof unitId !== "string" || !UNIT_ID_PATTERN.test(unitId)) {
+    invalid4("unitId must be a release unit identifier", { field: "unitId" });
+  }
+  if (typeof version !== "string" || version.length === 0) {
+    invalid4("version must be a non-empty string", { field: "version" });
+  }
+  if (!isPlainObject5(notes)) {
+    invalid4("release notes must be an object", { field: "notes" });
+  }
+  if (typeof notes.version !== "string" || notes.version !== version) {
+    invalid4("release notes version does not match the release version", {
+      reason: "VERSION_DRIFT",
+      field: "notes.version"
+    });
+  }
+  assertDigest(notesSourceDigest, "notesSourceDigest");
+  const { targets, locales } = validateConfig2(config);
+  const bytesByPath = validateOldFiles(oldFiles, targets);
+  const files = [];
+  for (const [path3, entry] of targets) {
+    const oldBytes = Buffer.from(bytesByPath.get(path3));
+    const rendered = entry.kind === "changelog" ? renderChangelogRelease({ bytes: oldBytes, target: entry.target, notes }) : renderReadmeRelease({ bytes: oldBytes, target: entry.target, notes });
+    const newBytes = Buffer.from(rendered.bytes);
+    const changed = !oldBytes.equals(newBytes);
+    const change = entry.kind === "changelog" ? rendered.change : changed ? "update" : "none";
+    files.push({
+      path: path3,
+      kind: entry.kind,
+      locale: entry.locale,
+      oldDigest: `sha256:${sha256Hex(oldBytes)}`,
+      newDigest: `sha256:${sha256Hex(newBytes)}`,
+      change,
+      changed,
+      summary: {
+        oldSize: oldBytes.length,
+        newSize: newBytes.length,
+        delta: newBytes.length - oldBytes.length
+      },
+      oldBytes,
+      newBytes
+    });
+  }
+  files.sort((a, b) => comparePaths(a.path, b.path));
+  const inputDigest = `sha256:${sha256Hex(canonicalJson({ notes, notesSourceDigest }))}`;
+  const refreshDigest = `sha256:${sha256Hex(
+    canonicalJson({
+      protocolVersion: RELEASE_DOCS_REFRESH_PROTOCOL_VERSION,
+      unitId,
+      version,
+      inputDigest,
+      config,
+      files: files.map((file) => ({
+        path: file.path,
+        kind: file.kind,
+        locale: file.locale,
+        oldDigest: file.oldDigest,
+        newDigest: file.newDigest,
+        change: file.change
+      }))
+    })
+  )}`;
+  const status = files.some((file) => file.changed) ? "changes" : "clean";
+  return deepFreeze5({ status, unitId, version, locales, inputDigest, refreshDigest, files });
+}
+function projectReleaseDocsRefreshDisplay(plan) {
+  if (!isPlainObject5(plan)) {
+    invalid4("plan must be an object", { field: "plan" });
+  }
+  if (typeof plan.status !== "string" || !STATUSES.has(plan.status)) {
+    invalid4('plan status must be "changes" or "clean"', { field: "plan.status" });
+  }
+  if (typeof plan.unitId !== "string" || !UNIT_ID_PATTERN.test(plan.unitId)) {
+    invalid4("plan unitId must be a release unit identifier", { field: "plan.unitId" });
+  }
+  if (typeof plan.version !== "string" || plan.version.length === 0) {
+    invalid4("plan version must be a non-empty string", { field: "plan.version" });
+  }
+  if (!Array.isArray(plan.locales)) {
+    invalid4("plan locales must be an array", { field: "plan.locales" });
+  }
+  for (const locale of plan.locales) {
+    if (typeof locale !== "string" || locale.length === 0) {
+      invalid4("plan locale identifiers must be non-empty strings", { field: "plan.locales" });
+    }
+  }
+  assertDigest(plan.inputDigest, "plan.inputDigest");
+  assertDigest(plan.refreshDigest, "plan.refreshDigest");
+  if (!Array.isArray(plan.files)) {
+    invalid4("plan files must be an array", { field: "plan.files" });
+  }
+  const files = plan.files.map((file, index) => {
+    const where = `plan.files[${index}]`;
+    if (!isPlainObject5(file)) {
+      invalid4("plan file entries must be objects", { where });
+    }
+    if (typeof file.path !== "string" || file.path.length === 0) {
+      invalid4("plan file path must be a non-empty string", { where });
+    }
+    if (typeof file.kind !== "string" || !KINDS.has(file.kind)) {
+      invalid4('plan file kind must be "changelog" or "readme"', { where });
+    }
+    if (typeof file.locale !== "string" || file.locale.length === 0) {
+      invalid4("plan file locale must be a non-empty string", { where });
+    }
+    assertDigest(file.oldDigest, `${where}.oldDigest`);
+    assertDigest(file.newDigest, `${where}.newDigest`);
+    if (typeof file.change !== "string" || !CHANGES.has(file.change)) {
+      invalid4('plan file change must be "insert", "update", or "none"', { where });
+    }
+    if (typeof file.changed !== "boolean") {
+      invalid4("plan file changed must be a boolean", { where });
+    }
+    if (!isPlainObject5(file.summary) || typeof file.summary.oldSize !== "number" || typeof file.summary.newSize !== "number" || typeof file.summary.delta !== "number") {
+      invalid4("plan file summary must carry numeric oldSize, newSize, and delta", { where });
+    }
+    return {
+      path: file.path,
+      kind: file.kind,
+      locale: file.locale,
+      oldDigest: file.oldDigest,
+      newDigest: file.newDigest,
+      change: file.change,
+      changed: file.changed,
+      summary: {
+        oldSize: file.summary.oldSize,
+        newSize: file.summary.newSize,
+        delta: file.summary.delta
+      }
+    };
+  });
+  const argv = ["release-skill", "docs", "refresh", "--unit", plan.unitId];
+  const writeArgv = plan.status === "changes" ? [...argv, "--write", "--confirm-refresh", plan.refreshDigest, "--ack-local-document-write"] : null;
+  return deepFreeze5({
+    status: plan.status,
+    unitId: plan.unitId,
+    version: plan.version,
+    locales: [...plan.locales],
+    inputDigest: plan.inputDigest,
+    refreshDigest: plan.refreshDigest,
+    files,
+    nextCommand: { argv, writeArgv }
+  });
+}
+var RELEASE_DOCS_REFRESH_PROTOCOL_VERSION, DIGEST_PATTERN, UNIT_ID_PATTERN, KINDS, STATUSES, CHANGES;
+var init_refresh_planner = __esm({
+  "src/docs/refresh-planner.mjs"() {
+    init_digest();
+    init_errors();
+    init_changelog_renderer();
+    init_readme_renderer();
+    RELEASE_DOCS_REFRESH_PROTOCOL_VERSION = 1;
+    DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
+    UNIT_ID_PATTERN = /^(?!\.{1,2}$)[A-Za-z0-9][A-Za-z0-9._-]*$/;
+    KINDS = /* @__PURE__ */ new Set(["changelog", "readme"]);
+    STATUSES = /* @__PURE__ */ new Set(["changes", "clean"]);
+    CHANGES = /* @__PURE__ */ new Set(["insert", "update", "none"]);
+    __name(invalid4, "invalid");
+    __name(isPlainObject5, "isPlainObject");
+    __name(deepFreeze5, "deepFreeze");
+    __name(assertDigest, "assertDigest");
+    __name(comparePaths, "comparePaths");
+    __name(validateConfig2, "validateConfig");
+    __name(validateOldFiles, "validateOldFiles");
+    __name(createReleaseDocsRefreshPlan, "createReleaseDocsRefreshPlan");
+    __name(projectReleaseDocsRefreshDisplay, "projectReleaseDocsRefreshDisplay");
+  }
+});
+
+// src/docs/refresh-service.mjs
+var refresh_service_exports = {};
+__export(refresh_service_exports, {
+  planReleaseDocsRefreshForUnit: () => planReleaseDocsRefreshForUnit,
+  runReleaseDocsRefresh: () => runReleaseDocsRefresh
+});
+import { isAbsolute as isAbsolute11, relative as relative14, resolve as resolve15, sep as sep3 } from "node:path";
+function deepFreeze6(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) deepFreeze6(item);
+    return Object.freeze(value);
+  }
+  if (value !== null && typeof value === "object") {
+    if (ArrayBuffer.isView(value)) return value;
+    for (const item of Object.values(value)) deepFreeze6(item);
+    return Object.freeze(value);
+  }
+  return value;
+}
+function modeToString(mode) {
+  if (typeof mode === "string" && mode.length > 0) return mode;
+  if (Number.isSafeInteger(mode) && mode >= 0 && mode <= 511) {
+    return mode.toString(8).padStart(6, "0");
+  }
+  return "000644";
+}
+function selectUnit(config, unitId) {
+  const units = Array.isArray(config?.releaseUnits) ? config.releaseUnits : [];
+  const matches = units.filter((unit) => unit?.id === unitId);
+  if (matches.length === 0) {
+    throw new ReleaseError(
+      RELEASE_DOCS_INVALID,
+      `release unit "${unitId}" was not found in the project configuration`,
+      { reason: "UNIT_NOT_FOUND", unitId, available: units.map((unit) => unit?.id) }
+    );
+  }
+  if (matches.length > 1) {
+    throw new ReleaseError(
+      RELEASE_DOCS_INVALID,
+      `release unit "${unitId}" is declared more than once in the project configuration`,
+      { reason: "UNIT_DUPLICATE", unitId }
+    );
+  }
+  return matches[0];
+}
+async function planReleaseDocsRefreshForUnit({
+  root,
+  config,
+  unit,
+  version,
+  backendFactory
+} = {}) {
+  if (typeof root !== "string" || root.length === 0) {
+    throw new ReleaseError(RELEASE_DOCS_INVALID, "root must be a non-empty string", {
+      reason: "INVALID_OPTIONS",
+      field: "root"
+    });
+  }
+  if (!unit || typeof unit !== "object" || Array.isArray(unit)) {
+    throw new ReleaseError(RELEASE_DOCS_INVALID, "unit must be a release unit object", {
+      reason: "INVALID_OPTIONS",
+      field: "unit"
+    });
+  }
+  if (typeof unit.id !== "string" || unit.id.length === 0) {
+    throw new ReleaseError(RELEASE_DOCS_INVALID, "unit.id must be a non-empty string", {
+      reason: "INVALID_OPTIONS",
+      field: "unit.id"
+    });
+  }
+  if (typeof version !== "string" || version.length === 0) {
+    throw new ReleaseError(RELEASE_DOCS_INVALID, "version must be a non-empty string", {
+      reason: "INVALID_OPTIONS",
+      field: "version"
+    });
+  }
+  if (unit.releaseDocuments === void 0 || unit.releaseDocuments === null) {
+    throw new ReleaseError(
+      RELEASE_DOCS_INVALID,
+      `release unit "${unit.id}" does not configure releaseDocuments`,
+      { reason: "RELEASE_DOCUMENTS_NOT_CONFIGURED", unitId: unit.id }
+    );
+  }
+  if (typeof unit.source !== "string" || unit.source.length === 0) {
+    throw new ReleaseError(RELEASE_DOCS_INVALID, "unit.source must be a non-empty string", {
+      reason: "INVALID_OPTIONS",
+      field: "unit.source"
+    });
+  }
+  const unitRoot = resolve15(root, unit.source);
+  const backend = await (backendFactory ?? loadSafeFs)();
+  const sharedFactory = /* @__PURE__ */ __name(async () => backend, "sharedFactory");
+  const notesSource = await loadReleaseNotesSource({
+    unitRoot,
+    config: unit.releaseDocuments,
+    version,
+    backendFactory: sharedFactory
+  });
+  const normalized = normalizeReleaseDocumentsConfig(unit.releaseDocuments);
+  const targets = [
+    ...normalized.changelogs.map((entry) => ({ path: entry.path, kind: "changelog", locale: entry.locale })),
+    ...normalized.readmes.map((entry) => ({ path: entry.path, kind: "readme", locale: entry.locale }))
+  ];
+  const oldFiles = [];
+  const modes = /* @__PURE__ */ new Map();
+  for (const target of targets) {
+    const read = await readSafeFileThroughHandles(
+      backend,
+      unitRoot,
+      target.path,
+      DEFAULT_MAX_NOTES_BYTES,
+      void 0,
+      "release document target"
+    );
+    oldFiles.push({
+      path: target.path,
+      kind: target.kind,
+      locale: target.locale,
+      bytes: read.bytes
+    });
+    modes.set(target.path, read.mode);
+  }
+  const plan = createReleaseDocsRefreshPlan({
+    unitId: unit.id,
+    version,
+    config: normalized,
+    notes: notesSource.notes,
+    notesSourceDigest: notesSource.bytesDigest,
+    oldFiles
+  });
+  const display = projectReleaseDocsRefreshDisplay(plan);
+  return deepFreeze6({ plan, display, modes });
+}
+async function restoreOneTarget(backend, unitRoot, file, mode) {
+  const segments = file.path.split("/");
+  const handleStack = [];
+  let primaryError = null;
+  try {
+    handleStack.push(await backend.openRoot(unitRoot));
+    for (let i = 0; i < segments.length - 1; i += 1) {
+      handleStack.push(await handleStack[handleStack.length - 1].openDir(segments[i]));
+    }
+    const parent = handleStack[handleStack.length - 1];
+    const leaf = segments[segments.length - 1];
+    const current = await parent.readFile(leaf);
+    const oldBytes = Buffer.from(file.oldBytes);
+    const alreadyOld = current !== null && current !== void 0 && Buffer.isBuffer(current.bytes) && current.bytes.equals(oldBytes);
+    if (!alreadyOld) {
+      const writeMode = Number.isSafeInteger(mode) && mode >= 0 && mode <= 511 ? mode : 420;
+      const token = await parent.createTemp(leaf, writeMode, oldBytes);
+      try {
+        await parent.rename(token, leaf, current ?? void 0);
+      } catch (renameError) {
+        try {
+          await parent.abortTemp(token);
+        } catch {
+        }
+        throw renameError;
+      }
+      await parent.fsync();
+    }
+  } catch (err) {
+    primaryError = err;
+  }
+  const closeFailures = [];
+  for (let i = handleStack.length - 1; i >= 0; i -= 1) {
+    try {
+      await handleStack[i].close();
+    } catch (closeErr) {
+      closeFailures.push(closeErr?.code ?? "CLOSE_FAILED");
+    }
+  }
+  if (primaryError) throw primaryError;
+  if (closeFailures.length > 0) {
+    throw new ReleaseError(
+      TRANSACTION_INCOMPLETE,
+      "release document restore handle close failed",
+      { closeFailures }
+    );
+  }
+}
+async function tryRestoreOldBytes(backend, unitRoot, changedFiles, modes) {
+  try {
+    for (const file of changedFiles) {
+      await restoreOneTarget(backend, unitRoot, file, modes.get(file.path));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function runReleaseDocsRefresh({
+  root,
+  unitId,
+  write = false,
+  confirmRefresh,
+  ackLocalDocumentWrite = false,
+  explicitVersion,
+  backendFactory,
+  faultInjector,
+  clock
+} = {}) {
+  if (typeof root !== "string" || root.length === 0) {
+    throw new ReleaseError(MISSING_PARAMETERS, "root is required", { field: "root" });
+  }
+  if (typeof unitId !== "string" || unitId.length === 0) {
+    throw new ReleaseError(MISSING_PARAMETERS, "unitId is required", { field: "unitId" });
+  }
+  if (write) {
+    const missing = [];
+    if (typeof confirmRefresh !== "string" || confirmRefresh.length === 0) {
+      missing.push("confirmRefresh");
+    }
+    if (ackLocalDocumentWrite !== true) {
+      missing.push("ackLocalDocumentWrite");
+    }
+    if (missing.length > 0) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        "docs refresh --write requires the exact confirmRefresh digest and an explicit local document write acknowledgement",
+        { reason: "MISSING_WRITE_PARAMETERS", missing }
+      );
+    }
+  }
+  const backend = await (backendFactory ?? loadSafeFs)();
+  const sharedFactory = /* @__PURE__ */ __name(async () => backend, "sharedFactory");
+  if (!write) {
+    const { config } = await loadProjectConfig({ root });
+    const unit = selectUnit(config, unitId);
+    const version = await resolveUnitVersion(unit, root, explicitVersion);
+    const { display } = await planReleaseDocsRefreshForUnit({
+      root,
+      config,
+      unit,
+      version,
+      backendFactory: sharedFactory
+    });
+    const result2 = {
+      command: "docs-refresh",
+      mode: "dry-run",
+      status: display.status,
+      unitId,
+      locales: [...display.locales],
+      inputDigest: display.inputDigest,
+      refreshDigest: display.refreshDigest,
+      files: display.files,
+      nextCommand: display.nextCommand
+    };
+    Object.defineProperty(result2, "version", {
+      value: version,
+      enumerable: false,
+      writable: false,
+      configurable: false
+    });
+    return Object.freeze(result2);
+  }
+  const lock = await acquireProjectLock({
+    root,
+    command: "docs refresh",
+    mode: "exclusive"
+  });
+  let result;
+  let primaryError;
+  try {
+    result = await lock.capture(async () => {
+      const { config } = await loadProjectConfig({ root });
+      const unit = selectUnit(config, unitId);
+      const version = await resolveUnitVersion(unit, root, explicitVersion);
+      const { plan, modes } = await planReleaseDocsRefreshForUnit({
+        root,
+        config,
+        unit,
+        version,
+        backendFactory: sharedFactory
+      });
+      if (plan.refreshDigest !== confirmRefresh) {
+        throw new ReleaseError(
+          RELEASE_DOCS_REFRESH_STALE,
+          `release documents for unit "${unitId}" changed since the confirmed dry-run`,
+          {
+            unitId,
+            version,
+            expected: confirmRefresh,
+            actual: plan.refreshDigest
+          }
+        );
+      }
+      if (plan.status === "clean") {
+        return Object.freeze({
+          command: "docs-refresh",
+          mode: "write",
+          status: "clean",
+          refreshed: false,
+          unitId,
+          version,
+          refreshDigest: plan.refreshDigest
+        });
+      }
+      const changedFiles = plan.files.filter((file) => file.changed);
+      const unitRoot = resolve15(root, unit.source);
+      const unitLocation = relative14(root, unitRoot);
+      if (unitLocation === ".." || unitLocation.startsWith(`..${sep3}`) || isAbsolute11(unitLocation)) {
+        throw new ReleaseError(
+          PATH_UNSAFE,
+          "release unit source escapes the project root",
+          { reason: "UNIT_SOURCE_ESCAPE", unitId }
+        );
+      }
+      const unitPrefix = unitLocation === "" ? "" : `${unitLocation.split(sep3).join("/")}/`;
+      const projectPath = /* @__PURE__ */ __name((targetPath) => `${unitPrefix}${targetPath}`, "projectPath");
+      const writeSet = changedFiles.map((file) => ({
+        id: `${file.kind}:${projectPath(file.path)}`,
+        path: projectPath(file.path),
+        oldEntry: {
+          kind: "regular",
+          sha256: file.oldDigest,
+          size: file.summary.oldSize,
+          mode: modeToString(modes.get(file.path))
+        },
+        newEntry: {
+          kind: "regular",
+          bytes: Buffer.from(file.newBytes),
+          sha256: file.newDigest,
+          size: file.summary.newSize,
+          mode: modeToString(modes.get(file.path))
+        }
+      }));
+      const canonicalPlan = {
+        apiVersion: "release-skill.dev/docs-refresh/v1",
+        operation: "refresh",
+        unitId,
+        version,
+        refreshDigest: plan.refreshDigest,
+        files: changedFiles.map((file) => ({
+          id: `${file.kind}:${projectPath(file.path)}`,
+          path: projectPath(file.path),
+          kind: file.kind,
+          locale: file.locale,
+          oldDigest: file.oldDigest,
+          newDigest: file.newDigest,
+          change: file.change
+        }))
+      };
+      let applyResult;
+      try {
+        applyResult = await applyWriteSetUnderLock({
+          root,
+          writeSet,
+          canonicalPlan,
+          planDigest: plan.refreshDigest,
+          safeFs: backend,
+          faultInjector,
+          clock,
+          assertLockOwner: /* @__PURE__ */ __name(() => lock.assertOwner(), "assertLockOwner")
+        });
+      } catch (err) {
+        if (err instanceof ReleaseError && err.code === TRANSACTION_INCOMPLETE && typeof err.details?.recover === "string") {
+          const restored = await tryRestoreOldBytes(
+            backend,
+            resolve15(root, unit.source),
+            changedFiles,
+            modes
+          );
+          if (restored) {
+            const adjusted = new ReleaseError(TRANSACTION_INCOMPLETE, err.message, {
+              ...err.details,
+              targetUnchanged: true
+            });
+            adjusted.transactionId = err.transactionId;
+            throw adjusted;
+          }
+        }
+        throw err;
+      }
+      const { plan: recheckPlan } = await planReleaseDocsRefreshForUnit({
+        root,
+        config,
+        unit,
+        version,
+        backendFactory: sharedFactory
+      });
+      if (recheckPlan.status !== "clean") {
+        throw new ReleaseError(
+          TRANSACTION_INCOMPLETE,
+          "release documents are not clean after the transactional write",
+          { reason: "POST_WRITE_NOT_CLEAN", unitId, version }
+        );
+      }
+      return Object.freeze({
+        command: "docs-refresh",
+        mode: "write",
+        status: "refreshed",
+        refreshed: true,
+        unitId,
+        version,
+        refreshDigest: plan.refreshDigest,
+        transactionId: applyResult.transactionId,
+        refreshedPaths: changedFiles.map((file) => file.path)
+      });
+    });
+  } catch (error) {
+    primaryError = error;
+  }
+  try {
+    await lock.release();
+  } catch (releaseError) {
+    if (primaryError) {
+      const combined = new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        "docs refresh failed and project lock release also failed",
+        {
+          businessErrorCode: primaryError?.code || null,
+          releaseErrorCode: releaseError?.code || null
+        }
+      );
+      combined.cause = primaryError;
+      combined.releaseCause = releaseError;
+      throw combined;
+    }
+    throw releaseError;
+  }
+  if (primaryError) throw primaryError;
+  return result;
+}
+var init_refresh_service = __esm({
+  async "src/docs/refresh-service.mjs"() {
+    init_safe_fs();
+    init_project_lock();
+    init_transaction();
+    await init_config();
+    init_errors();
+    await init_prepare();
+    init_config2();
+    init_notes_loader();
+    init_notes();
+    init_refresh_planner();
+    __name(deepFreeze6, "deepFreeze");
+    __name(modeToString, "modeToString");
+    __name(selectUnit, "selectUnit");
+    __name(planReleaseDocsRefreshForUnit, "planReleaseDocsRefreshForUnit");
+    __name(restoreOneTarget, "restoreOneTarget");
+    __name(tryRestoreOldBytes, "tryRestoreOldBytes");
+    __name(runReleaseDocsRefresh, "runReleaseDocsRefresh");
+  }
+});
+
 // src/commands/prepare.mjs
 var prepare_exports = {};
 __export(prepare_exports, {
-  prepareRelease: () => prepareRelease
+  prepareRelease: () => prepareRelease,
+  resolveAllUnitVersions: () => resolveAllUnitVersions,
+  resolveUnitVersion: () => resolveUnitVersion
 });
-import { resolve as resolve15, relative as relative13, isAbsolute as isAbsolute11, normalize as normalize3, dirname as dirname9 } from "node:path";
-import { readFile as readFile12, mkdir as mkdir9, realpath as realpath10 } from "node:fs/promises";
+import { resolve as resolve16, relative as relative15, isAbsolute as isAbsolute12, normalize as normalize3, dirname as dirname9 } from "node:path";
+import { readFile as readFile13, mkdir as mkdir9, realpath as realpath10 } from "node:fs/promises";
 import { execFile as execFileCb7 } from "node:child_process";
 import { promisify as promisify7 } from "node:util";
 async function resolveUnitVersion(unit, root, explicitVersion) {
@@ -67728,18 +73130,18 @@ async function resolveUnitVersion(unit, root, explicitVersion) {
       { unitId: unit.id }
     );
   }
-  if (isAbsolute11(versionSource)) {
+  if (isAbsolute12(versionSource)) {
     throw new ReleaseError(
       CONFIG_INVALID,
       `unit "${unit.id}" version.source must be a relative path, got absolute: "${versionSource}"`,
       { unitId: unit.id, versionSource }
     );
   }
-  const unitRoot = resolve15(root, unit.source);
-  const resolvedPath = resolve15(unitRoot, versionSource);
+  const unitRoot = resolve16(root, unit.source);
+  const resolvedPath = resolve16(unitRoot, versionSource);
   const normalizedPath = normalize3(resolvedPath);
-  const rel = relative13(unitRoot, normalizedPath);
-  if (rel.startsWith("..") || rel === ".." || isAbsolute11(rel)) {
+  const rel = relative15(unitRoot, normalizedPath);
+  if (rel.startsWith("..") || rel === ".." || isAbsolute12(rel)) {
     throw new ReleaseError(
       CONFIG_INVALID,
       `unit "${unit.id}" version.source escapes unit root: "${versionSource}"`,
@@ -67748,7 +73150,7 @@ async function resolveUnitVersion(unit, root, explicitVersion) {
   }
   let content;
   try {
-    content = await readFile12(normalizedPath, "utf8");
+    content = await readFile13(normalizedPath, "utf8");
   } catch (err) {
     throw new ReleaseError(
       CONFIG_INVALID,
@@ -67810,7 +73212,7 @@ async function resolveAllUnitVersions(units, root, explicitVersion, evidence) {
   });
   return resolvedVersions;
 }
-async function runDeclaredHooks(config, root, evidence) {
+async function runDeclaredHooks(config, root, evidence, hookFn = runHook) {
   const hookOrder = ["docs", "build", "test", "typecheck"];
   const hooks = config.hooks ?? {};
   for (const name of hookOrder) {
@@ -67823,7 +73225,7 @@ async function runDeclaredHooks(config, root, evidence) {
     });
     let result;
     try {
-      result = await runHook(hook, { root });
+      result = await hookFn(hook, { root });
     } catch (err) {
       await evidence.append({
         phase: "hooks",
@@ -67863,12 +73265,140 @@ async function runDeclaredHooks(config, root, evidence) {
     });
   }
 }
+async function resolveReleaseDocsPlanFn(injected) {
+  if (typeof injected === "function") return injected;
+  let loaded;
+  try {
+    loaded = await init_refresh_service().then(() => refresh_service_exports);
+  } catch (err) {
+    throw new ReleaseError(
+      GATE_FAILED,
+      "the release-documents refresh planner is unavailable; the freshness gate cannot run",
+      { reason: "RELEASE_DOCS_PLAN_UNAVAILABLE", cause: err?.code ?? "UNKNOWN" }
+    );
+  }
+  if (typeof loaded.planReleaseDocsRefreshForUnit !== "function") {
+    throw new ReleaseError(
+      GATE_FAILED,
+      "the release-documents refresh planner is unavailable; the freshness gate cannot run",
+      { reason: "RELEASE_DOCS_PLAN_UNAVAILABLE" }
+    );
+  }
+  return loaded.planReleaseDocsRefreshForUnit;
+}
+async function runReleaseDocsFreshnessGate({
+  units,
+  resolvedVersions,
+  root,
+  config,
+  evidence,
+  planFn,
+  reasonTag,
+  expectedBindings = null
+}) {
+  const configured = [];
+  for (let index = 0; index < units.length; index += 1) {
+    const unit = units[index];
+    if (unit && unit.releaseDocuments !== void 0 && unit.releaseDocuments !== null) {
+      configured.push({ unit, index });
+    }
+  }
+  const bindings = /* @__PURE__ */ new Map();
+  if (configured.length === 0) return bindings;
+  const effectivePlanFn = await resolveReleaseDocsPlanFn(planFn);
+  await evidence.append({ phase: "docs-freshness", status: "started", reasonTag });
+  for (const { unit, index } of configured) {
+    const { display } = await effectivePlanFn({
+      root,
+      config,
+      unit,
+      version: resolvedVersions[index]
+    });
+    bindings.set(unit.id, {
+      refreshDigest: display.refreshDigest,
+      files: new Map(display.files.map((file) => [file.path, file.oldDigest]))
+    });
+    if (display.status === "clean") {
+      const expected = expectedBindings?.get(unit.id);
+      const driftedFiles = expected ? display.files.filter((file) => expected.files.get(file.path) !== file.oldDigest) : [];
+      if (expected && (display.refreshDigest !== expected.refreshDigest || driftedFiles.length > 0)) {
+        await evidence.append({
+          phase: "docs-freshness",
+          status: "blocking",
+          unitId: unit.id,
+          reason: reasonTag,
+          refreshDigest: display.refreshDigest,
+          changedPaths: driftedFiles.map((file) => file.path)
+        });
+        throw new ReleaseError(
+          RELEASE_DOCS_STALE,
+          `release documents for unit "${unit.id}" changed after hooks`,
+          {
+            reason: reasonTag,
+            unitId: unit.id,
+            version: resolvedVersions[index],
+            refreshDigest: display.refreshDigest,
+            changedPaths: driftedFiles.map((file) => file.path),
+            files: driftedFiles.map(({ path: path3, kind, locale, change, oldDigest, newDigest }) => ({
+              path: path3,
+              kind,
+              locale,
+              change,
+              oldDigest,
+              newDigest
+            })),
+            dryRunArgv: [...display.nextCommand.argv],
+            writeArgv: display.nextCommand.writeArgv ? [...display.nextCommand.writeArgv] : null
+          }
+        );
+      }
+      await evidence.append({
+        phase: "docs-freshness",
+        status: "completed",
+        unitId: unit.id,
+        refreshDigest: display.refreshDigest
+      });
+      continue;
+    }
+    const changedFiles = display.files.filter((file) => file.changed);
+    await evidence.append({
+      phase: "docs-freshness",
+      status: "blocking",
+      unitId: unit.id,
+      reason: reasonTag,
+      refreshDigest: display.refreshDigest,
+      changedPaths: changedFiles.map((file) => file.path)
+    });
+    throw new ReleaseError(
+      RELEASE_DOCS_STALE,
+      `release documents are stale for unit "${unit.id}"`,
+      {
+        reason: reasonTag,
+        unitId: unit.id,
+        version: resolvedVersions[index],
+        refreshDigest: display.refreshDigest,
+        changedPaths: changedFiles.map((file) => file.path),
+        files: changedFiles.map(({ path: path3, kind, locale, change, oldDigest, newDigest }) => ({
+          path: path3,
+          kind,
+          locale,
+          change,
+          oldDigest,
+          newDigest
+        })),
+        dryRunArgv: [...display.nextCommand.argv],
+        writeArgv: [...display.nextCommand.writeArgv]
+      }
+    );
+  }
+  return bindings;
+}
 async function processSnapshots(config, root, evidence, runDir, production = false) {
   const units = config.releaseUnits ?? [];
   const unitResults = [];
   const snapshotDigests = [];
   for (const unit of units) {
-    const outputDir = resolveUnitScopedPath(resolve15(runDir, "snapshots"), unit.id);
+    const outputDir = resolveUnitScopedPath(resolve16(runDir, "snapshots"), unit.id);
     await evidence.append({
       phase: "snapshot",
       status: "started",
@@ -68071,7 +73601,7 @@ async function buildProductionAssets(unitResults, resolvedVersions, root, runDir
     const { unit, manifest } = unitResults[index];
     const version = resolvedVersions[index];
     const { tag, branch, branchStrategy } = resolveProductionBranch(unit, version);
-    const snapshotPath = relative13(root, manifest.outputDir);
+    const snapshotPath = relative15(root, manifest.outputDir);
     const observed = await computeFrozenSnapshot(manifest.outputDir);
     if (observed.digest !== manifest.snapshotDigest) {
       throw new ReleaseError(
@@ -68082,7 +73612,7 @@ async function buildProductionAssets(unitResults, resolvedVersions, root, runDir
     }
     await sealFrozenSnapshot(manifest.outputDir);
     const sealed = await computeFrozenSnapshot(manifest.outputDir);
-    const repositoryDir = resolveUnitScopedPath(resolve15(runDir, "git"), unit.id, { suffix: ".git" });
+    const repositoryDir = resolveUnitScopedPath(resolve16(runDir, "git"), unit.id, { suffix: ".git" });
     const unitBaseline = unitBaselineResults.get(unit.id);
     const parent = branchStrategy === "create-release-branch" ? void 0 : {
       githubHost: unitBaseline.githubHost,
@@ -68103,13 +73633,13 @@ async function buildProductionAssets(unitResults, resolvedVersions, root, runDir
     if (npmDistribution) {
       npm = await buildFrozenNpmTarball({
         snapshotDir: manifest.outputDir,
-        tarballDir: resolveUnitScopedPath(resolve15(runDir, "tarballs"), unit.id),
+        tarballDir: resolveUnitScopedPath(resolve16(runDir, "tarballs"), unit.id),
         expectedSnapshotDigest: sealed.digest
       });
       await verifyFrozenNpmTarballIdentity({
         package: npmDistribution.package,
         version,
-        tarballPath: relative13(root, npm.tarballPath),
+        tarballPath: relative15(root, npm.tarballPath),
         tarballSha256: npm.sha256,
         integrity: npm.integrity
       }, root);
@@ -68117,7 +73647,7 @@ async function buildProductionAssets(unitResults, resolvedVersions, root, runDir
     assets.push({
       snapshotPath,
       manifestDigest: sealed.digest,
-      gitObjectDir: relative13(root, repositoryDir),
+      gitObjectDir: relative15(root, repositoryDir),
       commit: git2.commit,
       tree: git2.tree,
       commitTimestamp: canonicalFreezeTimestamp,
@@ -68126,7 +73656,7 @@ async function buildProductionAssets(unitResults, resolvedVersions, root, runDir
       branch,
       tag,
       npm: npm ? {
-        tarballPath: relative13(root, npm.tarballPath),
+        tarballPath: relative15(root, npm.tarballPath),
         tarballSha256: npm.sha256,
         integrity: npm.integrity,
         size: npm.size
@@ -68479,19 +74009,19 @@ async function prepareRelease(options) {
     );
   }
   if (production) {
-    const canonicalOutput = resolve15(realRoot, ".release-skill", "release-plan.json");
-    if (output && resolve15(output) !== canonicalOutput) {
+    const canonicalOutput = resolve16(realRoot, ".release-skill", "release-plan.json");
+    if (output && resolve16(output) !== canonicalOutput) {
       throw new ReleaseError(
         GATE_FAILED,
         "production prepare requires the canonical .release-skill/release-plan.json output; custom --output is supported only outside production",
-        { output: resolve15(output), expected: canonicalOutput }
+        { output: resolve16(output), expected: canonicalOutput }
       );
     }
   }
   const lock = await acquireProjectLock({ root: realRoot, command: "prepare", mode: "exclusive" });
-  const releaseDir = resolve15(realRoot, ".release-skill");
+  const releaseDir = resolve16(realRoot, ".release-skill");
   const runId = `prepare-${Date.now()}`;
-  const rawRunDir = runDirOpt ?? resolve15(releaseDir, "runs", runId);
+  const rawRunDir = runDirOpt ?? resolve16(releaseDir, "runs", runId);
   let runDir;
   try {
     if (production) {
@@ -68512,8 +74042,24 @@ async function prepareRelease(options) {
     await evidence.append({
       phase: "config",
       status: "completed",
-      configPath: relative13(realRoot, configPath),
+      configPath: relative15(realRoot, configPath),
       configDigest
+    });
+    const configUnits = config.releaseUnits ?? [];
+    const resolvedVersions = await resolveAllUnitVersions(
+      configUnits,
+      realRoot,
+      version,
+      evidence
+    );
+    const preHookDocsBindings = await runReleaseDocsFreshnessGate({
+      units: configUnits,
+      resolvedVersions,
+      root: realRoot,
+      config,
+      evidence,
+      planFn: options.releaseDocsPlanFn,
+      reasonTag: "RELEASE_DOCS_STALE"
     });
     const declaredHooks = Object.entries(config.hooks ?? {}).filter(([, hook]) => hook && hook.command).map(([name, hook]) => ({
       name,
@@ -68587,8 +74133,45 @@ To proceed, pass --acknowledge-hook-side-effects (CLI) or hooksAuthorized=true (
       });
     }
     await evidence.append({ phase: "hooks", status: "started" });
-    await runDeclaredHooks(config, realRoot, evidence);
+    await runDeclaredHooks(config, realRoot, evidence, options.runHookFn ?? runHook);
     await evidence.append({ phase: "hooks", status: "completed" });
+    if (configUnits.some((unit) => unit && unit.releaseDocuments)) {
+      for (let unitIndex = 0; unitIndex < configUnits.length; unitIndex += 1) {
+        const postHookVersion = await resolveUnitVersion(
+          configUnits[unitIndex],
+          realRoot,
+          version
+        );
+        if (postHookVersion !== resolvedVersions[unitIndex]) {
+          await evidence.append({
+            phase: "docs-freshness",
+            status: "blocking",
+            unitId: configUnits[unitIndex].id,
+            reason: "VERSION_DRIFT_AFTER_HOOKS"
+          });
+          throw new ReleaseError(
+            RELEASE_DOCS_STALE,
+            `release unit "${configUnits[unitIndex].id}" authoritative version changed after hooks`,
+            {
+              reason: "VERSION_DRIFT_AFTER_HOOKS",
+              unitId: configUnits[unitIndex].id,
+              version: resolvedVersions[unitIndex],
+              currentVersion: postHookVersion
+            }
+          );
+        }
+      }
+      await runReleaseDocsFreshnessGate({
+        units: configUnits,
+        resolvedVersions,
+        root: realRoot,
+        config,
+        evidence,
+        planFn: options.releaseDocsPlanFn,
+        reasonTag: "CHANGES_AFTER_HOOKS",
+        expectedBindings: preHookDocsBindings
+      });
+    }
     await evidence.append({ phase: "baseline", status: "started" });
     const baseline = await captureBaseline(realRoot);
     await evidence.append({
@@ -68598,13 +74181,6 @@ To proceed, pass --acknowledge-hook-side-effects (CLI) or hooksAuthorized=true (
       headCommit: baseline.gitHead,
       dirtyFileCount: baseline.statusEntries.length
     });
-    const configUnits = config.releaseUnits ?? [];
-    const resolvedVersions = await resolveAllUnitVersions(
-      configUnits,
-      realRoot,
-      version,
-      evidence
-    );
     const defaultObserveFn = /* @__PURE__ */ __name(async (repo, ref, expectedCommit, { githubHost = "github.com" } = {}) => {
       try {
         const { stdout } = await execFile6("git", ["ls-remote", `https://${githubHost}/${repo}.git`, ref], {
@@ -68899,7 +74475,7 @@ To proceed, pass --acknowledge-hook-side-effects (CLI) or hooksAuthorized=true (
       ...production ? {
         production: {
           mode: "github-npm-v1",
-          assetRoot: relative13(realRoot, runDir)
+          assetRoot: relative15(realRoot, runDir)
         }
       } : {},
       units,
@@ -68913,9 +74489,9 @@ To proceed, pass --acknowledge-hook-side-effects (CLI) or hooksAuthorized=true (
       actionCount: externalActions.length
     });
     await evidence.append({ phase: "plan-write", status: "started" });
-    const latestPlanPath = output ?? resolve15(releaseDir, "release-plan.json");
+    const latestPlanPath = output ?? resolve16(releaseDir, "release-plan.json");
     const plannedDigest = computePlanDigest(plan);
-    const immutablePlanPath = resolve15(dirname9(latestPlanPath), "plans", `${plannedDigest}.json`);
+    const immutablePlanPath = resolve16(dirname9(latestPlanPath), "plans", `${plannedDigest}.json`);
     const { planPath: writtenPath, planDigest } = await writePlanImmutable(immutablePlanPath, plan);
     await writePlanAtomic(latestPlanPath, plan);
     await evidence.append({
@@ -68980,6 +74556,8 @@ var init_prepare = __esm({
     __name(resolveUnitVersion, "resolveUnitVersion");
     __name(resolveAllUnitVersions, "resolveAllUnitVersions");
     __name(runDeclaredHooks, "runDeclaredHooks");
+    __name(resolveReleaseDocsPlanFn, "resolveReleaseDocsPlanFn");
+    __name(runReleaseDocsFreshnessGate, "runReleaseDocsFreshnessGate");
     __name(processSnapshots, "processSnapshots");
     __name(resolveProductionBranch, "resolveProductionBranch");
     __name(normalizedProductionConfig, "normalizedProductionConfig");
@@ -68990,8 +74568,8 @@ var init_prepare = __esm({
 });
 
 // src/core/approval.mjs
-import { readFile as readFile13 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname10, join as join9, resolve as resolve16 } from "node:path";
+import { readFile as readFile14 } from "node:fs/promises";
+import { basename as basename5, dirname as dirname10, join as join10, resolve as resolve17 } from "node:path";
 function validateApprovalRecordSchema(approval) {
   if (validateApprovalSchema(approval)) return;
   const errors = validateApprovalSchema.errors ?? [];
@@ -69008,7 +74586,7 @@ function assertImmutableApprovalAuthority(approvalPath, plan, rawApproval) {
   if (!plan?.production) return;
   const planDigest = computePlanDigest(plan);
   const approvalDigest = computeApprovalDigest(rawApproval);
-  const absolute = resolve16(approvalPath);
+  const absolute = resolve17(approvalPath);
   const planDirectory = dirname10(absolute);
   if (basename5(absolute) !== `${approvalDigest}.json` || basename5(planDirectory) !== planDigest || basename5(dirname10(planDirectory)) !== "approvals") {
     throw new ReleaseError(
@@ -69264,8 +74842,8 @@ var approve_exports = {};
 __export(approve_exports, {
   approvePlan: () => approvePlan
 });
-import { readFile as readFile14, writeFile as writeFile5 } from "node:fs/promises";
-import { resolve as resolve17, dirname as dirname11, basename as basename6 } from "node:path";
+import { readFile as readFile15, writeFile as writeFile5 } from "node:fs/promises";
+import { resolve as resolve18, dirname as dirname11, basename as basename6 } from "node:path";
 function defaultClock() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
@@ -69291,7 +74869,7 @@ async function approvePlan(options) {
   }
   let planRaw;
   try {
-    planRaw = await readFile14(planPath, "utf8");
+    planRaw = await readFile15(planPath, "utf8");
   } catch (err) {
     throw new ReleaseError(
       GATE_FAILED,
@@ -69395,18 +74973,18 @@ async function approvePlan(options) {
     expiresAt
   };
   validateApprovalRecordSchema(approvalRecord);
-  const planDir = dirname11(resolve17(planPath));
+  const planDir = dirname11(resolve18(planPath));
   const releaseDir = basename6(planDir) === "plans" && basename6(planPath) === `${actualDigest}.json` ? dirname11(planDir) : planDir;
-  if (plan.production?.mode === "github-npm-v1" && outputPath && resolve17(outputPath) !== resolve17(releaseDir, "approval-record.json")) {
+  if (plan.production?.mode === "github-npm-v1" && outputPath && resolve18(outputPath) !== resolve18(releaseDir, "approval-record.json")) {
     throw new ReleaseError(
       GATE_FAILED,
       "production approve requires the canonical approval-record.json alias next to the immutable plan authority; custom --output is supported only outside production",
-      { outputPath: resolve17(outputPath), expected: resolve17(releaseDir, "approval-record.json") }
+      { outputPath: resolve18(outputPath), expected: resolve18(releaseDir, "approval-record.json") }
     );
   }
   const json = JSON.stringify(approvalRecord, null, 2);
   const approvalDigest = computeApprovalDigest(json);
-  const immutableApprovalPath = resolve17(
+  const immutableApprovalPath = resolve18(
     releaseDir,
     "approvals",
     actualDigest,
@@ -69418,7 +74996,7 @@ async function approvePlan(options) {
     await writeFile5(immutableApprovalPath, json, { encoding: "utf8", flag: "wx", mode: 384 });
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
-    const existing = await readFile14(immutableApprovalPath, "utf8");
+    const existing = await readFile15(immutableApprovalPath, "utf8");
     if (existing !== json) {
       throw new ReleaseError(
         GATE_FAILED,
@@ -69427,7 +75005,7 @@ async function approvePlan(options) {
       );
     }
   }
-  const writePath = outputPath ?? resolve17(releaseDir, "approval-record.json");
+  const writePath = outputPath ?? resolve18(releaseDir, "approval-record.json");
   await prepareAuthorityDirectory(dirname11(writePath));
   await assertAuthorityFileTarget(writePath);
   await writeFile5(writePath, json, "utf8");
@@ -69510,8 +75088,8 @@ var reconcile_exports = {};
 __export(reconcile_exports, {
   reconcileRelease: () => reconcileRelease
 });
-import { readFile as readFile15, mkdir as mkdir10 } from "node:fs/promises";
-import { join as join10 } from "node:path";
+import { readFile as readFile16, mkdir as mkdir10 } from "node:fs/promises";
+import { join as join11 } from "node:path";
 function defaultClock2() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
@@ -69539,7 +75117,7 @@ async function reconcileRelease(options) {
   }
   let planRaw;
   try {
-    planRaw = await readFile15(planPath, "utf8");
+    planRaw = await readFile16(planPath, "utf8");
   } catch (err) {
     throw new ReleaseError(GATE_FAILED, `cannot read release plan: ${err.message}`, { planPath, cause: err.code });
   }
@@ -69618,7 +75196,7 @@ async function reconcileRelease(options) {
           { sourceRunId: sourceRun.runId }
         );
       }
-      const sourceApprovalRaw = await readFile15(consumedApprovalPath, "utf8").catch((error) => {
+      const sourceApprovalRaw = await readFile16(consumedApprovalPath, "utf8").catch((error) => {
         throw new ReleaseError(GATE_FAILED, "source run approval authority is unavailable", {
           sourceRunId: sourceRun.runId,
           cause: error.code
@@ -69771,7 +75349,7 @@ async function reconcileRelease(options) {
     if (approvalPath) {
       let approvalRaw;
       try {
-        approvalRaw = await readFile15(approvalPath, "utf8");
+        approvalRaw = await readFile16(approvalPath, "utf8");
       } catch (err) {
         throw new ReleaseError(
           GATE_FAILED,
@@ -70445,7 +76023,7 @@ async function reconcileRelease(options) {
         status: status === "succeeded" ? "succeeded" : status === "failed" ? "failed" : status === "skipped" ? "skipped" : status === "uncertain" ? "uncertain" : "pending"
       };
     });
-    const runPath = join10(runDir, "release-run.json");
+    const runPath = join11(runDir, "release-run.json");
     const sourceRunDigest = sourceAuthorityDigest;
     const runState = {
       runId,
@@ -71130,8 +76708,8 @@ __export(plugin_marketplace_exports, {
 });
 import { execFile as execFileCb10 } from "node:child_process";
 import { promisify as promisify10 } from "node:util";
-import { readFile as readFile16, stat as stat4, mkdir as mkdir11, writeFile as writeFile6, rename as rename2, readdir as readdir7, rm as rm5, realpath as realpath11, lstat as lstat11 } from "node:fs/promises";
-import { join as join11, resolve as resolve18, relative as relative14, isAbsolute as isAbsolute12, basename as basename7 } from "node:path";
+import { readFile as readFile17, stat as stat5, mkdir as mkdir11, writeFile as writeFile6, rename as rename2, readdir as readdir8, rm as rm6, realpath as realpath11, lstat as lstat11 } from "node:fs/promises";
+import { join as join12, resolve as resolve19, relative as relative16, isAbsolute as isAbsolute13, basename as basename7 } from "node:path";
 import { createHash as createHash10 } from "node:crypto";
 function transportPayload(entries) {
   return entries.map(({ path: path3, type, mode, size, contentDigest }) => ({
@@ -71170,7 +76748,7 @@ async function writeEvidenceAtomic(filePath, value) {
 `, { encoding: "utf8", mode: 384, flag: "wx" });
     await rename2(tempPath, filePath);
   } catch (err) {
-    await rm5(tempPath, { force: true }).catch(() => {
+    await rm6(tempPath, { force: true }).catch(() => {
     });
     throw err;
   }
@@ -71269,7 +76847,7 @@ async function run4(cmd, args2, options = {}) {
 }
 async function validateManifestFile(manifestPath, requiredFields) {
   try {
-    const content = await readFile16(manifestPath, "utf8");
+    const content = await readFile17(manifestPath, "utf8");
     const manifest = JSON.parse(content);
     const missing = requiredFields.filter((f) => !(f in manifest));
     return {
@@ -71291,7 +76869,7 @@ async function checkRequiredFiles(dir, requiredFiles) {
   const missing = [];
   for (const file of requiredFiles) {
     try {
-      await stat4(resolve18(dir, file));
+      await stat5(resolve19(dir, file));
     } catch {
       missing.push(file);
     }
@@ -71347,7 +76925,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
             });
           }
           try {
-            const s = await stat4(pluginDir);
+            const s = await stat5(pluginDir);
             if (!s.isDirectory()) {
               return createResult({
                 actionType,
@@ -71441,7 +77019,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
             });
           }
           const marketplaceRelative = consumer === "claude" ? ".claude-plugin/marketplace.json" : ".agents/plugins/marketplace.json";
-          const marketplacePath = resolve18(snapshotDirReal, marketplaceRelative);
+          const marketplacePath = resolve19(snapshotDirReal, marketplaceRelative);
           const marketplaceResult = await validateManifestFile(marketplacePath, ["name"]);
           if (!marketplaceResult.valid) {
             return createResult({
@@ -71489,7 +77067,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
               error: `marketplace plugin entry source "${sourcePath}" is not a safe relative path`
             });
           }
-          const sourceDirAbs = resolve18(snapshotDirReal, sourcePath);
+          const sourceDirAbs = resolve19(snapshotDirReal, sourcePath);
           const sourceDirReal = await realpath11(sourceDirAbs).catch(() => null);
           if (!sourceDirReal) {
             return createResult({
@@ -71498,16 +77076,16 @@ function createPluginMarketplaceAdapter(deps = {}) {
               error: `marketplace plugin entry source directory does not exist: ${sourcePath}`
             });
           }
-          const sourceRelCheck = relative14(snapshotDirReal, sourceDirReal);
-          if (sourceRelCheck.startsWith("..") || isAbsolute12(sourceRelCheck)) {
+          const sourceRelCheck = relative16(snapshotDirReal, sourceDirReal);
+          if (sourceRelCheck.startsWith("..") || isAbsolute13(sourceRelCheck)) {
             return createResult({
               actionType,
               status: ActionStatus.PREFLIGHT_FAILED,
               error: `marketplace plugin entry source "${sourcePath}" escapes the frozen snapshot`
             });
           }
-          const manifestRelative = consumer === "claude" ? join11(sourcePath, ".claude-plugin", "plugin.json") : join11(sourcePath, ".codex-plugin", "plugin.json");
-          const manifestPath = resolve18(snapshotDirReal, manifestRelative);
+          const manifestRelative = consumer === "claude" ? join12(sourcePath, ".claude-plugin", "plugin.json") : join12(sourcePath, ".codex-plugin", "plugin.json");
+          const manifestPath = resolve19(snapshotDirReal, manifestRelative);
           const manifestResult = await validateManifestFile(manifestPath, ["name", "version"]);
           if (!manifestResult.valid) {
             return createResult({
@@ -71545,9 +77123,9 @@ function createPluginMarketplaceAdapter(deps = {}) {
               error: `plugin manifest version "${pluginManifestResult.manifest.version}" does not match action version "${action.version}"`
             });
           }
-          const entrySkillFile = resolve18(snapshotDirReal, "skills", action.entrySkill, "SKILL.md");
+          const entrySkillFile = resolve19(snapshotDirReal, "skills", action.entrySkill, "SKILL.md");
           try {
-            await stat4(entrySkillFile);
+            await stat5(entrySkillFile);
           } catch {
             return createResult({
               actionType,
@@ -71651,7 +77229,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
           }
           if (action.entryPoint) {
             try {
-              await exec(process.execPath, ["--check", resolve18(pluginDir, action.entryPoint)]);
+              await exec(process.execPath, ["--check", resolve19(pluginDir, action.entryPoint)]);
             } catch (checkErr) {
               return createResult({
                 actionType,
@@ -71704,12 +77282,12 @@ function createPluginMarketplaceAdapter(deps = {}) {
           }
           const consumer = action.consumer;
           const runDir = context.runDir;
-          const isolatedHome = resolve18(runDir, "consumers", `${consumer}-${action.plugin}`);
+          const isolatedHome = resolve19(runDir, "consumers", `${consumer}-${action.plugin}`);
           const runDirReal = await realpath11(runDir).catch(() => runDir);
           const isolatedHomePreReal = await realpath11(isolatedHome).catch(() => isolatedHome);
-          const relToRun = relative14(runDirReal, isolatedHomePreReal);
+          const relToRun = relative16(runDirReal, isolatedHomePreReal);
           const sepE = process.platform === "win32" ? "\\" : "/";
-          if (relToRun !== "" && (isAbsolute12(relToRun) || relToRun === ".." || relToRun.startsWith(`..${sepE}`))) {
+          if (relToRun !== "" && (isAbsolute13(relToRun) || relToRun === ".." || relToRun.startsWith(`..${sepE}`))) {
             return createResult({
               actionType,
               status: ActionStatus.EXECUTE_FAILED,
@@ -71718,15 +77296,15 @@ function createPluginMarketplaceAdapter(deps = {}) {
           }
           await mkdir11(isolatedHome, { recursive: true, mode: 448 });
           if (consumer === "claude") {
-            await mkdir11(resolve18(isolatedHome, ".claude"), { recursive: true, mode: 448 });
+            await mkdir11(resolve19(isolatedHome, ".claude"), { recursive: true, mode: 448 });
           } else {
-            await mkdir11(resolve18(isolatedHome, ".codex"), { recursive: true, mode: 448 });
+            await mkdir11(resolve19(isolatedHome, ".codex"), { recursive: true, mode: 448 });
           }
           const cliCmd = consumer === "claude" ? "claude" : "codex";
           const baseEnv = { ...process.env, ...context.env };
           const env = {
             ...baseEnv,
-            ...consumer === "claude" ? { HOME: isolatedHome, CLAUDE_CONFIG_DIR: resolve18(isolatedHome, ".claude") } : { HOME: isolatedHome, CODEX_HOME: isolatedHome }
+            ...consumer === "claude" ? { HOME: isolatedHome, CLAUDE_CONFIG_DIR: resolve19(isolatedHome, ".claude") } : { HOME: isolatedHome, CODEX_HOME: isolatedHome }
           };
           let frozenTimeoutMs;
           try {
@@ -71814,9 +77392,9 @@ function createPluginMarketplaceAdapter(deps = {}) {
                         error: `plugin install JSON missing installedPath`
                       });
                     }
-                    const installPathAbs = resolve18(installFields.installedPath);
-                    const installPathRel = relative14(isolatedHome, installPathAbs);
-                    if (isAbsolute12(installPathRel) || installPathRel === ".." || installPathRel.startsWith(`..${sepE}`)) {
+                    const installPathAbs = resolve19(installFields.installedPath);
+                    const installPathRel = relative16(isolatedHome, installPathAbs);
+                    if (isAbsolute13(installPathRel) || installPathRel === ".." || installPathRel.startsWith(`..${sepE}`)) {
                       return createResult({
                         actionType,
                         status: ActionStatus.EXECUTE_FAILED,
@@ -71858,9 +77436,9 @@ function createPluginMarketplaceAdapter(deps = {}) {
             installOutput,
             executedAt: (/* @__PURE__ */ new Date()).toISOString()
           };
-          const evidenceDir = resolve18(runDir, "evidence", `${consumer}-${action.plugin}`);
+          const evidenceDir = resolve19(runDir, "evidence", `${consumer}-${action.plugin}`);
           await mkdir11(evidenceDir, { recursive: true, mode: 448 });
-          const evidencePath = resolve18(evidenceDir, "release-skill-install-evidence.json");
+          const evidencePath = resolve19(evidenceDir, "release-skill-install-evidence.json");
           await writeEvidenceAtomic(evidencePath, evidence);
           const installPath = installOutput?.installedPath;
           let executeManifestDigest = null;
@@ -71918,7 +77496,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
         if (actionType === ActionType.PLUGIN_MANIFEST_VALIDATE) {
           const manifestPath = action.manifestPath;
           try {
-            const content = await readFile16(manifestPath, "utf8");
+            const content = await readFile17(manifestPath, "utf8");
             const manifest = JSON.parse(content);
             return createResult({
               actionType,
@@ -71961,12 +77539,12 @@ function createPluginMarketplaceAdapter(deps = {}) {
               observation: { installed: false, error: "context.runDir is required" }
             });
           }
-          const isolatedHome = resolve18(runDir, "consumers", `${consumer}-${action.plugin}`);
+          const isolatedHome = resolve19(runDir, "consumers", `${consumer}-${action.plugin}`);
           const cliCmd = consumer === "claude" ? "claude" : "codex";
           const baseEnv = { ...process.env, ...context.env ?? {} };
           const env = {
             ...baseEnv,
-            ...consumer === "claude" ? { HOME: isolatedHome, CLAUDE_CONFIG_DIR: resolve18(isolatedHome, ".claude") } : { HOME: isolatedHome, CODEX_HOME: isolatedHome }
+            ...consumer === "claude" ? { HOME: isolatedHome, CLAUDE_CONFIG_DIR: resolve19(isolatedHome, ".claude") } : { HOME: isolatedHome, CODEX_HOME: isolatedHome }
           };
           let frozenTimeoutMs;
           try {
@@ -71981,7 +77559,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
           }
           let evidence = null;
           try {
-            const evidenceRaw = await readFile16(resolve18(runDir, "evidence", `${consumer}-${action.plugin}`, "release-skill-install-evidence.json"), "utf8");
+            const evidenceRaw = await readFile17(resolve19(runDir, "evidence", `${consumer}-${action.plugin}`, "release-skill-install-evidence.json"), "utf8");
             evidence = JSON.parse(evidenceRaw);
           } catch {
             return createResult({
@@ -72112,9 +77690,9 @@ function createPluginMarketplaceAdapter(deps = {}) {
           }
           const isolatedHomeReal = await realpath11(isolatedHome).catch(() => isolatedHome);
           const installPathReal = await realpath11(installPath).catch(() => installPath);
-          const relToHome = relative14(isolatedHomeReal, installPathReal);
-          const sep3 = process.platform === "win32" ? "\\" : "/";
-          if (relToHome !== "" && (isAbsolute12(relToHome) || relToHome === ".." || relToHome.startsWith(`..${sep3}`))) {
+          const relToHome = relative16(isolatedHomeReal, installPathReal);
+          const sep4 = process.platform === "win32" ? "\\" : "/";
+          if (relToHome !== "" && (isAbsolute13(relToHome) || relToHome === ".." || relToHome.startsWith(`..${sep4}`))) {
             return createResult({
               actionType,
               status: ActionStatus.OBSERVED,
@@ -72124,7 +77702,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
               }
             });
           }
-          const entrySkillPath = resolve18(installPath, "skills", action.entrySkill, "SKILL.md");
+          const entrySkillPath = resolve19(installPath, "skills", action.entrySkill, "SKILL.md");
           let entrySkillFound = false;
           try {
             const skillStat = await lstat11(entrySkillPath);
@@ -72197,8 +77775,8 @@ function createPluginMarketplaceAdapter(deps = {}) {
             });
           }
           try {
-            const installedManifestPath = resolve18(installPath, consumer === "claude" ? ".claude-plugin/plugin.json" : ".codex-plugin/plugin.json");
-            const installedManifestContent = await readFile16(installedManifestPath, "utf8");
+            const installedManifestPath = resolve19(installPath, consumer === "claude" ? ".claude-plugin/plugin.json" : ".codex-plugin/plugin.json");
+            const installedManifestContent = await readFile17(installedManifestPath, "utf8");
             const installedManifest = JSON.parse(installedManifestContent);
             const expectedName = observation.plugin;
             if (expectedName && installedManifest.name !== expectedName) {
@@ -72348,8 +77926,8 @@ __export(verify_exports, {
   runSmokeTest: () => runSmokeTest,
   verifyRelease: () => verifyRelease
 });
-import { readFile as readFile17, writeFile as writeFile7, mkdtemp as mkdtemp3, rm as rm6, mkdir as mkdir12, lstat as lstat12, realpath as realpath12 } from "node:fs/promises";
-import { dirname as dirname12, join as join12, relative as relative15, isAbsolute as isAbsolute13, resolve as resolve19 } from "node:path";
+import { readFile as readFile18, writeFile as writeFile7, mkdtemp as mkdtemp3, rm as rm7, mkdir as mkdir12, lstat as lstat12, realpath as realpath12 } from "node:fs/promises";
+import { dirname as dirname12, join as join13, relative as relative17, isAbsolute as isAbsolute14, resolve as resolve20 } from "node:path";
 import { tmpdir as tmpdir2 } from "node:os";
 import { execFile as execFileCb11 } from "node:child_process";
 import { promisify as promisify11 } from "node:util";
@@ -72376,7 +77954,7 @@ function matchesSubset2(actual, expected) {
 async function runSmokeTest(plan, root, options = {}) {
   const baseDir = options.baseDir ?? tmpdir2();
   await mkdir12(baseDir, { recursive: true });
-  const tmpDir = await mkdtemp3(join12(baseDir, "verify-smoke-"));
+  const tmpDir = await mkdtemp3(join13(baseDir, "verify-smoke-"));
   const npmExec = options.npmExecutor ?? defaultNpmExecutor;
   const installFlags = [
     "--ignore-scripts",
@@ -72416,7 +77994,7 @@ async function runSmokeTest(plan, root, options = {}) {
     for (const { package: pkgName, registry, targetVersion, unitId, smokeBin, smokeArgs, smokeExpectedJson } of npmDistributions) {
       const packageAtVersion = `${pkgName}@${targetVersion}`;
       const installDir = resolveUnitScopedPath(tmpDir, unitId);
-      await mkdir12(join12(installDir, "node_modules"), { recursive: true });
+      await mkdir12(join13(installDir, "node_modules"), { recursive: true });
       const registryFlags = [...installFlags, "--registry", registry];
       const installResult = await npmExec.install(
         packageAtVersion,
@@ -72434,10 +78012,10 @@ async function runSmokeTest(plan, root, options = {}) {
           }
         };
       }
-      const installedPkgPath = join12(installDir, "node_modules", pkgName, "package.json");
+      const installedPkgPath = join13(installDir, "node_modules", pkgName, "package.json");
       let installedPkg;
       try {
-        installedPkg = JSON.parse(await readFile17(installedPkgPath, "utf8"));
+        installedPkg = JSON.parse(await readFile18(installedPkgPath, "utf8"));
       } catch {
         return {
           passed: false,
@@ -72468,7 +78046,7 @@ async function runSmokeTest(plan, root, options = {}) {
           }
         };
       }
-      const pkgRoot = join12(installDir, "node_modules", pkgName);
+      const pkgRoot = join13(installDir, "node_modules", pkgName);
       gateResults.push(...await runConsumerVerificationGates({
         plan,
         unitId,
@@ -72510,10 +78088,10 @@ async function runSmokeTest(plan, root, options = {}) {
           }
         };
       }
-      const binPath = resolve19(pkgRoot, binRelative);
-      const relBin = relative15(pkgRoot, binPath);
-      const sep3 = process.platform === "win32" ? "\\" : "/";
-      if (isAbsolute13(relBin) || relBin === ".." || relBin.startsWith(`..${sep3}`)) {
+      const binPath = resolve20(pkgRoot, binRelative);
+      const relBin = relative17(pkgRoot, binPath);
+      const sep4 = process.platform === "win32" ? "\\" : "/";
+      if (isAbsolute14(relBin) || relBin === ".." || relBin.startsWith(`..${sep4}`)) {
         return {
           passed: false,
           details: {
@@ -72527,8 +78105,8 @@ async function runSmokeTest(plan, root, options = {}) {
       try {
         binStat = await lstat12(binPath);
         const [pkgRootReal, binPathReal] = await Promise.all([realpath12(pkgRoot), realpath12(binPath)]);
-        const relReal = relative15(pkgRootReal, binPathReal);
-        if (!binStat.isFile() || binStat.isSymbolicLink() || isAbsolute13(relReal) || relReal === ".." || relReal.startsWith(`..${sep3}`)) {
+        const relReal = relative17(pkgRootReal, binPathReal);
+        if (!binStat.isFile() || binStat.isSymbolicLink() || isAbsolute14(relReal) || relReal === ".." || relReal.startsWith(`..${sep4}`)) {
           throw new Error("bin is not a regular file inside the installed package");
         }
       } catch (err) {
@@ -72632,7 +78210,7 @@ async function runSmokeTest(plan, root, options = {}) {
       gateResults
     };
   } finally {
-    await rm6(tmpDir, { recursive: true, force: true }).catch(() => {
+    await rm7(tmpDir, { recursive: true, force: true }).catch(() => {
     });
   }
 }
@@ -72658,7 +78236,7 @@ async function verifyRelease(options) {
   }
   let planRaw;
   try {
-    planRaw = await readFile17(planPath, "utf8");
+    planRaw = await readFile18(planPath, "utf8");
   } catch (err) {
     throw new ReleaseError(
       GATE_FAILED,
@@ -72728,7 +78306,7 @@ async function verifyRelease(options) {
       }
       let approvalRaw;
       try {
-        approvalRaw = await readFile17(sourceRun.approvalPath, "utf8");
+        approvalRaw = await readFile18(sourceRun.approvalPath, "utf8");
       } catch (error) {
         throw new ReleaseError(
           GATE_FAILED,
@@ -72885,11 +78463,11 @@ async function verifyRelease(options) {
           evidence,
           env: gateEnv ?? process.env,
           fixedEnv: action.type === "claude-marketplace-install" ? {
-            HOME: resolve19(runDir, "consumers", `claude-${action.parameters.plugin}`),
-            CLAUDE_CONFIG_DIR: resolve19(runDir, "consumers", `claude-${action.parameters.plugin}`, ".claude")
+            HOME: resolve20(runDir, "consumers", `claude-${action.parameters.plugin}`),
+            CLAUDE_CONFIG_DIR: resolve20(runDir, "consumers", `claude-${action.parameters.plugin}`, ".claude")
           } : {
-            HOME: resolve19(runDir, "consumers", `codex-${action.parameters.plugin}`),
-            CODEX_HOME: resolve19(runDir, "consumers", `codex-${action.parameters.plugin}`)
+            HOME: resolve20(runDir, "consumers", `codex-${action.parameters.plugin}`),
+            CODEX_HOME: resolve20(runDir, "consumers", `codex-${action.parameters.plugin}`)
           }
         }));
       } else {
@@ -72970,7 +78548,7 @@ async function verifyRelease(options) {
     assertTransition(PUBLISHED, VERIFIED);
     await evidence.append({ phase: "verify", status: "completed", overallStatus: VERIFIED });
     const sourceRunDigest = sourceRun.runDigest ?? computeRunDigest(sourceRun);
-    const verifyRunPath = join12(runDir, "release-run.json");
+    const verifyRunPath = join13(runDir, "release-run.json");
     const verifyRunState = {
       runId,
       command: "verify",
@@ -73064,7 +78642,7 @@ var init_verify = __esm({
           exec: execFile10,
           env: process.env
         });
-        const userConfig = join12(cwd, ".release-skill-npmrc");
+        const userConfig = join13(cwd, ".release-skill-npmrc");
         await writeFile7(
           userConfig,
           `registry=${normalizedRegistry}/
@@ -73099,7 +78677,7 @@ ${registryTokenKey(normalizedRegistry)}=${token}
         } catch (err) {
           return { success: false, error: err.message };
         } finally {
-          await rm6(userConfig, { force: true }).catch(() => {
+          await rm7(userConfig, { force: true }).catch(() => {
           });
         }
       },
@@ -73122,11 +78700,11 @@ var publish_exports = {};
 __export(publish_exports, {
   publishRelease: () => publishRelease
 });
-import { readFile as readFile18, mkdir as mkdir13 } from "node:fs/promises";
-import { isAbsolute as isAbsolute14, join as join13, relative as relative16 } from "node:path";
+import { readFile as readFile19, mkdir as mkdir13 } from "node:fs/promises";
+import { isAbsolute as isAbsolute15, join as join14, relative as relative18 } from "node:path";
 function assertInsideAssetRoot(assetRoot, candidate, label) {
-  const rel = relative16(assetRoot, candidate);
-  if (rel === "" || isAbsolute14(rel) || rel === ".." || rel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
+  const rel = relative18(assetRoot, candidate);
+  if (rel === "" || isAbsolute15(rel) || rel === ".." || rel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
     throw new ReleaseError(GATE_FAILED, `${label} must be a child of the production asset root`);
   }
 }
@@ -73238,7 +78816,7 @@ async function publishRelease(options) {
   const captureBaselineActual = typeof captureBaselineFn === "function" ? captureBaselineFn : captureBaseline;
   let planRaw;
   try {
-    planRaw = await readFile18(planPath, "utf8");
+    planRaw = await readFile19(planPath, "utf8");
   } catch (err) {
     throw new ReleaseError(GATE_FAILED, `cannot read release plan: ${err.message}`, { planPath, cause: err.code });
   }
@@ -73348,7 +78926,7 @@ async function publishRelease(options) {
     await evidence.append({ phase: "safety-gate", gate: "approval-load", status: "started" });
     let approvalRaw;
     try {
-      approvalRaw = await readFile18(approvalPath, "utf8");
+      approvalRaw = await readFile19(approvalPath, "utf8");
     } catch (err) {
       throw new ReleaseError(
         GATE_FAILED,
@@ -73577,7 +79155,7 @@ async function publishRelease(options) {
       }
     }
     await evidence.append({ phase: "safety-gate", gate: "global-preflight", status: "passed" });
-    const runPath = join13(runDir, "release-run.json");
+    const runPath = join14(runDir, "release-run.json");
     const checkpoints = orderedActions.map((action) => ({
       actionId: action.id,
       actionType: action.type,
@@ -73791,8 +79369,8 @@ var init_publish = __esm({
 });
 
 // src/artifacts/policy.mjs
-import { readFile as readFile19 } from "node:fs/promises";
-import { join as join14 } from "node:path";
+import { readFile as readFile20 } from "node:fs/promises";
+import { join as join15 } from "node:path";
 import { createHash as createHash11 } from "node:crypto";
 function validateArtifactPolicy(policy) {
   const ok = _validate(policy);
@@ -73888,10 +79466,10 @@ async function parseSafeYamlWithinRoot(root, policyPath) {
     }
     throw err;
   }
-  const fullPath = join14(root, policyPath);
+  const fullPath = join15(root, policyPath);
   let content;
   try {
-    content = await readFile19(fullPath, "utf8");
+    content = await readFile20(fullPath, "utf8");
   } catch (err) {
     throw new ReleaseError(
       ARTIFACT_POLICY_INVALID,
@@ -73901,7 +79479,7 @@ async function parseSafeYamlWithinRoot(root, policyPath) {
   }
   let doc;
   try {
-    doc = import_yaml3.default.parseDocument(content);
+    doc = import_yaml4.default.parseDocument(content);
   } catch (err) {
     throw new ReleaseError(
       ARTIFACT_POLICY_INVALID,
@@ -73977,10 +79555,10 @@ async function loadArtifactPolicy({
     protectionChange: compareProtection(previousLock, policy)
   });
 }
-var import_yaml3, import_ajv6, import_ajv_formats6, ajv5, _validate;
+var import_yaml4, import_ajv6, import_ajv_formats6, ajv5, _validate;
 var init_policy = __esm({
   "src/artifacts/policy.mjs"() {
-    import_yaml3 = __toESM(require_dist(), 1);
+    import_yaml4 = __toESM(require_dist(), 1);
     import_ajv6 = __toESM(require_ajv(), 1);
     import_ajv_formats6 = __toESM(require_dist2(), 1);
     init_errors();
@@ -74002,14 +79580,14 @@ var init_policy = __esm({
 });
 
 // src/artifacts/entry.mjs
-import { lstat as lstat13, readdir as readdir8, readFile as readFile20 } from "node:fs/promises";
-import { join as join15 } from "node:path";
+import { lstat as lstat13, readdir as readdir9, readFile as readFile21 } from "node:fs/promises";
+import { join as join16 } from "node:path";
 import { promisify as promisify12 } from "node:util";
 import { execFile as execFile11 } from "node:child_process";
-function statToGitMode(stat8) {
-  if (stat8.isDirectory()) return "040000";
-  if (stat8.isSymbolicLink()) return "120000";
-  const mode = stat8.mode & 511;
+function statToGitMode(stat9) {
+  if (stat9.isDirectory()) return "040000";
+  if (stat9.isSymbolicLink()) return "120000";
+  const mode = stat9.mode & 511;
   const executable = (mode & 73) !== 0;
   return executable ? "100755" : "100644";
 }
@@ -74023,10 +79601,10 @@ async function gitHashObject(root, absPath) {
 }
 async function enumerateTreeEntries(root, dirPath, relBase) {
   const entries = [];
-  const items = await readdir8(dirPath, { withFileTypes: true });
+  const items = await readdir9(dirPath, { withFileTypes: true });
   for (const item of items) {
     if (SKIP_DIRS2.has(item.name)) continue;
-    const absPath = join15(dirPath, item.name);
+    const absPath = join16(dirPath, item.name);
     const relPath = relBase ? `${relBase}/${item.name}` : item.name;
     const st = await lstat13(absPath);
     if (st.isSymbolicLink()) {
@@ -74047,7 +79625,7 @@ async function enumerateTreeEntries(root, dirPath, relBase) {
       const subEntries = await enumerateTreeEntries(root, absPath, relPath);
       entries.push(...subEntries);
     } else {
-      const content = await readFile20(absPath);
+      const content = await readFile21(absPath);
       entries.push(
         Object.freeze({
           path: relPath,
@@ -74077,7 +79655,7 @@ async function readEntry({ root, path: path3, source = "worktree" } = {}) {
   if (source !== "worktree") {
     throw new ReleaseError(PATH_UNSAFE, `unsupported readEntry source: ${source}`, { source });
   }
-  const absPath = join15(root, path3);
+  const absPath = join16(root, path3);
   let st;
   try {
     st = await lstat13(absPath);
@@ -74110,7 +79688,7 @@ async function readEntry({ root, path: path3, source = "worktree" } = {}) {
       { path: path3, nlink: st.nlink }
     );
   }
-  const content = await readFile20(absPath);
+  const content = await readFile21(absPath);
   return Object.freeze({
     kind: "regular",
     path: path3,
@@ -74373,8 +79951,8 @@ var init_graph = __esm({
 });
 
 // src/artifacts/producer-registry.mjs
-import { readFile as readFile21, readdir as readdir9, stat as stat5, mkdir as mkdir14, writeFile as writeFile8, rm as rm7 } from "node:fs/promises";
-import { join as join16 } from "node:path";
+import { readFile as readFile22, readdir as readdir10, stat as stat6, mkdir as mkdir14, writeFile as writeFile8, rm as rm8 } from "node:fs/promises";
+import { join as join17 } from "node:path";
 import { mkdtemp as mkdtemp4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
 import { createHash as createHash12 } from "node:crypto";
@@ -74395,7 +79973,7 @@ function collectStaticImports(filePath, visited = /* @__PURE__ */ new Set()) {
   const dir = abs.replace(/\/[^/]*$/, "");
   while ((match = importRe.exec(source)) !== null) {
     const spec = match[1];
-    let resolved = join16(dir, spec);
+    let resolved = join17(dir, spec);
     if (!resolved.endsWith(".mjs")) resolved += ".mjs";
     results.push(...collectStaticImports(resolved, visited));
   }
@@ -74403,10 +79981,10 @@ function collectStaticImports(filePath, visited = /* @__PURE__ */ new Set()) {
 }
 async function createBuiltInProducerRegistry() {
   const producers = /* @__PURE__ */ new Map();
-  const lockfilePath = join16(new URL("../../..", import.meta.url).pathname, "pnpm-lock.yaml");
+  const lockfilePath = join17(new URL("../../..", import.meta.url).pathname, "pnpm-lock.yaml");
   let lockfileBytes;
   try {
-    lockfileBytes = await readFile21(lockfilePath);
+    lockfileBytes = await readFile22(lockfilePath);
   } catch {
     lockfileBytes = Buffer.from("");
   }
@@ -74423,7 +80001,7 @@ async function createBuiltInProducerRegistry() {
     const allModuleBytes = await Promise.all(
       allModulePaths.map(async (p) => {
         try {
-          return await readFile21(p);
+          return await readFile22(p);
         } catch {
           return Buffer.from("");
         }
@@ -74440,16 +80018,16 @@ async function createBuiltInProducerRegistry() {
 }
 async function readDirEntries(dirPath, relBase = "") {
   const entries = [];
-  const items = await readdir9(dirPath, { withFileTypes: true });
+  const items = await readdir10(dirPath, { withFileTypes: true });
   for (const item of items) {
     if (item.name === ".git") continue;
-    const absPath = join16(dirPath, item.name);
+    const absPath = join17(dirPath, item.name);
     const relPath = relBase ? `${relBase}/${item.name}` : item.name;
-    const st = await stat5(absPath);
+    const st = await stat6(absPath);
     if (st.isDirectory()) {
       entries.push(...await readDirEntries(absPath, relPath));
     } else {
-      const content = await readFile21(absPath);
+      const content = await readFile22(absPath);
       entries.push(Object.freeze({
         path: relPath,
         type: "blob",
@@ -74466,11 +80044,11 @@ async function readDirEntries(dirPath, relBase = "") {
 async function materializeEntries(entries, dirPath) {
   for (const entry of entries) {
     if (!entry.path) continue;
-    const targetPath = join16(dirPath, entry.path);
+    const targetPath = join17(dirPath, entry.path);
     if (entry.type === "tree" || entry.kind === "tree") {
       await mkdir14(targetPath, { recursive: true });
     } else {
-      await mkdir14(join16(targetPath, ".."), { recursive: true });
+      await mkdir14(join17(targetPath, ".."), { recursive: true });
       if (entry.content) {
         await writeFile8(targetPath, entry.content);
       }
@@ -74491,7 +80069,7 @@ async function verifyDeterminism(produce, runOptions, dir1, dir2) {
       { digest1, digest2 }
     );
   }
-  await rm7(dir1, { recursive: true, force: true }).catch(() => {
+  await rm8(dir1, { recursive: true, force: true }).catch(() => {
   });
   return { entries: entries2, outputDir: dir2 };
 }
@@ -74514,7 +80092,7 @@ async function runProducerClosure({
   graph,
   inputSnapshot,
   artifactIds,
-  tempRootFactory = /* @__PURE__ */ __name(async () => mkdtemp4(join16(tmpdir3(), "producer-")), "tempRootFactory")
+  tempRootFactory = /* @__PURE__ */ __name(async () => mkdtemp4(join17(tmpdir3(), "producer-")), "tempRootFactory")
 } = {}) {
   const generatedSet = new Set(graph.topologicalOrder);
   for (const id of artifactIds) {
@@ -74551,9 +80129,9 @@ async function runProducerClosure({
         if (inputEntries) {
           const first = inputEntries[0];
           if (first && first.path) {
-            const absPath = first.path.startsWith("/") ? first.path : join16(process.cwd(), first.path);
+            const absPath = first.path.startsWith("/") ? first.path : join17(process.cwd(), first.path);
             try {
-              const st = await stat5(absPath);
+              const st = await stat6(absPath);
               if (st.isDirectory()) {
                 inputPath = absPath;
               } else {
@@ -74975,7 +80553,7 @@ var init_state = __esm({
 });
 
 // src/artifacts/artifact-plan.mjs
-import { writeFile as writeFile9, mkdir as mkdir15, readFile as readFile22, rename as rename3, open as open8 } from "node:fs/promises";
+import { writeFile as writeFile9, mkdir as mkdir15, readFile as readFile23, rename as rename3, open as open8 } from "node:fs/promises";
 import { dirname as dirname13 } from "node:path";
 function assemblePlan({
   operation,
@@ -75073,13 +80651,6 @@ var init_tree = __esm({
   }
 });
 
-// src/artifacts/merge/regions.mjs
-var init_regions = __esm({
-  "src/artifacts/merge/regions.mjs"() {
-    init_errors();
-  }
-});
-
 // src/artifacts/merge/markdown.mjs
 var init_markdown = __esm({
   "src/artifacts/merge/markdown.mjs"() {
@@ -75096,10 +80667,10 @@ var init_json = __esm({
 });
 
 // src/artifacts/merge/yaml.mjs
-var import_yaml4;
+var import_yaml5;
 var init_yaml = __esm({
   "src/artifacts/merge/yaml.mjs"() {
-    import_yaml4 = __toESM(require_dist(), 1);
+    import_yaml5 = __toESM(require_dist(), 1);
   }
 });
 
@@ -75671,8 +81242,8 @@ var init_adoption = __esm({
 // src/artifacts/inspect.mjs
 import { promisify as promisify15 } from "node:util";
 import { execFile as execFile14 } from "node:child_process";
-import { readdir as readdir10, stat as stat6, readFile as readFile23 } from "node:fs/promises";
-import { join as join17 } from "node:path";
+import { readdir as readdir11, stat as stat7, readFile as readFile24 } from "node:fs/promises";
+import { join as join18 } from "node:path";
 async function hasNestedGitRoots(root) {
   try {
     const { stdout } = await execFileAsync5(
@@ -75682,10 +81253,10 @@ async function hasNestedGitRoots(root) {
     );
     const dirs = stdout.split("\n").filter((s) => s.length > 0);
     for (const dir of dirs) {
-      const absDir = join17(root, dir);
+      const absDir = join18(root, dir);
       try {
-        const nestedGit = join17(absDir, ".git");
-        await stat6(nestedGit);
+        const nestedGit = join18(absDir, ".git");
+        await stat7(nestedGit);
         return true;
       } catch {
       }
@@ -75943,8 +81514,8 @@ var init_inspect = __esm({
 });
 
 // src/artifacts/resolution.mjs
-import { mkdir as mkdir16, open as open9, readFile as readFile24, stat as stat7, lstat as lstat14, chmod as chmod4 } from "node:fs/promises";
-import { join as join18, resolve as resolve20, relative as relative17, isAbsolute as isAbsolute15, basename as basename8 } from "node:path";
+import { mkdir as mkdir16, open as open9, readFile as readFile25, stat as stat8, lstat as lstat14, chmod as chmod4 } from "node:fs/promises";
+import { join as join19, resolve as resolve21, relative as relative19, isAbsolute as isAbsolute16, basename as basename8 } from "node:path";
 function decodeBuffer(value, label) {
   if (value == null) return null;
   if (Buffer.isBuffer(value)) return value;
@@ -76046,9 +81617,9 @@ function assertSafeArtifactId(id) {
 }
 async function assertNoSymlinksInPath(root, artifactId) {
   const levels = [
-    join18(root, ".release-skill"),
-    join18(root, ".release-skill", "resolution"),
-    join18(root, ".release-skill", "resolution", artifactId)
+    join19(root, ".release-skill"),
+    join19(root, ".release-skill", "resolution"),
+    join19(root, ".release-skill", "resolution", artifactId)
   ];
   for (const dir of levels) {
     try {
@@ -76064,11 +81635,11 @@ async function assertNoSymlinksInPath(root, artifactId) {
   }
 }
 async function assertSafeResolvedPath(root, artifactId, resolvedPath) {
-  const resolutionDir = resolve20(root, ".release-skill", "resolution", artifactId);
-  const resolved = resolve20(resolvedPath);
+  const resolutionDir = resolve21(root, ".release-skill", "resolution", artifactId);
+  const resolved = resolve21(resolvedPath);
   await assertNoSymlinksInPath(root, artifactId);
-  const rel = relative17(resolutionDir, resolved);
-  if (rel.startsWith("..") || isAbsolute15(rel)) {
+  const rel = relative19(resolutionDir, resolved);
+  if (rel.startsWith("..") || isAbsolute16(rel)) {
     throw new ReleaseError(
       PATH_UNSAFE,
       `resolvedPath must be inside resolution directory ${resolutionDir}`,
@@ -76083,7 +81654,7 @@ async function assertSafeResolvedPath(root, artifactId, resolvedPath) {
       { resolvedPath, expected: `${artifactId}.resolved`, actual: filename }
     );
   }
-  if (resolved !== resolve20(resolutionDir, `${artifactId}.resolved`)) {
+  if (resolved !== resolve21(resolutionDir, `${artifactId}.resolved`)) {
     throw new ReleaseError(
       PATH_UNSAFE,
       "resolvedPath must be the exact materialized resolution file",
@@ -76227,13 +81798,13 @@ async function materializeResolution({
   const template = buildConflictTemplate(artifact.conflict ?? {}, decodedBuffers);
   const templateDigest = sha256Hex(template);
   await assertNoSymlinksInPath(root, artifactId);
-  const resolutionDir = join18(root, ".release-skill", "resolution", artifactId);
+  const resolutionDir = join19(root, ".release-skill", "resolution", artifactId);
   await mkdir16(resolutionDir, { recursive: true, mode: 448 });
-  const dirStat = await stat7(resolutionDir);
+  const dirStat = await stat8(resolutionDir);
   if ((dirStat.mode & 511) !== 448) {
     await chmod4(resolutionDir, 448);
   }
-  const resolvedPath = join18(resolutionDir, `${artifactId}.resolved`);
+  const resolvedPath = join19(resolutionDir, `${artifactId}.resolved`);
   const fh = await open9(resolvedPath, "wx", 384);
   try {
     await fh.write(template, 0, template.length);
@@ -76275,7 +81846,7 @@ async function submitResolution({
 async function readAndValidateResolvedFile(resolvedPath) {
   let content;
   try {
-    content = await readFile24(resolvedPath);
+    content = await readFile25(resolvedPath);
   } catch (err) {
     throw new ReleaseError(MISSING_PARAMETERS, `cannot read resolved file: ${err.message}`, { resolvedPath, cause: err.code });
   }
@@ -76438,1744 +82009,13 @@ var init_resolution = __esm({
   }
 });
 
-// src/artifacts/transaction-journal.mjs
-function failSchema(message, details) {
-  throw new ReleaseError(TRANSACTION_INCOMPLETE, message, details);
-}
-function assertClosedObject(value, fields, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    failSchema(`${label} must be an object`);
-  }
-  for (const key of Object.keys(value)) {
-    if (!fields.has(key)) failSchema(`${label} has unknown field: ${key}`);
-  }
-}
-function normaliseMode(mode, label) {
-  if (Number.isSafeInteger(mode) && mode >= 0 && mode <= 511) return mode;
-  const text = String(mode);
-  const suffix = text.slice(-3);
-  if (!/^[0-7]{3}$/.test(suffix)) failSchema(`${label} has invalid mode`);
-  return Number.parseInt(suffix, 8);
-}
-function normaliseDigest(value, label) {
-  if (typeof value !== "string" || !/^(?:sha256:)?[0-9a-f]{64}$/.test(value)) {
-    failSchema(`${label} has invalid sha256`);
-  }
-  return value.startsWith("sha256:") ? value : `sha256:${value}`;
-}
-function decodeJournalBytes(raw, label) {
-  if (Buffer.isBuffer(raw)) return Buffer.from(raw);
-  if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.type !== "Buffer" || !Array.isArray(raw.data) || Object.keys(raw).some((key) => !["type", "data"].includes(key))) {
-    failSchema(`${label} has invalid bytes encoding`);
-  }
-  for (let i = 0; i < raw.data.length; i++) {
-    if (!Number.isInteger(raw.data[i]) || raw.data[i] < 0 || raw.data[i] > 255) {
-      failSchema(`${label}.bytes[${i}] must be an integer in range 0..255`);
-    }
-  }
-  return Buffer.from(raw.data);
-}
-function validateManifestItem(item, role, index) {
-  const label = `${role}Manifest[${index}]`;
-  if (!item || typeof item !== "object" || Array.isArray(item)) {
-    failSchema(`${label} must be an object`);
-  }
-  const canonical = canonicalArtifactPath(item.path);
-  if (canonical.path !== item.path) failSchema(`${label} path is not canonical`);
-  if (item.kind === "absent") {
-    const allowed2 = role === "old" ? /* @__PURE__ */ new Set(["path", "kind", "absent"]) : /* @__PURE__ */ new Set(["path", "kind"]);
-    assertClosedObject(item, allowed2, label);
-    if (role === "old" && item.absent !== true) {
-      failSchema(`${label} must carry an absence tombstone`);
-    }
-    return Object.freeze({ path: canonical.path, kind: "absent" });
-  }
-  if (item.kind !== "regular") failSchema(`${label} has invalid kind`);
-  const allowed = role === "old" ? /* @__PURE__ */ new Set(["path", "kind", "sha256", "size", "mode", "bytes"]) : /* @__PURE__ */ new Set(["path", "kind", "sha256", "size", "mode"]);
-  assertClosedObject(item, allowed, label);
-  for (const required of allowed) {
-    if (!Object.hasOwn(item, required)) failSchema(`${label} missing required field: ${required}`);
-  }
-  const digest = normaliseDigest(item.sha256, label);
-  if (!Number.isSafeInteger(item.size) || item.size < 0) failSchema(`${label} has invalid size`);
-  const mode = normaliseMode(item.mode, label);
-  if (role === "old") {
-    const bytes = decodeJournalBytes(item.bytes, label);
-    if (bytes.length !== item.size) failSchema(`${label} bytes do not match size`);
-    if (`sha256:${sha256Hex(bytes)}` !== digest) failSchema(`${label} bytes do not match sha256`);
-  }
-  return Object.freeze({ path: canonical.path, kind: "regular", digest, size: item.size, mode });
-}
-function validateCanonicalPlanBinding(journal, oldItems, newItems) {
-  const plan = journal.canonicalPlan;
-  assertClosedObject(plan, PLAN_SCHEMA_FIELDS, "journal canonicalPlan");
-  for (const field of PLAN_SCHEMA_FIELDS) {
-    if (!Object.hasOwn(plan, field)) failSchema(`journal canonicalPlan missing required field: ${field}`);
-  }
-  const { planDigest: _ignored, ...content } = plan;
-  const actualDigest = `sha256:${sha256Hex(canonicalJson(content))}`;
-  if (plan.planDigest !== journal.planDigest || actualDigest !== journal.planDigest) {
-    failSchema("journal canonicalPlan digest does not match journal planDigest");
-  }
-  if (plan.apiVersion !== "release-skill.dev/artifact-plan/v1" || !["inspect", "status", "apply"].includes(plan.operation) || plan.safeToWrite !== true || plan.targetUnchanged !== true) {
-    failSchema("journal canonicalPlan is not an applyable v1 plan");
-  }
-  const bindingFields = /* @__PURE__ */ new Set([
-    "repositoryIdentity",
-    "policyDigest",
-    "baseManifestDigest",
-    "currentManifestDigest",
-    "producerClosureDigest"
-  ]);
-  assertClosedObject(plan.bindings, bindingFields, "journal canonicalPlan.bindings");
-  for (const field of bindingFields) {
-    if (!DIGEST_RE.test(plan.bindings[field])) {
-      failSchema(`journal canonicalPlan binding ${field} is invalid`);
-    }
-  }
-  assertClosedObject(plan.nextAction, /* @__PURE__ */ new Set(["command"]), "journal canonicalPlan.nextAction");
-  if (typeof plan.nextAction.command !== "string" || !/\bartifacts apply\b/.test(plan.nextAction.command)) {
-    failSchema("journal canonicalPlan nextAction is not apply");
-  }
-  if (!Array.isArray(plan.artifacts) || plan.artifacts.length !== newItems.length) {
-    failSchema("journal canonicalPlan artifacts do not match manifest length");
-  }
-  for (let i = 0; i < plan.artifacts.length; i++) {
-    const artifact = plan.artifacts[i];
-    const label = `journal canonicalPlan.artifacts[${i}]`;
-    assertClosedObject(artifact, ARTIFACT_SCHEMA_FIELDS, label);
-    for (const field of ARTIFACT_SCHEMA_FIELDS) {
-      if (!Object.hasOwn(artifact, field)) failSchema(`${label} missing required field: ${field}`);
-    }
-    if (typeof artifact.id !== "string" || artifact.id.length === 0) failSchema(`${label} has invalid id`);
-    if (artifact.safeToWrite !== true || !(/* @__PURE__ */ new Set([
-      "READY",
-      "CLEAN",
-      "NEW",
-      "HUMAN_CHANGED",
-      "GENERATOR_CHANGED",
-      "MERGEABLE",
-      "RESOLVED"
-    ])).has(artifact.status)) {
-      failSchema(`${label} is not safe to write`);
-    }
-    const canonical = canonicalArtifactPath(artifact.path);
-    if (canonical.path !== artifact.path || canonical.path !== oldItems[i].path) {
-      failSchema(`${label} path does not match manifests`);
-    }
-    for (const [role, entry, manifest] of [
-      ["oldEntry", artifact.oldEntry, oldItems[i]],
-      ["newEntry", artifact.newEntry, newItems[i]]
-    ]) {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry) || entry.kind !== manifest.kind) {
-        failSchema(`${label}.${role} does not match manifest kind`);
-      }
-      if (entry.kind === "absent") {
-        if (Object.keys(entry).length !== 1) failSchema(`${label}.${role} absent entry is not closed`);
-        continue;
-      }
-      const entryFields = role === "oldEntry" ? /* @__PURE__ */ new Set(["kind", "sha256", "size", "mode"]) : /* @__PURE__ */ new Set(["kind", "bytes", "sha256", "size", "mode"]);
-      assertClosedObject(entry, entryFields, `${label}.${role}`);
-      for (const field of entryFields) {
-        if (!Object.hasOwn(entry, field)) failSchema(`${label}.${role} missing required field: ${field}`);
-      }
-      if (normaliseDigest(entry.sha256, `${label}.${role}`) !== manifest.digest || entry.size !== manifest.size || normaliseMode(entry.mode, `${label}.${role}`) !== manifest.mode) {
-        failSchema(`${label}.${role} does not match manifest identity`);
-      }
-      if (role === "newEntry") {
-        const bytes = decodeJournalBytes(entry.bytes, `${label}.${role}`);
-        if (bytes.length !== manifest.size || `sha256:${sha256Hex(bytes)}` !== manifest.digest) {
-          failSchema(`${label}.${role} bytes do not match manifest identity`);
-        }
-      }
-    }
-  }
-}
-async function ensurePath(handle, segments, openedHandles = []) {
-  let current = handle;
-  for (const seg of segments) {
-    try {
-      current = await current.openDir(seg);
-      openedHandles.push(current);
-    } catch (openErr) {
-      const entry = await current.readEntry(seg);
-      const absent = entry === null || entry?.kind === "absent";
-      if (!absent) {
-        const isDirectory = entry?.type === "directory" || entry?.kind === "tree";
-        if (isDirectory) throw openErr;
-        throw new ReleaseError(
-          PATH_UNSAFE,
-          `ensurePath: path segment is not a directory: ${entry?.type || entry?.kind || "unknown"}`
-        );
-      }
-      await current.mkdir(seg, 448);
-      await current.fsync();
-      current = await current.openDir(seg);
-      openedHandles.push(current);
-    }
-  }
-  return current;
-}
-async function closeHandlesReverse(handles) {
-  const failures = [];
-  for (let i = handles.length - 1; i >= 0; i--) {
-    try {
-      await handles[i].close();
-    } catch (error) {
-      failures.push(error?.code || error?.message || "close failed");
-    }
-  }
-  if (failures.length > 0) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      "transaction handle close failed",
-      { closeFailures: failures }
-    );
-  }
-}
-async function readJsonViaHandle(handle, name) {
-  const result = await handle.readFile(name);
-  if (result === null) return null;
-  const text = result.bytes.toString("utf8");
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `journal file ${name} is corrupt (invalid JSON)`
-    );
-  }
-}
-async function writeJsonViaHandle(handle, name, data) {
-  const bytes = Buffer.from(JSON.stringify(data, null, 2), "utf8");
-  const expectedIdentity = await handle.readFile(name);
-  const token = await handle.createTemp(name, 384, bytes);
-  try {
-    await handle.rename(token, name, expectedIdentity);
-  } catch (error) {
-    try {
-      const aborted = await handle.abortTemp(token);
-      if (!aborted?.removed) {
-        error.details = { ...error.details || {}, abortResult: aborted };
-      }
-    } catch (abortError) {
-      error.details = {
-        ...error.details || {},
-        abortError: abortError?.code || abortError?.message || "abort failed"
-      };
-    }
-    throw error;
-  }
-  await handle.fsync();
-}
-async function abortTempAfterFailure(handle, token, primaryError) {
-  try {
-    const result = await handle.abortTemp(token);
-    if (!result?.removed) {
-      primaryError.details = { ...primaryError.details || {}, abortResult: result };
-    }
-  } catch (abortError) {
-    primaryError.details = {
-      ...primaryError.details || {},
-      abortError: abortError?.code || abortError?.message || "abort failed"
-    };
-  }
-}
-function validateJournalSchema(journal) {
-  if (!journal || typeof journal !== "object" || Array.isArray(journal)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal is not an object");
-  }
-  for (const key of Object.keys(journal)) {
-    if (!JOURNAL_SCHEMA_FIELDS.has(key)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal has unknown field: ${key}`
-      );
-    }
-  }
-  for (const field of JOURNAL_SCHEMA_FIELDS) {
-    if (!Object.hasOwn(journal, field)) {
-      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal missing required field: ${field}`);
-    }
-  }
-  if (typeof journal.transactionId !== "string" || journal.transactionId.length === 0) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal missing transactionId");
-  }
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(journal.transactionId)) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      "journal transactionId contains unsafe characters",
-      { transactionId: journal.transactionId }
-    );
-  }
-  if (typeof journal.planDigest !== "string" || !DIGEST_RE.test(journal.planDigest)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal missing planDigest");
-  }
-  if (!journal.canonicalPlan || typeof journal.canonicalPlan !== "object" || Array.isArray(journal.canonicalPlan)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal canonicalPlan must be an object");
-  }
-  if (!Array.isArray(journal.oldManifest) || !Array.isArray(journal.newManifest)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal manifests must be arrays");
-  }
-  if (journal.oldManifest.length !== journal.newManifest.length) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal manifest lengths differ");
-  }
-  if (!VALID_STATES.has(journal.state)) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `journal has invalid state: ${journal.state}`
-    );
-  }
-  if (!Array.isArray(journal.transitions)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal transitions is not an array");
-  }
-  if (!Array.isArray(journal.entries)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal entries is not an array");
-  }
-  let replayState = "PREPARED";
-  for (let i = 0; i < journal.transitions.length; i++) {
-    const t = journal.transitions[i];
-    if (!t || typeof t !== "object") {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal transition[${i}] is not an object`
-      );
-    }
-    if (t.from === null || t.from === void 0) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal transition[${i}] must not use a null from state`
-      );
-    } else if (typeof t.from !== "string" || !VALID_STATES.has(t.from)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal transition[${i}] has invalid from state: ${t.from}`
-      );
-    }
-    if (typeof t.to !== "string" || !VALID_STATES.has(t.to)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal transition[${i}] has invalid to state: ${t.to}`
-      );
-    }
-    if (t.from !== replayState || !VALID_TRANSITIONS[t.from]?.includes(t.to)) {
-      throw new ReleaseError(
-        INVALID_STATE_TRANSITION,
-        `journal transition[${i}] illegal or discontinuous: ${t.from} -> ${t.to}`,
-        { from: t.from, to: t.to, expectedFrom: replayState }
-      );
-    }
-    replayState = t.to;
-    if (t.entryIndex !== void 0 && t.entryIndex !== null) {
-      if (typeof t.entryIndex !== "number" || t.entryIndex < 0 || !Number.isInteger(t.entryIndex) || t.entryIndex >= journal.newManifest.length) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `journal transition[${i}] has invalid entryIndex: ${t.entryIndex}`
-        );
-      }
-    }
-    const TRANSITION_SCHEMA_FIELDS = /* @__PURE__ */ new Set(["from", "to", "entryIndex", "timestamp"]);
-    for (const key of Object.keys(t)) {
-      if (!TRANSITION_SCHEMA_FIELDS.has(key)) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `journal transition[${i}] has unknown field: ${key}`
-        );
-      }
-    }
-    if (typeof t.timestamp !== "string" || !Number.isFinite(Date.parse(t.timestamp))) {
-      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal transition[${i}] has invalid timestamp`);
-    }
-  }
-  if (replayState !== journal.state) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `journal state ${journal.state} does not match transition replay ${replayState}`
-    );
-  }
-  const manifestPaths = /* @__PURE__ */ new Set();
-  const oldItems = [];
-  const newItems = [];
-  for (let i = 0; i < journal.newManifest.length; i++) {
-    const oldItem = journal.oldManifest[i];
-    const newItem = journal.newManifest[i];
-    const validatedOld = validateManifestItem(oldItem, "old", i);
-    const validatedNew = validateManifestItem(newItem, "new", i);
-    if (validatedOld.path !== validatedNew.path) {
-      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal manifest[${i}] paths differ`);
-    }
-    oldItems.push(validatedOld);
-    newItems.push(validatedNew);
-    const { collisionKey } = canonicalArtifactPath(validatedNew.path);
-    if (manifestPaths.has(collisionKey)) {
-      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal manifest path is duplicated: ${newItem.path}`);
-    }
-    manifestPaths.add(collisionKey);
-  }
-  validateCanonicalPlanBinding(journal, oldItems, newItems);
-  const seenIndices = /* @__PURE__ */ new Set();
-  const seenPaths = /* @__PURE__ */ new Set();
-  if (journal.entries.length > journal.newManifest.length) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal entries exceed manifest length");
-  }
-  for (let i = 0; i < journal.entries.length; i++) {
-    const e = journal.entries[i];
-    if (e === null || e === void 0) {
-      continue;
-    }
-    if (typeof e !== "object") {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal entries[${i}] is not an object or null`
-      );
-    }
-    if (seenIndices.has(i)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal entries has duplicate index: ${i}`
-      );
-    }
-    seenIndices.add(i);
-    if (typeof e.id !== "string" || e.id.length === 0 || typeof e.path !== "string") {
-      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal entries[${i}] missing id/path`);
-    }
-    const entryPath = canonicalArtifactPath(e.path);
-    if (e.id !== journal.canonicalPlan.artifacts[i].id || entryPath.path !== newItems[i].path) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal entries[${i}] does not match canonical plan authority`
-      );
-    }
-    if (typeof e.path === "string") {
-      if (seenPaths.has(entryPath.collisionKey)) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `journal entries has duplicate path: ${e.path}`
-        );
-      }
-      seenPaths.add(entryPath.collisionKey);
-    }
-    if (!["pending", "applied"].includes(e.status)) {
-      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal entries[${i}] has invalid status`);
-    }
-    if (typeof e.appliedAt !== "string" || !Number.isFinite(Date.parse(e.appliedAt))) {
-      throw new ReleaseError(TRANSACTION_INCOMPLETE, `journal entries[${i}] has invalid appliedAt`);
-    }
-    const ENTRY_SCHEMA_FIELDS = /* @__PURE__ */ new Set(["id", "path", "status", "appliedAt"]);
-    for (const key of Object.keys(e)) {
-      if (!ENTRY_SCHEMA_FIELDS.has(key)) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `journal entries[${i}] has unknown field: ${key}`
-        );
-      }
-    }
-  }
-  if (typeof journal.createdAt !== "string" || !Number.isFinite(Date.parse(journal.createdAt))) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal createdAt must be a timestamp");
-  }
-  if (typeof journal.updatedAt !== "string" || !Number.isFinite(Date.parse(journal.updatedAt))) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal updatedAt must be a timestamp");
-  }
-  if (["APPLIED", "VERIFYING", "COMMITTED"].includes(journal.state)) {
-    if (journal.entries.length !== journal.newManifest.length || journal.entries.some((entry) => !entry || entry.status !== "applied")) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `journal state ${journal.state} requires every manifest entry to be applied`
-      );
-    }
-  }
-}
-async function createTransactionJournal({
-  rootHandle,
-  transactionId,
-  planDigest,
-  canonicalPlan,
-  oldManifest,
-  newManifest
-} = {}) {
-  if (typeof transactionId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(transactionId)) {
-    throw new ReleaseError(PATH_UNSAFE, "transactionId is not a safe path segment");
-  }
-  if (typeof planDigest !== "string" || !/^sha256:[0-9a-f]{64}$/.test(planDigest)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "planDigest is invalid");
-  }
-  const openedHandles = [];
-  try {
-    const txnParent = await ensurePath(
-      rootHandle,
-      [".release-skill", "transactions"],
-      openedHandles
-    );
-    try {
-      await txnParent.mkdir(transactionId, 448);
-    } catch (err) {
-      if (err.code === "EEXIST") {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `transaction directory already exists: ${transactionId}`,
-          { transactionId }
-        );
-      }
-      throw err;
-    }
-    await txnParent.fsync();
-    const txnHandle = await txnParent.openDir(transactionId);
-    openedHandles.push(txnHandle);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const journal = {
-      transactionId,
-      planDigest,
-      canonicalPlan,
-      oldManifest,
-      newManifest,
-      state: "PREPARED",
-      transitions: [],
-      entries: [],
-      createdAt: now,
-      updatedAt: now
-    };
-    validateJournalSchema(journal);
-    await writeJsonViaHandle(txnHandle, "journal.json", journal);
-    return {
-      journal,
-      txnHandle,
-      async close() {
-        await closeHandlesReverse(openedHandles);
-      }
-    };
-  } catch (error) {
-    try {
-      await closeHandlesReverse(openedHandles);
-    } catch (closeError) {
-      error.details = {
-        ...error.details || {},
-        closeFailures: closeError.details?.closeFailures || [closeError.code || closeError.message]
-      };
-    }
-    throw error;
-  }
-}
-async function readJournal(txnHandle, transactionId) {
-  const journal = await readJsonViaHandle(txnHandle, "journal.json");
-  if (journal === null) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      "transaction journal does not exist",
-      { transactionId }
-    );
-  }
-  validateJournalSchema(journal);
-  if (journal.transactionId !== transactionId) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      "journal transactionId does not match its directory authority",
-      { expected: transactionId, actual: journal.transactionId }
-    );
-  }
-  return journal;
-}
-async function writeJournalTransition({
-  txnHandle,
-  transactionId,
-  from,
-  to,
-  entryIndex
-} = {}) {
-  if (typeof from !== "string" || !VALID_STATES.has(from)) {
-    throw new ReleaseError(
-      INVALID_STATE_TRANSITION,
-      "journal transitions require a concrete valid from state",
-      { from }
-    );
-  }
-  const journal = await readJournal(txnHandle, transactionId);
-  if (from !== null && journal.state !== from) {
-    throw new ReleaseError(
-      INVALID_STATE_TRANSITION,
-      `invalid state transition: expected ${from}, got ${journal.state}`,
-      { expected: from, actual: journal.state, transactionId }
-    );
-  }
-  if (from !== null && !VALID_TRANSITIONS[from]?.includes(to)) {
-    throw new ReleaseError(
-      INVALID_STATE_TRANSITION,
-      `invalid state transition: ${from} -> ${to}`,
-      { from, to, transactionId }
-    );
-  }
-  if (from !== null) {
-    journal.state = to;
-  }
-  journal.transitions.push({
-    from,
-    to,
-    entryIndex,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString()
-  });
-  journal.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  await writeJsonViaHandle(txnHandle, "journal.json", journal);
-  return journal;
-}
-async function recordAppliedEntry({
-  txnHandle,
-  transactionId,
-  entryIndex,
-  entry
-} = {}) {
-  if (!Number.isInteger(entryIndex) || entryIndex < 0) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "entryIndex must be a non-negative integer");
-  }
-  if (!entry || typeof entry !== "object" || Array.isArray(entry) || Object.keys(entry).some((key) => !["id", "path", "status"].includes(key)) || typeof entry.id !== "string" || typeof entry.path !== "string" || !["pending", "applied"].includes(entry.status)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "journal entry metadata is invalid");
-  }
-  const journal = await readJournal(txnHandle, transactionId);
-  if (entryIndex >= journal.newManifest.length) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "entryIndex exceeds manifest length");
-  }
-  while (journal.entries.length <= entryIndex) {
-    journal.entries.push(null);
-  }
-  journal.entries[entryIndex] = {
-    ...entry,
-    appliedAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  journal.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  await writeJsonViaHandle(txnHandle, "journal.json", journal);
-  return journal;
-}
-async function createBackup({
-  txnHandle,
-  transactionId,
-  entryIndex,
-  oldEntry
-} = {}) {
-  if (!Number.isInteger(entryIndex) || entryIndex < 0) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "backup entryIndex is invalid");
-  }
-  let backupsHandle;
-  try {
-    backupsHandle = await txnHandle.openDir("backups");
-  } catch (openErr) {
-    const entry = await txnHandle.readEntry("backups");
-    const absent = entry === null || entry?.kind === "absent";
-    if (!absent) {
-      const isDirectory = entry?.type === "directory" || entry?.kind === "tree";
-      if (isDirectory) throw openErr;
-      throw new ReleaseError(PATH_UNSAFE, "backups path is not a directory");
-    }
-    await txnHandle.mkdir("backups", 448);
-    await txnHandle.fsync();
-    backupsHandle = await txnHandle.openDir("backups");
-  }
-  let primaryError;
-  try {
-    const backupData = oldEntry.kind === "regular" && oldEntry.bytes ? Buffer.from(oldEntry.bytes) : Buffer.from(JSON.stringify({ absent: true, entryIndex, timestamp: (/* @__PURE__ */ new Date()).toISOString() }), "utf8");
-    const backupName = `${entryIndex}.bak`;
-    const token = await backupsHandle.createTemp(backupName, 384, backupData);
-    try {
-      await backupsHandle.rename(token, backupName);
-    } catch (error) {
-      await abortTempAfterFailure(backupsHandle, token, error);
-      throw error;
-    }
-    await backupsHandle.fsync();
-  } catch (error) {
-    primaryError = error;
-  } finally {
-    try {
-      await backupsHandle.close();
-    } catch (closeError) {
-      if (primaryError) {
-        primaryError.details = {
-          ...primaryError.details || {},
-          closeError: closeError?.code || closeError?.message || "close failed"
-        };
-      } else {
-        throw closeError;
-      }
-    }
-  }
-  if (primaryError) throw primaryError;
-}
-async function writeRecoveryRequiredFile({
-  txnHandle,
-  transactionId,
-  targetUnchanged,
-  recover
-} = {}) {
-  const data = {
-    transactionId,
-    targetUnchanged,
-    recover,
-    failedAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  const bytes = Buffer.from(JSON.stringify(data, null, 2), "utf8");
-  const expectedIdentity = await txnHandle.readFile("RECOVERY_REQUIRED");
-  const token = await txnHandle.createTemp("RECOVERY_REQUIRED", 384, bytes);
-  try {
-    await txnHandle.rename(token, "RECOVERY_REQUIRED", expectedIdentity);
-  } catch (error) {
-    await abortTempAfterFailure(txnHandle, token, error);
-    throw error;
-  }
-  await txnHandle.fsync();
-}
-var VALID_STATES, VALID_TRANSITIONS, JOURNAL_SCHEMA_FIELDS, DIGEST_RE, PLAN_SCHEMA_FIELDS, ARTIFACT_SCHEMA_FIELDS;
-var init_transaction_journal = __esm({
-  "src/artifacts/transaction-journal.mjs"() {
-    init_errors();
-    init_digest();
-    init_path_key();
-    VALID_STATES = Object.freeze(/* @__PURE__ */ new Set([
-      "PREPARED",
-      "APPLYING",
-      "APPLIED",
-      "VERIFYING",
-      "COMMITTED",
-      "RECOVERY_REQUIRED",
-      "ROLLING_BACK",
-      "ROLLED_BACK",
-      "RECOVERY_CONFLICT"
-    ]));
-    VALID_TRANSITIONS = Object.freeze({
-      PREPARED: ["APPLYING", "RECOVERY_REQUIRED"],
-      APPLYING: ["APPLIED", "RECOVERY_REQUIRED"],
-      APPLIED: ["VERIFYING", "RECOVERY_REQUIRED"],
-      VERIFYING: ["COMMITTED", "RECOVERY_REQUIRED"],
-      COMMITTED: [],
-      RECOVERY_REQUIRED: ["ROLLING_BACK", "APPLYING"],
-      ROLLING_BACK: ["ROLLED_BACK", "RECOVERY_CONFLICT"],
-      ROLLED_BACK: [],
-      RECOVERY_CONFLICT: []
-    });
-    JOURNAL_SCHEMA_FIELDS = /* @__PURE__ */ new Set([
-      "transactionId",
-      "planDigest",
-      "canonicalPlan",
-      "oldManifest",
-      "newManifest",
-      "state",
-      "transitions",
-      "entries",
-      "createdAt",
-      "updatedAt"
-    ]);
-    DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
-    PLAN_SCHEMA_FIELDS = /* @__PURE__ */ new Set([
-      "apiVersion",
-      "operation",
-      "bindings",
-      "safeToWrite",
-      "targetUnchanged",
-      "nextAction",
-      "artifacts",
-      "planDigest"
-    ]);
-    ARTIFACT_SCHEMA_FIELDS = /* @__PURE__ */ new Set([
-      "id",
-      "path",
-      "oldEntry",
-      "newEntry",
-      "status",
-      "safeToWrite"
-    ]);
-    __name(failSchema, "failSchema");
-    __name(assertClosedObject, "assertClosedObject");
-    __name(normaliseMode, "normaliseMode");
-    __name(normaliseDigest, "normaliseDigest");
-    __name(decodeJournalBytes, "decodeJournalBytes");
-    __name(validateManifestItem, "validateManifestItem");
-    __name(validateCanonicalPlanBinding, "validateCanonicalPlanBinding");
-    __name(ensurePath, "ensurePath");
-    __name(closeHandlesReverse, "closeHandlesReverse");
-    __name(readJsonViaHandle, "readJsonViaHandle");
-    __name(writeJsonViaHandle, "writeJsonViaHandle");
-    __name(abortTempAfterFailure, "abortTempAfterFailure");
-    __name(validateJournalSchema, "validateJournalSchema");
-    __name(createTransactionJournal, "createTransactionJournal");
-    __name(readJournal, "readJournal");
-    __name(writeJournalTransition, "writeJournalTransition");
-    __name(recordAppliedEntry, "recordAppliedEntry");
-    __name(createBackup, "createBackup");
-    __name(writeRecoveryRequiredFile, "writeRecoveryRequiredFile");
-  }
-});
-
-// src/artifacts/transaction.mjs
-var transaction_exports = {};
-__export(transaction_exports, {
-  applyArtifactPlan: () => applyArtifactPlan
-});
-import { randomBytes as randomBytes2 } from "node:crypto";
-import { relative as relative18 } from "node:path";
-function computeCanonicalPlanDigest(plan) {
-  const { planDigest: _ignored, ...content } = plan;
-  return `sha256:${sha256Hex(canonicalJson(content))}`;
-}
-function decodeBytes(raw) {
-  if (Buffer.isBuffer(raw)) {
-    return raw;
-  }
-  if (raw && typeof raw === "object" && raw.type === "Buffer" && Array.isArray(raw.data)) {
-    for (let i = 0; i < raw.data.length; i++) {
-      if (!Number.isInteger(raw.data[i]) || raw.data[i] < 0 || raw.data[i] > 255) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `bytes[${i}] must be an integer in range 0..255`,
-          { index: i }
-        );
-      }
-    }
-    return Buffer.from(raw.data);
-  }
-  throw new ReleaseError(PATH_UNSAFE, "bytes field has invalid format");
-}
-function validatePath(path3) {
-  canonicalArtifactPath(path3);
-}
-async function withParentHandle(rootHandle, path3, operation) {
-  const canonical = canonicalArtifactPath(path3).path;
-  const segments = canonical.split("/");
-  const opened = [];
-  let current = rootHandle;
-  let result;
-  let primaryError;
-  try {
-    for (let i = 0; i < segments.length - 1; i++) {
-      current = await current.openDir(segments[i]);
-      opened.push(current);
-    }
-    result = await operation(current, segments[segments.length - 1]);
-  } catch (error) {
-    primaryError = error;
-  }
-  const closeFailures = [];
-  for (let i = opened.length - 1; i >= 0; i--) {
-    try {
-      await opened[i].close();
-    } catch (error) {
-      closeFailures.push(error?.code || error?.message || "close failed");
-    }
-  }
-  if (primaryError) {
-    if (closeFailures.length > 0 && primaryError && typeof primaryError === "object") {
-      primaryError.details = { ...primaryError.details || {}, closeFailures };
-    }
-    throw primaryError;
-  }
-  if (closeFailures.length > 0) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      "safe filesystem child handle close failed",
-      { closeFailures }
-    );
-  }
-  return result;
-}
-function validatePathUniqueness(artifacts) {
-  const paths = [];
-  for (const a of artifacts) {
-    if (!a.path || typeof a.path !== "string") {
-      throw new ReleaseError(TRANSACTION_INCOMPLETE, `artifact ${a.id} missing path`);
-    }
-    const { path: canonical, collisionKey } = canonicalArtifactPath(a.path);
-    paths.push({ id: a.id, canonical, collisionKey });
-  }
-  const seen = /* @__PURE__ */ new Set();
-  for (const p of paths) {
-    if (seen.has(p.collisionKey)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `duplicate canonical path: ${p.canonical}`,
-        { path: p.canonical }
-      );
-    }
-    seen.add(p.collisionKey);
-  }
-  for (let i = 0; i < paths.length; i++) {
-    for (let j = i + 1; j < paths.length; j++) {
-      const a = paths[i].canonical;
-      const b = paths[j].canonical;
-      if (b.startsWith(a + "/") || a.startsWith(b + "/")) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `parent-child path overlap: ${a} and ${b}`,
-          { pathA: a, pathB: b }
-        );
-      }
-    }
-  }
-}
-function validateAndDecodeEntry(entry, label) {
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, `${label} must be an object`);
-  }
-  const ENTRY_SCHEMA_FIELDS = /* @__PURE__ */ new Set(["kind", "bytes", "sha256", "size", "mode"]);
-  for (const key of Object.keys(entry)) {
-    if (!ENTRY_SCHEMA_FIELDS.has(key)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `${label} has unknown field: ${key}`,
-        { field: key }
-      );
-    }
-  }
-  const VALID_KINDS = /* @__PURE__ */ new Set(["absent", "regular"]);
-  if (!VALID_KINDS.has(entry.kind)) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `${label} has invalid kind: ${entry.kind}`,
-      { kind: entry.kind }
-    );
-  }
-  if (entry.kind === "absent") {
-    if (Object.keys(entry).length !== 1) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `${label} absent entry must contain only kind`
-      );
-    }
-    return;
-  }
-  if (entry.kind !== "regular") return;
-  const isNewEntry = label === "newEntry";
-  if (isNewEntry && entry.bytes !== void 0 && entry.bytes !== null) {
-    entry.bytes = decodeBytes(entry.bytes);
-    for (let i = 0; i < entry.bytes.length; i++) {
-      if (entry.bytes[i] < 0 || entry.bytes[i] > 255) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `${label} bytes[${i}] is out of range 0..255: ${entry.bytes[i]}`,
-          { index: i, value: entry.bytes[i] }
-        );
-      }
-    }
-    if (typeof entry.sha256 === "string" && /^(?:sha256:)?[0-9a-f]{64}$/.test(entry.sha256)) {
-      const expected = entry.sha256.replace(/^sha256:/, "");
-      const actual = sha256Hex(entry.bytes);
-      if (actual !== expected) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `${label} sha256 mismatch: expected ${expected}, got ${actual}`
-        );
-      }
-    } else {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `${label} regular entry with bytes must have sha256 in sha256:hex format`
-      );
-    }
-    if (entry.size !== void 0 && entry.size !== null) {
-      if (Number(entry.size) !== entry.bytes.length) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `${label} size mismatch: expected ${entry.size}, got ${entry.bytes.length}`
-        );
-      }
-    } else {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `${label} regular entry with bytes must have size`
-      );
-    }
-  } else if (isNewEntry) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `${label} regular entry must have bytes`
-    );
-  } else if (entry.bytes !== void 0) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `${label} regular entry must not contain bytes`
-    );
-  }
-  if (typeof entry.sha256 !== "string" || !/^(?:sha256:)?[0-9a-f]{64}$/.test(entry.sha256)) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `${label} regular entry must have a valid sha256`
-    );
-  }
-  if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `${label} regular entry must have a non-negative integer size`
-    );
-  }
-  if (entry.mode !== void 0 && entry.mode !== null) {
-    const modeStr = String(entry.mode);
-    const last3 = modeStr.slice(-3);
-    if (!/^[0-7]{3}$/.test(last3)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `${label} has invalid mode: ${entry.mode}`
-      );
-    }
-  } else {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `${label} regular entry must have mode`
-    );
-  }
-}
-async function assertFullCas(handle, oldEntry, canonicalPath) {
-  if (!oldEntry || typeof oldEntry !== "object") return;
-  const current = await readCurrentEntry(handle, canonicalPath);
-  if (oldEntry.kind === "absent") {
-    if (current.kind !== "absent") {
-      throw new ReleaseError(
-        PLAN_STALE,
-        `CAS mismatch: ${canonicalPath} expected absent, got ${current.kind}`,
-        { path: canonicalPath, expected: "absent", actual: current.kind }
-      );
-    }
-    return current;
-  }
-  if (oldEntry.kind === "regular") {
-    if (current.kind !== "regular") {
-      throw new ReleaseError(
-        PLAN_STALE,
-        `CAS mismatch: ${canonicalPath} expected regular, got ${current.kind}`,
-        { path: canonicalPath, expected: "regular", actual: current.kind }
-      );
-    }
-    if (typeof oldEntry.sha256 === "string") {
-      const expected = oldEntry.sha256.startsWith("sha256:") ? oldEntry.sha256 : `sha256:${oldEntry.sha256}`;
-      if (current.sha256 !== expected) {
-        throw new ReleaseError(
-          PLAN_STALE,
-          `CAS mismatch: ${canonicalPath} sha256 changed`,
-          { path: canonicalPath, expected, actual: current.sha256 }
-        );
-      }
-    }
-    if (oldEntry.size !== void 0 && oldEntry.size !== null) {
-      if (Number(oldEntry.size) !== current.size) {
-        throw new ReleaseError(
-          PLAN_STALE,
-          `CAS mismatch: ${canonicalPath} size changed`,
-          { path: canonicalPath, expected: Number(oldEntry.size), actual: current.size }
-        );
-      }
-    }
-    if (oldEntry.mode !== void 0 && oldEntry.mode !== null) {
-      const modeStr = String(oldEntry.mode);
-      const last3 = modeStr.slice(-3);
-      if (/^[0-7]{3}$/.test(last3)) {
-        const expectedMode = parseInt(last3, 8);
-        const maskedExpected = expectedMode & 73 ? expectedMode : expectedMode & ~73;
-        const maskedActual = current.mode & 73 ? current.mode : current.mode & ~73;
-        if (maskedExpected !== maskedActual) {
-          throw new ReleaseError(
-            PLAN_STALE,
-            `CAS mismatch: ${canonicalPath} mode changed`,
-            {
-              path: canonicalPath,
-              expected: `0o${maskedExpected.toString(8)}`,
-              actual: `0o${maskedActual.toString(8)}`
-            }
-          );
-        }
-      }
-    }
-    return current;
-  }
-  return current;
-}
-async function readCurrentEntry(handle, path3) {
-  return withParentHandle(handle, path3, async (current, leaf) => {
-    const entry = await current.readEntry(leaf);
-    if (!entry || entry.kind === "absent") {
-      return { kind: "absent" };
-    }
-    if (entry.type === "directory" || entry.kind === "tree") {
-      return { kind: "tree", entries: [] };
-    }
-    const isRegular = entry.type === "file" || entry.type === "blob" || entry.kind === "regular";
-    if (!isRegular) {
-      throw new ReleaseError(
-        PATH_UNSAFE,
-        `artifact path is not a regular file: ${entry.type}`,
-        { path: path3, type: entry.type }
-      );
-    }
-    const fileData = await current.readFile(leaf);
-    if (!fileData) return { kind: "absent" };
-    if (Number(fileData.nlink) !== 1) {
-      throw new ReleaseError(
-        PATH_UNSAFE,
-        `artifact path has unexpected hard link count: ${path3}`,
-        { path: path3, nlink: Number(fileData.nlink) }
-      );
-    }
-    return {
-      kind: "regular",
-      bytes: fileData.bytes,
-      sha256: `sha256:${sha256Hex(fileData.bytes)}`,
-      size: fileData.size,
-      mode: fileData.mode,
-      identityToken: fileData
-    };
-  });
-}
-async function performPreflightAndCas(handle, plan, planPath) {
-  if (!plan || typeof plan !== "object") {
-    throw new ReleaseError(PLAN_STALE, "plan is not a valid object", { path: planPath });
-  }
-  if (plan.apiVersion !== "release-skill.dev/artifact-plan/v1") {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      "plan apiVersion is missing or unsupported",
-      { apiVersion: plan.apiVersion }
-    );
-  }
-  if (typeof plan.bindings !== "object" || plan.bindings === null || Array.isArray(plan.bindings)) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      "plan bindings must be an object"
-    );
-  }
-  const bindingFields = [
-    "repositoryIdentity",
-    "policyDigest",
-    "baseManifestDigest",
-    "currentManifestDigest",
-    "producerClosureDigest"
-  ];
-  if (Object.keys(plan.bindings).length !== bindingFields.length) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "plan bindings must use the closed v1 schema");
-  }
-  for (const field of bindingFields) {
-    if (typeof plan.bindings[field] !== "string" || !/^sha256:[0-9a-f]{64}$/.test(plan.bindings[field])) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `plan binding ${field} must be a sha256 digest`
-      );
-    }
-  }
-  if (!plan.safeToWrite) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      "plan is not safe to write",
-      { safeToWrite: plan.safeToWrite }
-    );
-  }
-  if (!["inspect", "status", "apply"].includes(plan.operation)) {
-    throw new ReleaseError(
-      TRANSACTION_INCOMPLETE,
-      `plan operation is not applyable: ${plan.operation}`
-    );
-  }
-  if (plan.targetUnchanged !== true) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "plan targetUnchanged must be true");
-  }
-  if (!plan.nextAction || typeof plan.nextAction !== "object" || Array.isArray(plan.nextAction) || Object.keys(plan.nextAction).length !== 1 || typeof plan.nextAction.command !== "string" || !/\bartifacts apply\b/.test(plan.nextAction.command)) {
-    throw new ReleaseError(TRANSACTION_INCOMPLETE, "plan nextAction must be the apply command");
-  }
-  if (!Array.isArray(plan.artifacts)) {
-    throw new ReleaseError(PLAN_STALE, "plan missing artifacts array", { path: planPath });
-  }
-  const PLAN_SCHEMA_FIELDS2 = /* @__PURE__ */ new Set([
-    "apiVersion",
-    "operation",
-    "bindings",
-    "safeToWrite",
-    "targetUnchanged",
-    "nextAction",
-    "artifacts",
-    "planDigest"
-  ]);
-  for (const key of Object.keys(plan)) {
-    if (!PLAN_SCHEMA_FIELDS2.has(key)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `plan has unknown field: ${key}`,
-        { field: key }
-      );
-    }
-  }
-  for (const artifact of plan.artifacts) {
-    if (!artifact.id || typeof artifact.id !== "string") {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        "artifact missing id or id is not a string",
-        { artifact }
-      );
-    }
-    const ARTIFACT_SCHEMA_FIELDS2 = /* @__PURE__ */ new Set([
-      "id",
-      "path",
-      "oldEntry",
-      "newEntry",
-      "status",
-      "safeToWrite"
-    ]);
-    for (const key of Object.keys(artifact)) {
-      if (!ARTIFACT_SCHEMA_FIELDS2.has(key)) {
-        throw new ReleaseError(
-          TRANSACTION_INCOMPLETE,
-          `artifact has unknown field: ${key}`,
-          { artifactId: artifact.id, field: key }
-        );
-      }
-    }
-    const VALID_ARTIFACT_STATUSES = /* @__PURE__ */ new Set([
-      "READY",
-      "CLEAN",
-      "NEW",
-      "HUMAN_CHANGED",
-      "GENERATOR_CHANGED",
-      "MERGEABLE",
-      "RESOLVED"
-    ]);
-    if (!VALID_ARTIFACT_STATUSES.has(artifact.status)) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `artifact has invalid or blocking status: ${artifact.status}`,
-        { artifactId: artifact.id, status: artifact.status }
-      );
-    }
-    if (artifact.safeToWrite !== true) {
-      throw new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        `artifact is not explicitly safe to write: ${artifact.id}`,
-        { artifactId: artifact.id, safeToWrite: artifact.safeToWrite }
-      );
-    }
-    validateAndDecodeEntry(artifact.newEntry, "newEntry");
-    validateAndDecodeEntry(artifact.oldEntry, "oldEntry");
-  }
-  for (const artifact of plan.artifacts) {
-    validatePath(artifact.path);
-  }
-  validatePathUniqueness(plan.artifacts);
-  for (const artifact of plan.artifacts) {
-    const canonicalPath = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
-    await assertFullCas(handle, artifact.oldEntry, canonicalPath);
-  }
-}
-async function buildOldManifest(handle, artifacts) {
-  const manifest = [];
-  for (const artifact of artifacts) {
-    const canonicalPath = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
-    const current = await assertFullCas(handle, artifact.oldEntry, canonicalPath);
-    if (artifact.oldEntry && artifact.oldEntry.kind === "regular") {
-      manifest.push({
-        path: canonicalPath,
-        kind: "regular",
-        sha256: current.sha256,
-        size: current.size,
-        mode: current.mode,
-        bytes: current.bytes
-      });
-    } else {
-      manifest.push({
-        path: canonicalPath,
-        kind: "absent",
-        absent: true
-      });
-    }
-  }
-  return manifest;
-}
-function buildNewManifest(artifacts) {
-  return artifacts.map((a) => {
-    const canonicalPath = a.path.endsWith("/") ? a.path.slice(0, -1) : a.path;
-    if (a.newEntry && a.newEntry.kind === "regular") {
-      return {
-        path: canonicalPath,
-        kind: "regular",
-        sha256: a.newEntry.sha256.startsWith("sha256:") ? a.newEntry.sha256 : `sha256:${a.newEntry.sha256}`,
-        size: a.newEntry.size,
-        mode: a.newEntry.mode
-      };
-    }
-    return { path: canonicalPath, kind: "absent" };
-  });
-}
-async function applySingleArtifact(handle, artifact, expectedIdentity = null) {
-  const canonicalPath = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
-  return withParentHandle(handle, canonicalPath, async (parent, leaf) => {
-    if (artifact.newEntry && artifact.newEntry.kind === "absent") {
-      await parent.unlink(leaf);
-      await parent.fsync();
-      return;
-    }
-    if (artifact.newEntry && artifact.newEntry.kind === "regular") {
-      const bytes = Buffer.from(artifact.newEntry.bytes);
-      const mode = parseMode(artifact.newEntry.mode);
-      const token = await parent.createTemp(leaf, mode, bytes);
-      try {
-        await parent.rename(token, leaf, expectedIdentity);
-      } catch (renameError) {
-        try {
-          const abortResult = await parent.abortTemp(token);
-          if (!abortResult?.removed) {
-            renameError.details = {
-              ...renameError.details || {},
-              abortResult
-            };
-          }
-        } catch (abortError) {
-          renameError.details = {
-            ...renameError.details || {},
-            abortError: abortError?.code || abortError?.message || "abort failed"
-          };
-        }
-        throw renameError;
-      }
-      await parent.fsync();
-    }
-  });
-}
-function parseMode(mode) {
-  if (mode === void 0 || mode === null) return 384;
-  const modeStr = String(mode);
-  const last3 = modeStr.slice(-3);
-  if (/^[0-7]{3}$/.test(last3)) {
-    return parseInt(last3, 8);
-  }
-  return 384;
-}
-async function verifyManifest(handle, artifacts) {
-  for (const artifact of artifacts) {
-    const canonicalPath = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
-    if (artifact.newEntry && artifact.newEntry.kind === "absent") {
-      await assertFullCas(handle, { kind: "absent" }, canonicalPath);
-    }
-    if (artifact.newEntry && artifact.newEntry.kind === "regular") {
-      const expected = {
-        kind: "regular",
-        sha256: artifact.newEntry.sha256,
-        size: artifact.newEntry.size,
-        mode: artifact.newEntry.mode
-      };
-      await assertFullCas(handle, expected, canonicalPath);
-    }
-  }
-}
-async function checkTargetUnchanged(handle, artifacts) {
-  try {
-    for (const artifact of artifacts) {
-      const canonicalPath = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
-      if (artifact.oldEntry && artifact.oldEntry.kind === "regular") {
-        await assertFullCas(handle, artifact.oldEntry, canonicalPath);
-      }
-      if (artifact.oldEntry && artifact.oldEntry.kind === "absent") {
-        await assertFullCas(handle, { kind: "absent" }, canonicalPath);
-      }
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function tryRecoveryProtocol({
-  rootHandle,
-  txnHandle,
-  transactionId,
-  originalError,
-  artifacts,
-  journalCreated
-}) {
-  if (!journalCreated) {
-    return { recoveryError: null, targetUnchanged: false };
-  }
-  let targetUnchanged = false;
-  try {
-    targetUnchanged = await checkTargetUnchanged(rootHandle, artifacts);
-  } catch {
-    targetUnchanged = false;
-  }
-  let journalState = "unknown";
-  try {
-    const journal = await readJournal(txnHandle, transactionId);
-    journalState = journal.state;
-  } catch {
-    journalState = "unreadable";
-  }
-  const recover = `release-skill artifacts recover --transaction ${transactionId}`;
-  let recoveryStatePersisted = journalState === "RECOVERY_REQUIRED";
-  let transitionErrorCode = null;
-  if (["PREPARED", "APPLYING", "APPLIED", "VERIFYING"].includes(journalState)) {
-    try {
-      await writeJournalTransition({
-        txnHandle,
-        transactionId,
-        from: journalState,
-        to: "RECOVERY_REQUIRED"
-      });
-      recoveryStatePersisted = true;
-    } catch (error) {
-      transitionErrorCode = error?.code || "UNKNOWN";
-    }
-  }
-  let recoveryMarkerPersisted = false;
-  let markerErrorCode = null;
-  try {
-    await writeRecoveryRequiredFile({
-      txnHandle,
-      transactionId,
-      targetUnchanged,
-      recover
-    });
-    recoveryMarkerPersisted = true;
-  } catch (error) {
-    markerErrorCode = error?.code || "UNKNOWN";
-  }
-  const recoveryError = new ReleaseError(
-    TRANSACTION_INCOMPLETE,
-    recoveryStatePersisted ? `${originalError.message}. ${recover}` : `transaction failed and RECOVERY_REQUIRED could not be persisted. ${recover}`,
-    {
-      transactionId,
-      targetUnchanged,
-      recover,
-      cause: originalError.code || null,
-      causeMessage: originalError.message || null,
-      recoveryDurable: recoveryStatePersisted,
-      recoveryMarkerPersisted,
-      journalState,
-      transitionErrorCode,
-      markerErrorCode
-    }
-  );
-  recoveryError.transactionId = transactionId;
-  return { recoveryError, targetUnchanged };
-}
-function generateTransactionId(clock) {
-  const timeSeed = clock ? clock() : Date.now();
-  const timeDigest = sha256Hex(String(timeSeed)).slice(0, 12);
-  return `txn-${timeDigest}-${randomBytes2(8).toString("hex")}`;
-}
-async function applyArtifactPlanUnderLock({
-  root,
-  planPath,
-  planDigest,
-  safeFs,
-  faultInjector,
-  clock,
-  assertLockOwner = /* @__PURE__ */ __name(async () => {
-  }, "assertLockOwner")
-} = {}) {
-  if (!root || typeof root !== "string") {
-    throw new ReleaseError(PATH_UNSAFE, "root must be a non-empty string");
-  }
-  if (!planPath || typeof planPath !== "string") {
-    throw new ReleaseError(MISSING_PARAMETERS, "planPath is required");
-  }
-  if (!planDigest || typeof planDigest !== "string") {
-    throw new ReleaseError(MISSING_PARAMETERS, "planDigest is required");
-  }
-  if (!/^sha256:[0-9a-f]{64}$/.test(planDigest)) {
-    throw new ReleaseError(PLAN_STALE, "planDigest must be a sha256 digest");
-  }
-  if (!safeFs) {
-    throw new ReleaseError(
-      SAFE_WRITE_UNAVAILABLE,
-      "safe filesystem backend is required"
-    );
-  }
-  const handle = await safeFs.openRoot(root);
-  let txnResult;
-  const assertLockAuthority = /* @__PURE__ */ __name(async () => {
-    try {
-      await assertLockOwner();
-    } catch (error) {
-      if (error && typeof error === "object") error.lockOwnershipLost = true;
-      throw error;
-    }
-  }, "assertLockAuthority");
-  try {
-    const relPlanPath = canonicalArtifactPath(relative18(root, planPath)).path;
-    const planFileData = await withParentHandle(handle, relPlanPath, async (parent, leaf) => {
-      const planEntry = await parent.readEntry(leaf);
-      if (!planEntry || planEntry.kind === "absent") {
-        throw new ReleaseError(PLAN_STALE, "plan file does not exist", { path: planPath });
-      }
-      const planIsRegular = planEntry.kind === "regular" || planEntry.type === "file" || planEntry.type === "blob";
-      if (!planIsRegular) {
-        throw new ReleaseError(PATH_UNSAFE, "plan path is not a regular file", { path: planPath });
-      }
-      if (typeof planEntry.nlink === "number" && planEntry.nlink !== 1) {
-        throw new ReleaseError(PATH_UNSAFE, "plan file has unexpected hard link count");
-      }
-      const data = await parent.readFile(leaf);
-      if (!data) {
-        throw new ReleaseError(PLAN_STALE, "plan file is unreadable", { path: planPath });
-      }
-      if (Number(data.nlink) !== 1) {
-        throw new ReleaseError(PATH_UNSAFE, "plan file has unexpected hard link count");
-      }
-      return data;
-    });
-    let plan;
-    try {
-      plan = JSON.parse(planFileData.bytes.toString("utf8"));
-    } catch (err) {
-      throw new ReleaseError(
-        PLAN_STALE,
-        "plan file is not valid JSON",
-        { path: planPath, error: err.message }
-      );
-    }
-    const recomputedDigest = computeCanonicalPlanDigest(plan);
-    if (plan.planDigest !== planDigest || recomputedDigest !== planDigest) {
-      throw new ReleaseError(
-        PLAN_STALE,
-        "plan digest does not match expected",
-        { expected: planDigest, embedded: plan.planDigest, actual: recomputedDigest }
-      );
-    }
-    await performPreflightAndCas(handle, plan, planPath);
-    if (faultInjector) {
-      await faultInjector("preflight-complete");
-    }
-    const probeResult = await safeFs.probe(root);
-    if (!probeResult.supported) {
-      throw new ReleaseError(
-        SAFE_WRITE_UNAVAILABLE,
-        "safe write primitives are not functional on this platform",
-        { platform: process.platform }
-      );
-    }
-    if (faultInjector) await faultInjector("after-probe");
-    await assertLockAuthority();
-    const transactionId = generateTransactionId(clock);
-    let journalCreated = false;
-    const oldManifest = await buildOldManifest(handle, plan.artifacts);
-    const newManifest = buildNewManifest(plan.artifacts);
-    try {
-      await assertLockAuthority();
-      txnResult = await createTransactionJournal({
-        rootHandle: handle,
-        transactionId,
-        planDigest,
-        canonicalPlan: plan,
-        oldManifest,
-        newManifest
-      });
-      journalCreated = true;
-    } catch (journalErr) {
-      throw journalErr;
-    }
-    const { txnHandle } = txnResult;
-    try {
-      if (faultInjector) await faultInjector("after-prepared");
-      await assertLockAuthority();
-      await writeJournalTransition({
-        txnHandle,
-        transactionId,
-        from: "PREPARED",
-        to: "APPLYING"
-      });
-      if (faultInjector) await faultInjector("after-applying-transition");
-      const results = [];
-      for (let i = 0; i < plan.artifacts.length; i++) {
-        const artifact = plan.artifacts[i];
-        await assertLockAuthority();
-        await recordAppliedEntry({
-          txnHandle,
-          transactionId,
-          entryIndex: i,
-          entry: { id: artifact.id, path: artifact.path, status: "pending" }
-        });
-        if (faultInjector) await faultInjector(`after-entry-pending:${i}`);
-        const canonicalPath = artifact.path.endsWith("/") ? artifact.path.slice(0, -1) : artifact.path;
-        const current = await assertFullCas(handle, artifact.oldEntry, canonicalPath);
-        if (artifact.oldEntry && artifact.oldEntry.kind === "regular") {
-          const expectedOldSha = artifact.oldEntry.sha256.startsWith("sha256:") ? artifact.oldEntry.sha256 : `sha256:${artifact.oldEntry.sha256}`;
-          if (current.sha256 !== expectedOldSha) {
-            throw new ReleaseError(
-              PLAN_STALE,
-              `CAS mismatch during backup read: ${canonicalPath} sha256 changed`,
-              { path: canonicalPath }
-            );
-          }
-          await assertLockAuthority();
-          await createBackup({
-            txnHandle,
-            transactionId,
-            entryIndex: i,
-            oldEntry: { ...artifact.oldEntry, bytes: current.bytes }
-          });
-        } else {
-          await assertLockAuthority();
-          await createBackup({
-            txnHandle,
-            transactionId,
-            entryIndex: i,
-            oldEntry: { kind: "absent" }
-          });
-        }
-        if (faultInjector) await faultInjector(`after-entry-backup:${i}`);
-        if (faultInjector) await faultInjector(`before-entry-mutation:${i}`);
-        await assertLockAuthority();
-        await applySingleArtifact(
-          handle,
-          artifact,
-          current?.kind === "regular" ? current.identityToken : null
-        );
-        if (faultInjector) await faultInjector(`after-entry-mutation:${i}`);
-        await assertLockAuthority();
-        await recordAppliedEntry({
-          txnHandle,
-          transactionId,
-          entryIndex: i,
-          entry: { id: artifact.id, path: artifact.path, status: "applied" }
-        });
-        if (faultInjector) await faultInjector(`after-entry-applied:${i}`);
-        results.push({ id: artifact.id, path: artifact.path, applied: true });
-      }
-      await assertLockAuthority();
-      await writeJournalTransition({
-        txnHandle,
-        transactionId,
-        from: "APPLYING",
-        to: "APPLIED"
-      });
-      if (faultInjector) await faultInjector("after-applied-transition");
-      await assertLockAuthority();
-      await writeJournalTransition({
-        txnHandle,
-        transactionId,
-        from: "APPLIED",
-        to: "VERIFYING"
-      });
-      if (faultInjector) await faultInjector("after-verifying-transition");
-      await verifyManifest(handle, plan.artifacts);
-      if (faultInjector) await faultInjector("after-verify");
-      await assertLockAuthority();
-      await writeJournalTransition({
-        txnHandle,
-        transactionId,
-        from: "VERIFYING",
-        to: "COMMITTED"
-      });
-      if (faultInjector) await faultInjector("after-committed");
-      const finalJournal = await readJournal(txnHandle, transactionId);
-      return Object.freeze({
-        transactionId,
-        state: "COMMITTED",
-        results: Object.freeze(results),
-        journal: finalJournal
-      });
-    } catch (applyErr) {
-      if (applyErr?.code === "INJECTED_CRASH" || applyErr?.name === "InjectedCrash") {
-        throw applyErr;
-      }
-      if (applyErr?.lockOwnershipLost === true) {
-        throw applyErr;
-      }
-      const { recoveryError } = await tryRecoveryProtocol({
-        rootHandle: handle,
-        txnHandle,
-        transactionId,
-        originalError: applyErr instanceof ReleaseError ? applyErr : new ReleaseError(
-          typeof applyErr?.code === "string" ? applyErr.code : TRANSACTION_INCOMPLETE,
-          applyErr?.message || "safe filesystem operation failed"
-        ),
-        artifacts: plan.artifacts,
-        journalCreated
-      });
-      if (recoveryError) {
-        throw recoveryError;
-      }
-      throw applyErr;
-    }
-  } finally {
-    let closeError;
-    if (txnResult?.close) {
-      try {
-        await txnResult.close();
-      } catch (error) {
-        closeError = error;
-      }
-    }
-    try {
-      await handle.close();
-    } catch (error) {
-      closeError ??= error;
-    }
-    if (closeError) throw closeError;
-  }
-}
-async function applyArtifactPlan(options = {}) {
-  const { root } = options;
-  if (!root || typeof root !== "string") {
-    throw new ReleaseError(PATH_UNSAFE, "root must be a non-empty string");
-  }
-  const lock = await acquireProjectLock({
-    root,
-    command: "artifacts apply",
-    mode: "exclusive"
-  });
-  let result;
-  let primaryError;
-  try {
-    result = await lock.capture(() => applyArtifactPlanUnderLock({
-      ...options,
-      assertLockOwner: /* @__PURE__ */ __name(() => lock.assertOwner(), "assertLockOwner")
-    }));
-  } catch (error) {
-    primaryError = error;
-  }
-  try {
-    await lock.release();
-  } catch (releaseError) {
-    if (primaryError) {
-      const combined = new ReleaseError(
-        TRANSACTION_INCOMPLETE,
-        "artifact apply failed and project lock release also failed",
-        {
-          businessErrorCode: primaryError?.code || null,
-          releaseErrorCode: releaseError?.code || null
-        }
-      );
-      combined.cause = primaryError;
-      combined.releaseCause = releaseError;
-      throw combined;
-    }
-    throw releaseError;
-  }
-  if (primaryError) throw primaryError;
-  return result;
-}
-var init_transaction = __esm({
-  "src/artifacts/transaction.mjs"() {
-    init_digest();
-    init_path_key();
-    init_project_lock();
-    init_errors();
-    init_transaction_journal();
-    __name(computeCanonicalPlanDigest, "computeCanonicalPlanDigest");
-    __name(decodeBytes, "decodeBytes");
-    __name(validatePath, "validatePath");
-    __name(withParentHandle, "withParentHandle");
-    __name(validatePathUniqueness, "validatePathUniqueness");
-    __name(validateAndDecodeEntry, "validateAndDecodeEntry");
-    __name(assertFullCas, "assertFullCas");
-    __name(readCurrentEntry, "readCurrentEntry");
-    __name(performPreflightAndCas, "performPreflightAndCas");
-    __name(buildOldManifest, "buildOldManifest");
-    __name(buildNewManifest, "buildNewManifest");
-    __name(applySingleArtifact, "applySingleArtifact");
-    __name(parseMode, "parseMode");
-    __name(verifyManifest, "verifyManifest");
-    __name(checkTargetUnchanged, "checkTargetUnchanged");
-    __name(tryRecoveryProtocol, "tryRecoveryProtocol");
-    __name(generateTransactionId, "generateTransactionId");
-    __name(applyArtifactPlanUnderLock, "applyArtifactPlanUnderLock");
-    __name(applyArtifactPlan, "applyArtifactPlan");
-  }
-});
-
 // src/commands/artifacts.mjs
 var artifacts_exports = {};
 __export(artifacts_exports, {
   runArtifactsCommand: () => runArtifactsCommand
 });
-import { readFile as readFile25 } from "node:fs/promises";
-import { join as join19 } from "node:path";
+import { readFile as readFile26 } from "node:fs/promises";
+import { join as join20 } from "node:path";
 async function runArtifactsCommand({ subcommand, args: args2, root } = {}) {
   if (!VALID_SUBCOMMANDS.has(subcommand)) {
     throw new ReleaseError(
@@ -78303,7 +82143,7 @@ async function handleAdopt({ args: args2, root }) {
       { subcommand: "adopt" }
     );
   }
-  const planRaw = await readFile25(planPath, "utf8");
+  const planRaw = await readFile26(planPath, "utf8");
   const plan = JSON.parse(planRaw);
   if (expectedDigest && plan.planDigest !== expectedDigest) {
     throw new ReleaseError(
@@ -78318,7 +82158,7 @@ async function handleAdopt({ args: args2, root }) {
     if (artifact.path) {
       const entry = await readEntry({ root, path: artifact.path, source: "worktree" });
       if (entry.kind === "regular") {
-        const bytes = await readFile25(join19(root, artifact.path));
+        const bytes = await readFile26(join20(root, artifact.path));
         currentEntries.set(artifact.id, Object.freeze({ ...entry, bytes, content: bytes }));
       } else {
         currentEntries.set(artifact.id, entry);
@@ -78383,7 +82223,7 @@ async function handleBootstrap({ args: args2, root }) {
       { subcommand: "bootstrap" }
     );
   }
-  const planRaw = await readFile25(planPath, "utf8");
+  const planRaw = await readFile26(planPath, "utf8");
   const adoptionPlan = JSON.parse(planRaw);
   const currentEntries = /* @__PURE__ */ new Map();
   for (const id of new Set((adoptionPlan.protectedHunks ?? []).map((h) => h.artifactId))) {
@@ -78395,12 +82235,12 @@ async function handleBootstrap({ args: args2, root }) {
     if (entry.kind !== "regular") {
       throw new ReleaseError("PLAN_STALE", `artifact is no longer a regular file: ${id}`, { id });
     }
-    const bytes = await readFile25(join19(root, artifactPath));
+    const bytes = await readFile26(join20(root, artifactPath));
     currentEntries.set(id, Object.freeze({ ...entry, bytes, content: bytes }));
   }
   let replacementBytes;
   if (action === "replace" && replacementPath) {
-    replacementBytes = await readFile25(replacementPath);
+    replacementBytes = await readFile26(replacementPath);
   }
   const updated = await discardBootstrapHunk({
     adoptionPlan,
@@ -78438,7 +82278,7 @@ async function handleResolve({ args: args2, root }) {
       { subcommand: "resolve" }
     );
   }
-  const planRaw = await readFile25(planPath, "utf8");
+  const planRaw = await readFile26(planPath, "utf8");
   const plan = JSON.parse(planRaw);
   if (plan.planDigest !== expectedDigest) {
     throw new ReleaseError(
@@ -78603,8 +82443,210 @@ var init_artifacts = __esm({
   }
 });
 
+// src/commands/docs.mjs
+var docs_exports = {};
+__export(docs_exports, {
+  runDocsCommand: () => runDocsCommand
+});
+function parseDocsRefreshArgs(args2) {
+  const argv = Array.isArray(args2) ? args2 : [];
+  const seen = /* @__PURE__ */ new Set();
+  let unitId;
+  let confirmRefresh;
+  let write = false;
+  let ackLocalDocumentWrite = false;
+  let barePositionals = 0;
+  const claimOnce = /* @__PURE__ */ __name((flag) => {
+    if (seen.has(flag)) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        `docs refresh received ${flag} more than once`,
+        { reason: "DUPLICATE_PARAMETER", field: flag }
+      );
+    }
+    seen.add(flag);
+  }, "claimOnce");
+  const assertPlainValue = /* @__PURE__ */ __name((flag, value) => {
+    if (typeof value !== "string" || value.length === 0 || value.startsWith("-")) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        `docs refresh ${flag} requires a value`,
+        { reason: "MISSING_VALUE", field: flag }
+      );
+    }
+    return value;
+  }, "assertPlainValue");
+  const claimValue = /* @__PURE__ */ __name((flag, index) => assertPlainValue(flag, argv[index + 1]), "claimValue");
+  const assertUnitId = /* @__PURE__ */ __name((value) => {
+    if (!UNIT_ID_PATTERN2.test(value)) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        'docs refresh --unit must be a unit identifier (start with an alphanumeric character; then alphanumerics, "." , "_" or "-" only)',
+        { reason: "INVALID_VALUE", field: "--unit" }
+      );
+    }
+    return value;
+  }, "assertUnitId");
+  const assertConfirmRefreshDigest = /* @__PURE__ */ __name((value) => {
+    if (!CONFIRM_REFRESH_PATTERN.test(value)) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        "docs refresh --confirm-refresh must be exactly sha256:<64 lowercase hex characters>",
+        { reason: "INVALID_VALUE", field: "--confirm-refresh" }
+      );
+    }
+    return value;
+  }, "assertConfirmRefreshDigest");
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (typeof token !== "string") continue;
+    if (token.startsWith("--")) {
+      const eq = token.indexOf("=");
+      if (eq !== -1) {
+        const flag = token.slice(0, eq);
+        const inlineValue = token.slice(eq + 1);
+        if (flag === "--unit") {
+          claimOnce(flag);
+          unitId = assertUnitId(assertPlainValue(flag, inlineValue));
+        } else if (flag === "--confirm-refresh") {
+          claimOnce(flag);
+          confirmRefresh = assertConfirmRefreshDigest(assertPlainValue(flag, inlineValue));
+        } else if (flag === "--write" || flag === "--ack-local-document-write" || flag === "--root" || flag === "--json") {
+          throw new ReleaseError(
+            MISSING_PARAMETERS,
+            `docs refresh ${flag} does not accept the --flag=value form`,
+            { reason: "INVALID_VALUE", field: flag }
+          );
+        } else {
+          throw new ReleaseError(
+            MISSING_PARAMETERS,
+            `docs refresh does not accept ${flag}`,
+            { reason: "UNRECOGNIZED_PARAMETER", parameter: flag }
+          );
+        }
+        continue;
+      }
+      if (token === "--unit") {
+        claimOnce(token);
+        unitId = assertUnitId(claimValue(token, i));
+        i += 1;
+      } else if (token === "--confirm-refresh") {
+        claimOnce(token);
+        confirmRefresh = assertConfirmRefreshDigest(claimValue(token, i));
+        i += 1;
+      } else if (token === "--write") {
+        claimOnce(token);
+        write = true;
+      } else if (token === "--ack-local-document-write") {
+        claimOnce(token);
+        ackLocalDocumentWrite = true;
+      } else if (token === "--json") {
+        claimOnce(token);
+      } else if (token === "--root") {
+        i += 1;
+      } else {
+        throw new ReleaseError(
+          MISSING_PARAMETERS,
+          `docs refresh does not accept ${token}`,
+          { reason: "UNRECOGNIZED_PARAMETER", parameter: token }
+        );
+      }
+      continue;
+    }
+    if (token.startsWith("-") && token.length > 1) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        `docs refresh does not accept ${token}`,
+        { reason: "UNRECOGNIZED_PARAMETER", parameter: token }
+      );
+    }
+    barePositionals += 1;
+    if (barePositionals > 2) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        `docs refresh does not accept positional argument ${token}`,
+        { reason: "UNRECOGNIZED_PARAMETER", parameter: token }
+      );
+    }
+  }
+  if (typeof unitId !== "string" || unitId.length === 0) {
+    throw new ReleaseError(
+      MISSING_PARAMETERS,
+      "docs refresh requires --unit <id>",
+      { field: "--unit" }
+    );
+  }
+  if ((confirmRefresh !== void 0 || ackLocalDocumentWrite) && !write) {
+    throw new ReleaseError(
+      MISSING_PARAMETERS,
+      "docs refresh --confirm-refresh and --ack-local-document-write are only valid together with --write",
+      {
+        reason: "CONFLICTING_PARAMETERS",
+        flags: ["--confirm-refresh", "--ack-local-document-write", "--write"]
+      }
+    );
+  }
+  if (write) {
+    const missing = [];
+    if (confirmRefresh === void 0) missing.push("confirmRefresh");
+    if (!ackLocalDocumentWrite) missing.push("ackLocalDocumentWrite");
+    if (missing.length > 0) {
+      throw new ReleaseError(
+        MISSING_PARAMETERS,
+        "docs refresh --write requires --confirm-refresh <sha256:...> and --ack-local-document-write",
+        { reason: "MISSING_WRITE_PARAMETERS", missing }
+      );
+    }
+  }
+  return { unitId, write, confirmRefresh, ackLocalDocumentWrite };
+}
+async function runDocsCommand({ subcommand, args: args2, root } = {}) {
+  if (subcommand !== "refresh") {
+    throw new ReleaseError(
+      MISSING_PARAMETERS,
+      `unknown docs subcommand: "${typeof subcommand === "string" ? subcommand : ""}"; valid: ${VALID_SUBCOMMANDS2.join(", ")}`,
+      { subcommand, valid: [...VALID_SUBCOMMANDS2] }
+    );
+  }
+  const options = parseDocsRefreshArgs(args2);
+  const result = await runReleaseDocsRefresh({
+    root,
+    unitId: options.unitId,
+    write: options.write,
+    confirmRefresh: options.confirmRefresh,
+    ackLocalDocumentWrite: options.ackLocalDocumentWrite
+  });
+  if (result.mode === "dry-run") {
+    return Object.freeze({
+      command: result.command,
+      mode: result.mode,
+      status: result.status,
+      unitId: result.unitId,
+      version: result.version,
+      locales: result.locales,
+      inputDigest: result.inputDigest,
+      refreshDigest: result.refreshDigest,
+      files: result.files,
+      nextCommand: result.nextCommand
+    });
+  }
+  return result;
+}
+var VALID_SUBCOMMANDS2, CONFIRM_REFRESH_PATTERN, UNIT_ID_PATTERN2;
+var init_docs = __esm({
+  async "src/commands/docs.mjs"() {
+    init_errors();
+    await init_refresh_service();
+    VALID_SUBCOMMANDS2 = Object.freeze(["refresh"]);
+    CONFIRM_REFRESH_PATTERN = /^sha256:[0-9a-f]{64}$/;
+    UNIT_ID_PATTERN2 = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+    __name(parseDocsRefreshArgs, "parseDocsRefreshArgs");
+    __name(runDocsCommand, "runDocsCommand");
+  }
+});
+
 // bin/release-skill-cli.mjs
-import { basename as basename9, dirname as dirname14, join as join20, resolve as resolve21 } from "node:path";
+import { basename as basename9, dirname as dirname14, join as join21, resolve as resolve22 } from "node:path";
 import { execFile as execFileCb12 } from "node:child_process";
 import { promisify as promisify16 } from "node:util";
 
@@ -78640,8 +82682,11 @@ function computeReadinessStatus(checks) {
 __name(computeReadinessStatus, "computeReadinessStatus");
 
 // bin/release-skill-cli.mjs
+init_errors();
+init_redact();
+registerPathRedactor(redactSensitivePaths);
 var execFile15 = promisify16(execFileCb12);
-var COMMANDS = /* @__PURE__ */ new Set(["help", "setup", "assess", "prepare", "approve", "publish", "reconcile", "verify", "artifacts"]);
+var COMMANDS = /* @__PURE__ */ new Set(["help", "setup", "assess", "prepare", "approve", "publish", "reconcile", "verify", "artifacts", "docs"]);
 async function checkDependency(command2, versionArgs = ["--version"]) {
   try {
     const { stdout } = await execFile15(command2, versionArgs, {
@@ -78731,6 +82776,11 @@ function getCapabilityMaturity() {
       mode: "offline local writes",
       description: "Freeze a release plan with snapshots and gates"
     },
+    docs: {
+      available: true,
+      mode: "read-only dry-run / explicit local document write",
+      description: "Refresh declared README managed regions and CHANGELOG current-version entries from one structured notes source; write requires --write, exact --confirm-refresh, and --ack-local-document-write; never commits, pushes, or publishes"
+    },
     publish: {
       available: true,
       mode: "controlled production (protocol-tested; no OS/network sandbox)",
@@ -78765,6 +82815,7 @@ Commands:
   reconcile  Resume PARTIAL state from evidence; conflicts require a human
   verify     Fresh remote and consumer verification; only this reaches VERIFIED
   artifacts  Artifact status, inspect, update/apply, resolution, and diagnostics
+  docs       Refresh declared release documents (read-only dry-run by default)
 
 Options:
   --root <path>    Project root directory (default: cwd)
@@ -78778,6 +82829,9 @@ Options:
   --answers <path> Human-reviewed setup answers JSON
   --write          Create an absent project.yaml during setup; never overwrites
   --confirm-setup <digest> Confirm exact setup facts and answers before create
+  --unit <id>      Release unit whose declared release documents are refreshed (docs refresh)
+  --confirm-refresh <sha256:...> Confirm the exact dry-run refreshDigest before any document write
+  --ack-local-document-write Acknowledge the explicit local release-document write (docs refresh --write)
   --acknowledge-hook-side-effects Acknowledge unsandboxed legacy hook execution
   --acknowledge-gate-side-effects Acknowledge unsandboxed local verification gate execution
   --json           Output results as JSON
@@ -78792,6 +82846,7 @@ Safety:
   - prepare output goes to .release-skill/ directory only
   - User-configured hooks may write anywhere and perform remote operations
   - To ensure zero remote writes, disable hooks or audit them separately
+  - docs refresh --write rewrites only declared README managed regions and the current CHANGELOG entry after exact refreshDigest confirmation; it never commits, pushes, tags, publishes, or installs.
   - publish requires explicit approval and an exact plan-digest confirmation
   - publish consumes frozen Git/npm artifacts, never the live workspace
   - existing remote objects and uncertain checks stop for human intervention
@@ -78808,9 +82863,15 @@ var hasJson = args.includes("--json");
 var positional = args.filter((a) => !a.startsWith("--"));
 var command = positional[0];
 if (!command && (args.includes("--version") || args.includes("-v"))) {
-  const { createRequire: createRequire2 } = await import("node:module");
-  const require2 = createRequire2(import.meta.url);
-  const pkg = require2("../package.json");
+  let pkg;
+  if (typeof __bundlePkg !== "undefined") {
+    pkg = __bundlePkg;
+  } else {
+    const { readFileSync: readFileSync5 } = await import("node:fs");
+    const { fileURLToPath: fileURLToPath3 } = await import("node:url");
+    const pkgPath = join21(dirname14(fileURLToPath3(import.meta.url)), "..", "package.json");
+    pkg = JSON.parse(readFileSync5(pkgPath, "utf8"));
+  }
   if (hasJson) {
     console.log(JSON.stringify({
       command: "version",
@@ -78866,6 +82927,7 @@ if (!command || command === "help") {
         setup: "read-only by default; create-once requires answers plus exact setupDigest confirmation",
         assess: "read-only (default); --output writes local report",
         prepare: "offline local writes; configured hooks/gates require their explicit side-effect acknowledgements",
+        docs: "read-only dry-run by default; write requires --write, exact --confirm-refresh, and --ack-local-document-write; never commits, pushes, or publishes",
         onlinePrepare: "previous-public-baseline observation available; production mode freezes publish artifacts and fails closed on drift or unknown state",
         publish: "GitHub/npm plus configured Claude/Codex consumer checkpoints are protocol-tested without an OS/network sandbox; approval and exact digest confirmation required",
         reconcile: "PARTIAL recovery is protocol-tested without an OS/network sandbox; remote conflicts require human intervention",
@@ -78920,7 +82982,7 @@ if (!COMMANDS.has(command)) {
 if (command === "setup") {
   const rootIdx = args.indexOf("--root");
   const rawRoot = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
-  const root = resolve21(rawRoot);
+  const root = resolve22(rawRoot);
   const answersIdx = args.indexOf("--answers");
   const answersPath = answersIdx !== -1 && args[answersIdx + 1] ? args[answersIdx + 1] : void 0;
   const confirmationIdx = args.indexOf("--confirm-setup");
@@ -78955,7 +83017,7 @@ if (command === "setup") {
 if (command === "assess") {
   const rootIdx = args.indexOf("--root");
   const rawRoot = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
-  const root = resolve21(rawRoot);
+  const root = resolve22(rawRoot);
   const offline = args.includes("--offline") || !args.includes("--online");
   const outputIdx = args.indexOf("--output");
   const output = outputIdx !== -1 && args[outputIdx + 1] ? args[outputIdx + 1] : void 0;
@@ -78986,7 +83048,7 @@ if (command === "assess") {
 if (command === "prepare") {
   const rootIdx = args.indexOf("--root");
   const rawRoot = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
-  const root = resolve21(rawRoot);
+  const root = resolve22(rawRoot);
   const offline = args.includes("--offline") || !args.includes("--online");
   let targetVersion;
   for (const flag of ["--target-version", "--version"]) {
@@ -79000,9 +83062,9 @@ if (command === "prepare") {
   const verificationGatesAuthorized = args.includes("--acknowledge-gate-side-effects");
   const production = args.includes("--production");
   const outputIdx = args.indexOf("--output");
-  const output = outputIdx !== -1 && args[outputIdx + 1] ? resolve21(args[outputIdx + 1]) : void 0;
+  const output = outputIdx !== -1 && args[outputIdx + 1] ? resolve22(args[outputIdx + 1]) : void 0;
   const runDirIdx = args.indexOf("--run-dir");
-  const runDir = runDirIdx !== -1 && args[runDirIdx + 1] ? resolve21(args[runDirIdx + 1]) : void 0;
+  const runDir = runDirIdx !== -1 && args[runDirIdx + 1] ? resolve22(args[runDirIdx + 1]) : void 0;
   try {
     const { prepareRelease: prepareRelease2 } = await init_prepare().then(() => prepare_exports);
     const { readFile: readFileFs } = await import("node:fs/promises");
@@ -79054,7 +83116,7 @@ if (command === "approve") {
   const actorIdx = args.indexOf("--actor");
   const actor = actorIdx !== -1 && args[actorIdx + 1] ? args[actorIdx + 1] : void 0;
   const outputIdx = args.indexOf("--output");
-  const outputPath = outputIdx !== -1 && args[outputIdx + 1] ? resolve21(args[outputIdx + 1]) : void 0;
+  const outputPath = outputIdx !== -1 && args[outputIdx + 1] ? resolve22(args[outputIdx + 1]) : void 0;
   if (!planPath || !expectedDigest || !actor) {
     const msg = "approve requires --plan <path>, --digest <sha256>, and --actor <name>";
     if (hasJson) {
@@ -79066,10 +83128,10 @@ if (command === "approve") {
   }
   try {
     const { approvePlan: approvePlan2 } = await init_approve().then(() => approve_exports);
-    const resolvedPlanPath = resolve21(planPath);
+    const resolvedPlanPath = resolve22(planPath);
     const planDir = dirname14(resolvedPlanPath);
     const releaseDir = basename9(planDir) === "plans" && basename9(resolvedPlanPath) === `${expectedDigest}.json` ? dirname14(planDir) : planDir;
-    const approvalPath = outputPath ?? join20(releaseDir, "approval-record.json");
+    const approvalPath = outputPath ?? join21(releaseDir, "approval-record.json");
     const record = await approvePlan2({ planPath, expectedDigest, actor, outputPath: approvalPath });
     if (hasJson) {
       console.log(JSON.stringify(record, null, 2));
@@ -79096,13 +83158,13 @@ if (command === "approve") {
 if (command === "reconcile") {
   const rootIdx = args.indexOf("--root");
   const rawRoot = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
-  const root = resolve21(rawRoot);
+  const root = resolve22(rawRoot);
   const planIdx = args.indexOf("--plan");
-  const planPath = planIdx !== -1 && args[planIdx + 1] ? resolve21(args[planIdx + 1]) : void 0;
+  const planPath = planIdx !== -1 && args[planIdx + 1] ? resolve22(args[planIdx + 1]) : void 0;
   const runIdx = args.indexOf("--run");
-  const runPath = runIdx !== -1 && args[runIdx + 1] ? resolve21(args[runIdx + 1]) : void 0;
+  const runPath = runIdx !== -1 && args[runIdx + 1] ? resolve22(args[runIdx + 1]) : void 0;
   const approvalIdx = args.indexOf("--approval");
-  const approvalPath = approvalIdx !== -1 && args[approvalIdx + 1] ? resolve21(args[approvalIdx + 1]) : void 0;
+  const approvalPath = approvalIdx !== -1 && args[approvalIdx + 1] ? resolve22(args[approvalIdx + 1]) : void 0;
   const confirmationIdx = args.indexOf("--confirm-production");
   const productionConfirmation = confirmationIdx !== -1 && args[confirmationIdx + 1] ? args[confirmationIdx + 1] : void 0;
   if (!planPath || !runPath) {
@@ -79161,11 +83223,11 @@ if (command === "reconcile") {
 if (command === "verify") {
   const rootIdx = args.indexOf("--root");
   const rawRoot = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
-  const root = resolve21(rawRoot);
+  const root = resolve22(rawRoot);
   const planIdx = args.indexOf("--plan");
-  const planPath = planIdx !== -1 && args[planIdx + 1] ? resolve21(args[planIdx + 1]) : void 0;
+  const planPath = planIdx !== -1 && args[planIdx + 1] ? resolve22(args[planIdx + 1]) : void 0;
   const runIdx = args.indexOf("--run");
-  const runPath = runIdx !== -1 && args[runIdx + 1] ? resolve21(args[runIdx + 1]) : void 0;
+  const runPath = runIdx !== -1 && args[runIdx + 1] ? resolve22(args[runIdx + 1]) : void 0;
   const verificationGatesAuthorized = args.includes("--acknowledge-gate-side-effects");
   if (!planPath || !runPath) {
     const msg = "verify requires --plan <path> and --run <path>";
@@ -79221,11 +83283,11 @@ if (command === "verify") {
 if (command === "publish") {
   const rootIdx = args.indexOf("--root");
   const rawRoot = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
-  const root = resolve21(rawRoot);
+  const root = resolve22(rawRoot);
   const planIdx = args.indexOf("--plan");
-  const planPath = planIdx !== -1 && args[planIdx + 1] ? resolve21(args[planIdx + 1]) : void 0;
+  const planPath = planIdx !== -1 && args[planIdx + 1] ? resolve22(args[planIdx + 1]) : void 0;
   const approvalIdx = args.indexOf("--approval");
-  const approvalPath = approvalIdx !== -1 && args[approvalIdx + 1] ? resolve21(args[approvalIdx + 1]) : void 0;
+  const approvalPath = approvalIdx !== -1 && args[approvalIdx + 1] ? resolve22(args[approvalIdx + 1]) : void 0;
   const confirmationIdx = args.indexOf("--confirm-production");
   const productionConfirmation = confirmationIdx !== -1 && args[confirmationIdx + 1] ? args[confirmationIdx + 1] : void 0;
   if (!planPath || !approvalPath || !productionConfirmation) {
@@ -79284,9 +83346,9 @@ if (command === "publish") {
 if (command === "artifacts") {
   const rootIdx = args.indexOf("--root");
   const rawRoot = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
-  const root = resolve21(rawRoot);
+  const root = resolve22(rawRoot);
   const outputIdx = args.indexOf("--output");
-  const output = outputIdx !== -1 && args[outputIdx + 1] ? resolve21(args[outputIdx + 1]) : void 0;
+  const output = outputIdx !== -1 && args[outputIdx + 1] ? resolve22(args[outputIdx + 1]) : void 0;
   const subcommand = positional[1] ?? "status";
   try {
     const { runArtifactsCommand: runArtifactsCommand2 } = await Promise.resolve().then(() => (init_artifacts(), artifacts_exports));
@@ -79325,6 +83387,109 @@ if (command === "artifacts") {
     } else {
       console.error(`Error: ${err.message}`);
     }
+    process.exit(err.exitCode ?? 1);
+  }
+}
+if (command === "docs") {
+  try {
+    const { ReleaseError: ReleaseError2, MISSING_PARAMETERS: MISSING_PARAMETERS2 } = await Promise.resolve().then(() => (init_errors(), errors_exports));
+    const rootIndexes = [];
+    for (let i = 0; i < args.length; i += 1) {
+      if (args[i] === "--root") rootIndexes.push(i);
+    }
+    if (rootIndexes.length > 1) {
+      throw new ReleaseError2(
+        MISSING_PARAMETERS2,
+        "docs received --root more than once",
+        { reason: "DUPLICATE_PARAMETER", field: "--root" }
+      );
+    }
+    let rawRoot = process.cwd();
+    if (rootIndexes.length === 1) {
+      rawRoot = args[rootIndexes[0] + 1];
+      if (typeof rawRoot !== "string" || rawRoot.length === 0 || rawRoot.startsWith("-")) {
+        throw new ReleaseError2(
+          MISSING_PARAMETERS2,
+          "docs --root requires a path value",
+          { reason: "MISSING_VALUE", field: "--root" }
+        );
+      }
+    }
+    const root = resolve22(rawRoot);
+    const valuedDocsFlags = /* @__PURE__ */ new Set(["--root", "--unit", "--confirm-refresh"]);
+    const booleanDocsFlags = /* @__PURE__ */ new Set(["--json", "--write", "--ack-local-document-write"]);
+    let docsSubcommand;
+    let sawCommandToken = false;
+    for (let i = 0; i < args.length; i += 1) {
+      const token = args[i];
+      if (typeof token !== "string") continue;
+      if (token.startsWith("--")) {
+        const eq = token.indexOf("=");
+        const flag = eq === -1 ? token : token.slice(0, eq);
+        if (valuedDocsFlags.has(flag)) {
+          if (eq === -1) i += 1;
+          continue;
+        }
+        if (booleanDocsFlags.has(flag)) continue;
+        throw new ReleaseError2(
+          MISSING_PARAMETERS2,
+          `docs does not accept ${flag}`,
+          { reason: "UNRECOGNIZED_PARAMETER", parameter: flag }
+        );
+      }
+      if (token.startsWith("-") && token.length > 1) {
+        throw new ReleaseError2(
+          MISSING_PARAMETERS2,
+          `docs does not accept ${token}`,
+          { reason: "UNRECOGNIZED_PARAMETER", parameter: token }
+        );
+      }
+      if (!sawCommandToken) {
+        sawCommandToken = true;
+        continue;
+      }
+      docsSubcommand = token;
+      break;
+    }
+    const { runDocsCommand: runDocsCommand2 } = await init_docs().then(() => docs_exports);
+    const result = await runDocsCommand2({ subcommand: docsSubcommand, args, root });
+    if (hasJson) {
+      console.log(JSON.stringify(result, null, 2));
+    } else if (result.mode === "dry-run") {
+      console.log(`Status: ${result.status}`);
+      console.log(`Unit: ${result.unitId}`);
+      console.log(`Version: ${result.version}`);
+      console.log(`Refresh digest: ${result.refreshDigest}`);
+      for (const file of result.files) {
+        const marker = file.changed ? "" : " (unchanged)";
+        console.log(`  ${file.path} ${file.kind} ${file.locale} ${file.change}${marker}`);
+      }
+      if (result.nextCommand?.argv) {
+        console.log(`Next: ${result.nextCommand.argv.join(" ")}`);
+      }
+      if (result.nextCommand?.writeArgv) {
+        console.log(`Next (write): ${result.nextCommand.writeArgv.join(" ")}`);
+      }
+    } else {
+      console.log(`Status: ${result.status}`);
+      console.log(`Unit: ${result.unitId}`);
+      console.log(`Version: ${result.version}`);
+      console.log(`Refresh digest: ${result.refreshDigest}`);
+      if (result.refreshed) {
+        console.log(`Transaction: ${result.transactionId}`);
+        for (const path3 of result.refreshedPaths ?? []) {
+          console.log(`  refreshed ${path3}`);
+        }
+      }
+    }
+    process.exit(0);
+  } catch (err) {
+    console.log(JSON.stringify({
+      error: err.code ?? "UNKNOWN_ERROR",
+      message: err.message,
+      details: err.details ?? {},
+      exitCode: err.exitCode ?? 1
+    }));
     process.exit(err.exitCode ?? 1);
   }
 }

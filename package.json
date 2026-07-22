@@ -1,6 +1,6 @@
 {
   "name": "release-skill",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
   "repository": {
     "type": "git",
@@ -42,7 +42,7 @@
   "scripts": {
     "build": "node --check src/**/*.mjs && node scripts/build-bundle.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:no-dogfood": "node --test $(ls test/*.test.mjs | grep -v -E 'dogfood|artifacts-safe-fs-native-seam')",
+    "test:no-dogfood": "node --test $(ls test/*.test.mjs | grep -v -E 'dogfood|artifacts-safe-fs-native-seam|setup-live-samples')",
     "typecheck": "node --check src/**/*.mjs bin/*.mjs",
     "sync:skills": "node scripts/sync-skills.mjs",
     "sync:skills:check": "node scripts/sync-skills.mjs --check",

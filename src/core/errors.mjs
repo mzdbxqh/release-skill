@@ -1,6 +1,53 @@
 // Stable error codes and exit codes for the release-skill system.
 // Error codes are grouped by phase; each maps to a unique stable exit code.
 
+// Defect #3 choke-point dependency: the deep redaction authority lives in
+// core/redact.mjs (pure, zero-dependency). It must load WITHOUT any top-level
+// await: a TLA here made esbuild turn this module's bundled init block async,
+// and the artifacts tree/entry import cycle then deadlocked during bundled
+// command initialization, so `await import(bundlePath)` in
+// bin/release-skill.mjs never settled and Node exited with code 13
+// "Detected unsettled top-level await" instead of the real business exit code
+// (AC-7). Two TLA-free mechanisms install the redactor instead:
+//
+// 1. Eager registration: real entries (bin/release-skill-cli.mjs, therefore
+//    also the self-contained bundle and the Claude/Codex adapters built from
+//    it) import errors.mjs and redact.mjs statically and call
+//    registerPathRedactor() synchronously before any command code runs —
+//    deterministic in source and bundled form, no microtask window.
+// 2. Self-load fallback: the fire-and-forget dynamic import below covers
+//    consumers that import errors.mjs alone (unit tests and the
+//    artifacts-safe-fs production-loader subprocess fixtures). It is
+//    deliberately NOT awaited: this module stays synchronously loadable (no
+//    TLA in the module graph), and a missing redact.mjs (isolated fixtures
+//    that copy errors.mjs alone) simply degrades to the identity function via
+//    the rejection handler. In every real deployment redact.mjs ships
+//    alongside errors.mjs (enforced by error-path-redaction.test.mjs and the
+//    bundle/adapters --check gates), so the constructor below always redacts
+//    in production.
+let redactSensitivePaths = (value) => value;
+
+/**
+ * Install the path-redaction authority used by the ReleaseError choke point.
+ * Idempotent; non-function arguments are ignored so a bad caller can never
+ * disable redaction. Called eagerly by CLI entries (static import, before any
+ * command runs) and by the self-load fallback below.
+ *
+ * @param {(value: unknown) => unknown} fn deep redaction from core/redact.mjs.
+ */
+export function registerPathRedactor(fn) {
+  if (typeof fn === 'function') redactSensitivePaths = fn;
+}
+
+// Fire-and-forget self-load (never awaited → no top-level await). The
+// rejection handler is attached synchronously in the same tick, so an absent
+// redact.mjs degrades to identity without ever producing an unhandled
+// rejection or keeping the event loop alive.
+import('./redact.mjs').then(
+  (mod) => registerPathRedactor(mod.redactSensitivePaths),
+  () => { /* isolated copy without redact.mjs: keep identity redaction */ },
+);
+
 /** @type {Readonly<Record<string, number>>} */
 const EXIT_CODE_MAP = Object.freeze({
   CONFIG_INVALID: 10,
@@ -35,6 +82,11 @@ const EXIT_CODE_MAP = Object.freeze({
   SAFE_WRITE_UNAVAILABLE: 39,
   SETUP_DIGEST_MISMATCH: 40,
   CONFIG_EXISTS: 41,
+  RELEASE_DOCS_INVALID: 42,
+  RELEASE_DOCS_TRANSLATION_MISSING: 43,
+  RELEASE_DOCS_CONFLICT: 44,
+  RELEASE_DOCS_REFRESH_STALE: 45,
+  RELEASE_DOCS_STALE: 46,
 });
 
 // ---- Error code constants ----
@@ -71,6 +123,11 @@ export const TRANSACTION_INCOMPLETE = 'TRANSACTION_INCOMPLETE';
 export const SAFE_WRITE_UNAVAILABLE = 'SAFE_WRITE_UNAVAILABLE';
 export const SETUP_DIGEST_MISMATCH = 'SETUP_DIGEST_MISMATCH';
 export const CONFIG_EXISTS = 'CONFIG_EXISTS';
+export const RELEASE_DOCS_INVALID = 'RELEASE_DOCS_INVALID';
+export const RELEASE_DOCS_TRANSLATION_MISSING = 'RELEASE_DOCS_TRANSLATION_MISSING';
+export const RELEASE_DOCS_CONFLICT = 'RELEASE_DOCS_CONFLICT';
+export const RELEASE_DOCS_REFRESH_STALE = 'RELEASE_DOCS_REFRESH_STALE';
+export const RELEASE_DOCS_STALE = 'RELEASE_DOCS_STALE';
 
 /**
  * Typed error for release-skill operations.
@@ -82,10 +139,15 @@ export const CONFIG_EXISTS = 'CONFIG_EXISTS';
  */
 export class ReleaseError extends Error {
   constructor(code, message, details = {}, exitCode) {
-    super(message);
+    // Defect #3 choke point: redact absolute filesystem paths from the
+    // message and details before assignment so every consumer (all CLI
+    // catches in text and JSON modes, recoverable-error propagation chains,
+    // and toJSON) can only observe redacted values. Error codes, exit codes,
+    // and the envelope key set are unchanged; redaction is value-level only.
+    super(redactSensitivePaths(message));
     this.name = 'ReleaseError';
     this.code = code;
-    this.details = details;
+    this.details = redactSensitivePaths(details);
     this.exitCode = exitCode ?? EXIT_CODE_MAP[code] ?? 1;
 
     // Maintain proper stack trace in V8 environments

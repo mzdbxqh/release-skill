@@ -42,7 +42,23 @@ description: "Discoverable entry point for release-skill: dependency and environ
 node "$RELEASE_SKILL_ENTRY" help --json
 node "$RELEASE_SKILL_ENTRY" setup --root <path> --json
 node "$RELEASE_SKILL_ENTRY" assess --root <path> --offline --json
+# 发布文档刷新：默认只读演练
+node "$RELEASE_SKILL_ENTRY" docs refresh --unit <id> --json
+# 摘要确认后的本地写入（三项绑定缺一不可）
+node "$RELEASE_SKILL_ENTRY" docs refresh --unit <id> \
+  --write --confirm-refresh <refreshDigest> --ack-local-document-write --json
 ```
+
+## 发布文档刷新（docs refresh）
+
+发布单元配置 `releaseDocuments` 后，一份结构化双语说明源可确定性刷新 README 受管区域、唯一版本标记的机器值和 CHANGELOG 当前版本受管条目。核心 CLI 不联网、不调用大模型、不自动翻译；只改写声明过的受管区域、版本标记机器值和当前受管条目，区域外字节逐字保留。`prepare` 只检查新鲜度，不写工作树。
+
+- **配置**：`releaseDocuments.notesSource`（说明源路径，只允许 `{version}` 占位符与 `.yaml`/`.yml`/`.json` 后缀）、`locales`（如 `[en, zh-CN]`）、`changelogs`（path + locale）、`readmes`（path + locale + `regions` 受管区域 id + `versionMarkers` 版本标记模式）。版本标记模式必须与 README 现有唯一标记精确匹配，`{version}` 代表机器版本值，刷新只替换该值；零次或多次匹配失败关闭。
+- **说明源**：`version` 必须与单元版本精确一致，`date` 为 `YYYY-MM-DD`，每个配置语种恰好出现一次且 `summary`、变更项非空，`security`/`breaking`/`added`/`changed`/`deprecated`/`removed`/`fixed` 至少一个类别含条目。YAML alias、重复键、未知字段和语种回退都失败关闭。
+- **只读演练**：`docs refresh --unit <id> --json` 输出逐文件相对路径、locale、新旧摘要、`version`、`locales`、`inputDigest`、`refreshDigest` 和 `nextCommand.argv`；候选无变化时 `status: "clean"`。
+- **确认写入**：必须同时提供 `--write`、精确 `--confirm-refresh <refreshDigest>` 和 `--ack-local-document-write`，全部目标作为一个事务提交；成功后立即复演必须为 `clean`。
+
+**授权边界**：本地发布文档写入授权只覆盖声明的本地文档目标，不是 hook、Git 提交、push、publish 或安装的授权。写入后必须审阅、提交，再重新 prepare。
 
 ## 故障路由
 
@@ -57,6 +73,11 @@ node "$RELEASE_SKILL_ENTRY" assess --root <path> --offline --json
 | 项目配置不存在 | 路由 `release-setup`，默认只读；不得直接生成或覆盖 README/配置 |
 | assess 失败 | 运行 `node "$RELEASE_SKILL_ENTRY" assess --offline --json` 获取详情 |
 | 请求生产发布 | 已有公开版本先调用 `release-prepare --online --production` 观察 bound 基线；人工审阅后再路由 `release-publish` |
+| RELEASE_DOCS_INVALID | 配置或说明源语义非法（重复键、alias、未知字段、版本漂移等）；修正配置或说明源后重新演练 |
+| RELEASE_DOCS_TRANSLATION_MISSING | 配置语种缺失或多余；补齐说明源语种，与 `releaseDocuments.locales` 完全一致，不得回退 |
+| RELEASE_DOCS_CONFLICT | 目标含非受管同版本条目、受管标记损坏或人工冲突；人工修复目标并保留人工修改后重新演练 |
+| RELEASE_DOCS_REFRESH_STALE | 确认绑定后候选已变化；重新演练取得新 `refreshDigest` 再确认写入 |
+| RELEASE_DOCS_STALE | prepare 检测到文档未刷新；按 `docs refresh` → 审阅 → 提交 → 重新 prepare 恢复 |
 
 ## 后续引导
 

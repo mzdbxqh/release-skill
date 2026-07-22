@@ -1,9 +1,85 @@
 # Changelog
 
+<!-- release-skill:changelog:start version=0.1.6 locale=en baseline=sha256:6b45d1aa912b32c9c00a616661ae3e2a9536e5ff85a7c0cf82b846a3ffb6c1d3 -->
+## [0.1.6] - 2026-07-22
+
+v0.1.6 is a release-preparation snapshot that closes the release-docs automation loop. A single structured release-notes source drives deterministic, multilingual CHANGELOG and README refresh behind a two-phase, digest-bound write protocol and a prepare-time documentation freshness gate, while terminal transaction receipts are bounded and the CLI lifecycle, path safety, and error-output redaction are hardened.
+
+### Added
+
+- **Structured release-notes-driven document refresh (`docs refresh`)**: a single
+  structured release-notes source (`release-notes/0.1.6.yaml`) now drives
+  deterministic, multilingual refresh of the managed CHANGELOG and README
+  regions. Refresh runs as a two-phase protocol: a read-only planning phase
+  renders every candidate and freezes an `inputDigest` (binding the canonical
+  notes and the notes-source bytes) plus a `refreshDigest` (binding the protocol
+  version, unit, version, configuration projection, and per-file old/new
+  digests), and a separate write phase commits the changed targets only when all
+  three authorizations are present (`--write`, an exact `--confirm-refresh
+  <refreshDigest>` match, and `--ack-local-document-write`). The write phase
+  re-plans under the exclusive lock; a diverging digest converges to
+  `RELEASE_DOCS_REFRESH_STALE` with zero writes, and a clean plan is a zero-write
+  no-op. A prepare-time documentation freshness gate makes version drift between
+  the package version and the public docs fail closed before a release plan is
+  frozen.
+- **Bounded terminal transaction receipts with recovery safety**: terminal
+  (committed / rolled-back) transactions now persist a summary-only receipt
+  instead of full payload, capped at 256 KB per receipt
+  (`TERMINAL_RECEIPT_SIZE_CAP`), under a retention cap of 50 terminal records
+  (`DEFAULT_TRANSACTION_RETENTION_MAX`). Retention pruning only ever removes
+  terminal records and never prunes `RECOVERY_CONFLICT` records or any
+  non-terminal (recovery-relevant) record, so recovery evidence is preserved even
+  when the count cap is reached; a retention failure never aborts an in-flight
+  commit.
+- **Strict `docs refresh` parameter validation (fail closed)**: the `docs`
+  command validates every parameter before invoking the refresh service, so
+  precise stable parameter errors surface even without project configuration or a
+  safe-fs backend. The `--flag=value` equals form routes through exactly the same
+  validation as the space-separated form; duplicated flags fail closed with
+  `DUPLICATE_PARAMETER` before any service call, config read, lock, or
+  transaction; and bare positional arguments and single-dash flags (such as `-w`)
+  are rejected as unrecognized. Write-authorization flags supplied without
+  `--write`, or `--write` without its full authorizations, fail closed with
+  precise reasons rather than silently proceeding.
+
+### Fixed
+
+- **Bundle entry lifecycle settles with real exit codes**: the self-contained
+  bundle now owns the command lifecycle. Its entry awaits command completion and
+  exits with the real business exit code for success, business errors, handled
+  async rejections, and unknown commands, so the launcher no longer leaves an
+  unsettled top-level await (Node exit code 13). When the bundle is missing or
+  cannot be evaluated, the launcher fails closed with static text only and never
+  interpolates machine-specific paths, usernames, or host layout, because
+  module-load failure messages carry absolute paths.
+- **Fail-closed path canonicalization with stable diagnostics**: artifact path
+  canonicalization requires POSIX separators and rejects absolute paths in POSIX
+  (`/`), Windows drive-letter, and UNC spellings, along with traversal, Windows
+  reserved device names, and colons, failing closed with `PATH_UNSAFE` rather
+  than normalizing an unsafe spelling into a different public path. Error-output
+  redaction now distinguishes real filesystem paths from strict RFC 6901 JSON
+  Pointer diagnostic coordinates (such as `/units/0/version`): absolute
+  POSIX/Windows/UNC paths collapse to a stable `<redacted-path>` placeholder
+  while diagnostic pointers are preserved verbatim, keeping failures diagnosable
+  without leaking host paths.
+- **Self public-boundary redaction**: the centralized redaction authority
+  (`core/redact.mjs`) now closes the self public boundary so runtime error
+  outputs and detail structures never carry the release-skill workspace's own
+  absolute path, nor the macOS `Users`, Linux home, macOS `private`/`var` alias,
+  temp, or CI checkout realms. Redaction runs fail-closed through the
+  `ReleaseError` choke point: any two-or-more-segment `/`-led token that is not a
+  strict diagnostic JSON Pointer is replaced with `<redacted-path>`, so
+  self-releasing never leaks private filesystem layout into public outputs.
+<!-- release-skill:changelog:end version=0.1.6 locale=en -->
+
+
 All notable changes to the `release-skill` plugin will be documented in this
 file. The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+<!-- release-skill:changelog:start version=0.1.5 locale=en baseline=sha256:72d222ff63008de63edcf20c89626fa18748e6cb39e54263e861b8f0c9669026 -->
 ## [0.1.5] - 2026-07-21
+
+Claude and Codex marketplace installs now use an explicit, configurable timeout frozen into the release plan.
 
 ### Added
 
@@ -29,6 +105,7 @@ file. The format is based on [Keep a Changelog](https://keepachangelog.com/).
   distribution and verified through injected-executor tests. Invalid values
   (non-integer, non-finite, out-of-range) fail closed rather than being
   silently clamped.
+<!-- release-skill:changelog:end version=0.1.5 locale=en -->
 
 ## [0.1.4] - 2026-07-19
 

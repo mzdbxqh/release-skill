@@ -24,7 +24,9 @@ description: 从已批准且摘要确认的生产计划发布冻结 Git branch/t
 不得把沙箱通过描述成真实发布成功。
 
 只发布 `prepare --production` 封存的 Git object 和 npm tarball，不从活动工作区重新
-打包，不生成或覆盖 README。远端 branch/tag/Release/npm version 已存在、查询不确定、
+打包，不生成或覆盖 README，也永不隐式刷新工作树中的发布文档；
+遇到 `RELEASE_DOCS_STALE` 或文档陈旧只能回到 `docs refresh` → 人工审阅 → 提交 →
+重新 prepare。远端 branch/tag/Release/npm version 已存在、查询不确定、
 认证失败或摘要漂移时，在全局预检阶段停止并交给人工。禁止覆盖、删除和自动回滚；
 新建 ref 的 create-only CAS（`--force-with-lease=<ref>:`）只断言目标不存在，不授权覆盖。
 

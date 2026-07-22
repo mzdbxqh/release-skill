@@ -23,12 +23,32 @@ try {
 }
 
 if (!bundleExists) {
+  // Fail closed with static text only: never interpolate bundlePath (or any
+  // other machine-specific value) so a copied/installed launcher cannot leak
+  // absolute paths, usernames, or host layout on stdout/stderr. This branch
+  // is self-contained by design — it must not import src/* or rely on the
+  // missing bundle's redaction helpers.
   console.error(
-    `Error: release-skill bundle not found at:\n  ${bundlePath}\n` +
-    `The bundle is required for installed-plugin execution.\n` +
-    `Reinstall the plugin or run 'node scripts/build-bundle.mjs' in the source checkout.`,
+    `Error: release-skill bundle not found (release-skill.bundle.mjs).\n` +
+    `The self-contained bundle is required for installed-plugin execution.\n` +
+    `Reinstall the plugin, or run 'node scripts/build-bundle.mjs' in a source checkout to rebuild it.`,
   );
   process.exit(1);
 }
 
-await import(bundlePath);
+// The bundle owns the command lifecycle: its entry awaits command completion
+// and exits with the real business exit code (success, business errors,
+// handled async rejections, unknown commands). The launcher only guards the
+// load itself: if the bundle cannot be evaluated (corrupt or incompatible
+// build), fail closed with static text only — module-load failures carry
+// absolute paths in their messages, so the failure is never interpolated.
+try {
+  await import(bundlePath);
+} catch {
+  console.error(
+    `Error: release-skill bundle failed to load (release-skill.bundle.mjs).\n` +
+    `The self-contained bundle is required for installed-plugin execution.\n` +
+    `Reinstall the plugin, or run 'node scripts/build-bundle.mjs' in a source checkout to rebuild it.`,
+  );
+  process.exit(1);
+}

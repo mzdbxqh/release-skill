@@ -13,6 +13,7 @@
 import { randomBytes } from 'node:crypto';
 import { relative } from 'node:path';
 import { canonicalJson, sha256Hex } from '../core/digest.mjs';
+import { redactSensitivePaths } from '../core/redact.mjs';
 import { canonicalArtifactPath } from './path-key.mjs';
 import { acquireProjectLock } from './project-lock.mjs';
 
@@ -32,6 +33,7 @@ import {
   recordAppliedEntry,
   createBackup,
   writeRecoveryRequiredFile,
+  convergeTerminalRecord,
 } from './transaction-journal.mjs';
 
 // ---------------------------------------------------------------------------
@@ -499,20 +501,20 @@ async function readCurrentEntry(handle, path) {
 // ---------------------------------------------------------------------------
 
 /**
- * Full preflight validation with zero filesystem side effects.
+ * Closed artifact-plan v1 schema validation (zero filesystem side effects).
  *
  * P0-6: Validates apiVersion/bindings, plan schema, safeToWrite, artifact
- * schema, path safety, path uniqueness, entry schema/decoding, Buffer
- * bytes range (0..255), unknown fields/kinds, and full CAS for all old entries.
+ * schema, entry schema/decoding, Buffer bytes range (0..255), and unknown
+ * fields/kinds. Path safety, path uniqueness, and full CAS are handled by
+ * the generic write-set preflight (performWriteSetPreflightAndCas).
  *
- * @param {object} handle — root DirectoryHandle.
  * @param {object} plan — decoded plan (bytes decoded in-place).
  * @param {string} planPath — for error context.
  * @throws {ReleaseError} On any validation failure.
  */
-async function performPreflightAndCas(handle, plan, planPath) {
+function assertArtifactPlanClosedSchema(plan, planPath) {
   if (!plan || typeof plan !== 'object') {
-    throw new ReleaseError(PLAN_STALE, 'plan is not a valid object', { path: planPath });
+    throw new ReleaseError(PLAN_STALE, 'plan is not a valid object', { path: redactSensitivePaths(planPath) });
   }
 
   if (plan.apiVersion !== 'release-skill.dev/artifact-plan/v1') {
@@ -570,7 +572,7 @@ async function performPreflightAndCas(handle, plan, planPath) {
     throw new ReleaseError(TRANSACTION_INCOMPLETE, 'plan nextAction must be the apply command');
   }
   if (!Array.isArray(plan.artifacts)) {
-    throw new ReleaseError(PLAN_STALE, 'plan missing artifacts array', { path: planPath });
+    throw new ReleaseError(PLAN_STALE, 'plan missing artifacts array', { path: redactSensitivePaths(planPath) });
   }
 
   // P0-6: Validate no unknown plan fields (closed schema)
@@ -634,19 +636,51 @@ async function performPreflightAndCas(handle, plan, planPath) {
     validateAndDecodeEntry(artifact.newEntry, 'newEntry');
     validateAndDecodeEntry(artifact.oldEntry, 'oldEntry');
   }
+}
+
+/**
+ * Generic write-set preflight with zero filesystem side effects.
+ *
+ * Validates every write-set item (id, closed entry schema/decoding for
+ * oldEntry/newEntry, Buffer bytes range 0..255), path safety, path
+ * uniqueness, and runs the full CAS for every old entry BEFORE any target
+ * mutation may happen. Shared by the artifact-plan v1 path and the generic
+ * applyWriteSetUnderLock entry (docs-refresh and future write sets).
+ *
+ * @param {object} handle — root DirectoryHandle.
+ * @param {object[]} writeSet — items shaped { id, path, oldEntry, newEntry }.
+ * @throws {ReleaseError} On any validation failure or CAS mismatch.
+ */
+async function performWriteSetPreflightAndCas(handle, writeSet) {
+  if (!Array.isArray(writeSet) || writeSet.length === 0) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, 'writeSet must be a non-empty array');
+  }
+
+  // Validate and decode all entries (in-place bytes modification)
+  for (const item of writeSet) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)
+        || typeof item.id !== 'string' || item.id.length === 0) {
+      throw new ReleaseError(
+        TRANSACTION_INCOMPLETE,
+        'writeSet item missing id or id is not a string',
+      );
+    }
+    validateAndDecodeEntry(item.newEntry, 'newEntry');
+    validateAndDecodeEntry(item.oldEntry, 'oldEntry');
+  }
 
   // Path validation
-  for (const artifact of plan.artifacts) {
-    validatePath(artifact.path);
+  for (const item of writeSet) {
+    validatePath(item.path);
   }
-  validatePathUniqueness(plan.artifacts);
+  validatePathUniqueness(writeSet);
 
   // Full CAS for all old entries (zero side effects)
-  for (const artifact of plan.artifacts) {
-    const canonicalPath = artifact.path.endsWith('/')
-      ? artifact.path.slice(0, -1)
-      : artifact.path;
-    await assertFullCas(handle, artifact.oldEntry, canonicalPath);
+  for (const item of writeSet) {
+    const canonicalPath = item.path.endsWith('/')
+      ? item.path.slice(0, -1)
+      : item.path;
+    await assertFullCas(handle, item.oldEntry, canonicalPath);
   }
 }
 
@@ -859,6 +893,9 @@ async function checkTargetUnchanged(handle, artifacts) {
  * @param {Error} options.originalError — the error that triggered recovery.
  * @param {object[]} options.artifacts — plan artifacts.
  * @param {boolean} options.journalCreated — whether journal exists.
+ * @param {string} [options.recoverCommand] — optional caller-supplied unique
+ *   recover command; defaults to the authoritative artifacts recover command
+ *   bound to the transaction id.
  * @returns {Promise<{ recoveryError: Error|null, targetUnchanged: boolean }>}
  */
 async function tryRecoveryProtocol({
@@ -868,6 +905,7 @@ async function tryRecoveryProtocol({
   originalError,
   artifacts,
   journalCreated,
+  recoverCommand,
 }) {
   // P0-8: Journal建立前失败不得谎称recovery
   if (!journalCreated) {
@@ -890,8 +928,11 @@ async function tryRecoveryProtocol({
     journalState = 'unreadable';
   }
 
-  // P0-8: Unique recover command
-  const recover = `release-skill artifacts recover --transaction ${transactionId}`;
+  // P0-8: Unique recover command (callers may bind their own recover command
+  // family; the default stays the authoritative artifacts recover command).
+  const recover = typeof recoverCommand === 'string' && recoverCommand.length > 0
+    ? recoverCommand
+    : `release-skill artifacts recover --transaction ${transactionId}`;
 
   let recoveryStatePersisted = journalState === 'RECOVERY_REQUIRED';
   let transitionErrorCode = null;
@@ -964,9 +1005,352 @@ function generateTransactionId(clock) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Generic durable write-set application under a caller-held project lock.
+ *
+ * Implements the shared transaction core: multi-file preflight with full CAS
+ * BEFORE the first target mutation, safe-fs probe, durable journal
+ * (PREPARED → APPLYING → APPLIED → VERIFYING → COMMITTED), per-entry
+ * write-ahead recording, per-entry re-CAS with the backup taken from the
+ * SAME stable read, identity-bound createTemp+rename writes, manifest
+ * verification, and the RECOVERY_REQUIRED recovery protocol with the unique
+ * recover command on mid-flight failure.
+ *
+ * The canonicalPlan is persisted as the journal authority; its schema is
+ * validated by the transaction journal dispatch (artifact-plan v1 or
+ * docs-refresh v1). The plan carries NO target bytes in the docs-refresh
+ * case — new bytes live only in the write set and the journal manifests.
+ *
+ * ALL transactional filesystem mutations (journal, backup, target files) go
+ * through the safe-fs backend DirectoryHandle; no Node path-based writes are
+ * used for them. The only exception is the best-effort retention prune that
+ * runs inside createTransactionJournal — see pruneTerminalTransactionRecords
+ * in transaction-journal.mjs.
+ *
+ * @param {object} options
+ * @param {string} options.root — Repository root (absolute).
+ * @param {object[]} options.writeSet — items shaped { id, path, oldEntry, newEntry }.
+ * @param {object} options.canonicalPlan — journal authority plan (closed schema).
+ * @param {string} options.planDigest — sha256:<64hex> digest binding the journal.
+ * @param {object} [options.safeFs] — Safe filesystem backend (required).
+ * @param {Function} [options.faultInjector] — Fault injection for testing.
+ * @param {Function} [options.clock] — Clock function for transaction ids.
+ * @param {Function} [options.assertLockOwner] — Caller-held lock assertion.
+ * @param {string} [options.recoverCommand] — Optional unique recover command.
+ * @param {object} [options.rootHandle] — Internal reuse: an already-open root
+ *   handle owned by the caller (not closed here).
+ * @param {number} [options.transactionRetentionMax] — Optional cap on retained
+ *   terminal transaction records (defaults to DEFAULT_TRANSACTION_RETENTION_MAX).
+ * @returns {Promise<TransactionResult>}
+ * @throws {ReleaseError} On validation failure, CAS mismatch, or mid-flight
+ *   failure (RECOVERY_REQUIRED protocol).
+ */
+export async function applyWriteSetUnderLock({
+  root,
+  writeSet,
+  canonicalPlan,
+  planDigest,
+  safeFs,
+  faultInjector,
+  clock,
+  assertLockOwner = async () => {},
+  recoverCommand,
+  rootHandle = null,
+  transactionRetentionMax,
+} = {}) {
+  // === PHASE 0: validate inputs and safe-fs availability ===
+
+  if (!root || typeof root !== 'string') {
+    throw new ReleaseError(PATH_UNSAFE, 'root must be a non-empty string');
+  }
+  if (!safeFs) {
+    throw new ReleaseError(
+      SAFE_WRITE_UNAVAILABLE,
+      'safe filesystem backend is required',
+    );
+  }
+  if (typeof planDigest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(planDigest)) {
+    throw new ReleaseError(PLAN_STALE, 'planDigest must be a sha256 digest');
+  }
+  if (!Array.isArray(writeSet) || writeSet.length === 0) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, 'writeSet must be a non-empty array');
+  }
+  if (!canonicalPlan || typeof canonicalPlan !== 'object' || Array.isArray(canonicalPlan)) {
+    throw new ReleaseError(TRANSACTION_INCOMPLETE, 'canonicalPlan must be an object');
+  }
+
+  const handle = rootHandle ?? await safeFs.openRoot(root);
+  const ownsRootHandle = rootHandle === null;
+  let txnResult;
+  const assertLockAuthority = async () => {
+    try {
+      await assertLockOwner();
+    } catch (error) {
+      if (error && typeof error === 'object') error.lockOwnershipLost = true;
+      throw error;
+    }
+  };
+  try {
+  // === PHASE 3: full preflight + CAS (zero side effects) ===
+
+  await performWriteSetPreflightAndCas(handle, writeSet);
+
+  if (faultInjector) {
+    await faultInjector('preflight-complete');
+  }
+
+  // === PHASE 4: probe safe-fs backend ===
+
+  const probeResult = await safeFs.probe(root);
+  if (!probeResult.supported) {
+    throw new ReleaseError(
+      SAFE_WRITE_UNAVAILABLE,
+      'safe write primitives are not functional on this platform',
+      { platform: process.platform },
+    );
+  }
+  if (faultInjector) await faultInjector('after-probe');
+  await assertLockAuthority();
+
+  // === PHASE 5: create transaction and journal ===
+
+  const transactionId = generateTransactionId(clock);
+  let journalCreated = false;
+
+  const oldManifest = await buildOldManifest(handle, writeSet);
+  const newManifest = buildNewManifest(writeSet);
+
+  await assertLockAuthority();
+  txnResult = await createTransactionJournal({
+    rootHandle: handle,
+    root,
+    transactionId,
+    planDigest,
+    canonicalPlan,
+    oldManifest,
+    newManifest,
+    retentionMax: transactionRetentionMax,
+  });
+  journalCreated = true;
+
+  const { txnHandle } = txnResult;
+
+  try {
+    if (faultInjector) await faultInjector('after-prepared');
+    // === PHASE 5a: transition to APPLYING ===
+
+    await assertLockAuthority();
+    await writeJournalTransition({
+      txnHandle,
+      transactionId,
+      from: 'PREPARED',
+      to: 'APPLYING',
+    });
+    if (faultInjector) await faultInjector('after-applying-transition');
+
+    // === PHASE 6: apply each entry with write-ahead journaling ===
+
+    const results = [];
+    for (let i = 0; i < writeSet.length; i++) {
+      const item = writeSet[i];
+
+      // Write-ahead: record entry index BEFORE mutation
+      await assertLockAuthority();
+      await recordAppliedEntry({
+        txnHandle,
+        transactionId,
+        entryIndex: i,
+        entry: { id: item.id, path: item.path, status: 'pending' },
+      });
+      if (faultInjector) await faultInjector(`after-entry-pending:${i}`);
+
+      // P0-4: Re-exact CAS before each target mutation
+      const canonicalPath = item.path.endsWith('/')
+        ? item.path.slice(0, -1)
+        : item.path;
+      const current = await assertFullCas(handle, item.oldEntry, canonicalPath);
+
+      // P0-4: Create backup from the SAME stable read as CAS verification
+      // backup bytes must come from this CAS read, not a separate one
+      if (item.oldEntry && item.oldEntry.kind === 'regular') {
+        // The exact bytes and unforgeable identity token come from the same
+        // stable read used for this per-entry CAS.
+        const expectedOldSha = item.oldEntry.sha256.startsWith('sha256:')
+          ? item.oldEntry.sha256
+          : `sha256:${item.oldEntry.sha256}`;
+        if (current.sha256 !== expectedOldSha) {
+          throw new ReleaseError(
+            PLAN_STALE,
+            `CAS mismatch during backup read: ${canonicalPath} sha256 changed`,
+            { path: canonicalPath },
+          );
+        }
+        await assertLockAuthority();
+        await createBackup({
+          txnHandle,
+          transactionId,
+          entryIndex: i,
+          oldEntry: { ...item.oldEntry, bytes: current.bytes },
+        });
+      } else {
+        await assertLockAuthority();
+        await createBackup({
+          txnHandle,
+          transactionId,
+          entryIndex: i,
+          oldEntry: { kind: 'absent' },
+        });
+      }
+      if (faultInjector) await faultInjector(`after-entry-backup:${i}`);
+
+      // Apply the mutation through the safe-fs handle
+      if (faultInjector) await faultInjector(`before-entry-mutation:${i}`);
+      await assertLockAuthority();
+      await applySingleArtifact(
+        handle,
+        item,
+        current?.kind === 'regular' ? current.identityToken : null,
+      );
+      if (faultInjector) await faultInjector(`after-entry-mutation:${i}`);
+
+      // Record applied
+      await assertLockAuthority();
+      await recordAppliedEntry({
+        txnHandle,
+        transactionId,
+        entryIndex: i,
+        entry: { id: item.id, path: item.path, status: 'applied' },
+      });
+      if (faultInjector) await faultInjector(`after-entry-applied:${i}`);
+
+      results.push({ id: item.id, path: item.path, applied: true });
+
+    }
+
+    // === PHASE 7: mark APPLIED → VERIFYING → COMMITTED ===
+
+    await assertLockAuthority();
+    await writeJournalTransition({
+      txnHandle,
+      transactionId,
+      from: 'APPLYING',
+      to: 'APPLIED',
+    });
+    if (faultInjector) await faultInjector('after-applied-transition');
+
+    await assertLockAuthority();
+    await writeJournalTransition({
+      txnHandle,
+      transactionId,
+      from: 'APPLIED',
+      to: 'VERIFYING',
+    });
+    if (faultInjector) await faultInjector('after-verifying-transition');
+
+    await verifyManifest(handle, writeSet);
+    if (faultInjector) await faultInjector('after-verify');
+
+    await assertLockAuthority();
+    // The full COMMITTED journal becomes durable first (the 'after-committed'
+    // durable point); terminal convergence runs as a POST-COMMITTED phase so
+    // a crash at 'after-committed' still leaves the complete full record.
+    await writeJournalTransition({
+      txnHandle,
+      transactionId,
+      from: 'VERIFYING',
+      to: 'COMMITTED',
+      convergeTerminal: false,
+    });
+    if (faultInjector) await faultInjector('after-committed');
+
+    // === PHASE 8: terminal convergence to the versioned receipt (AC-1) ===
+    // Atomically rewrites journal.json as the small terminal receipt
+    // ('before-terminal-receipt-write' / 'after-terminal-receipt-write' fault
+    // points), then removes the now-unneeded backups/ and RECOVERY_REQUIRED
+    // marker. A convergence failure rejects honestly (TRANSACTION_INCOMPLETE
+    // with terminalReceiptPersisted/targetApplied) and keeps the complete
+    // verifiable COMMITTED record on disk — see convergeTerminalRecord.
+    await assertLockAuthority();
+    const finalJournal = await convergeTerminalRecord({
+      txnHandle,
+      transactionId,
+      faultInjector,
+      recoverCommand,
+    });
+
+    return Object.freeze({
+      transactionId,
+      state: 'COMMITTED',
+      results: Object.freeze(results),
+      journal: finalJournal,
+    });
+  } catch (applyErr) {
+    // === RECOVERY PROTOCOL ===
+
+    // A fault hook marked as a hard crash models abrupt process death: the
+    // latest durable journal state must remain untouched for the next process.
+    if (applyErr?.code === 'INJECTED_CRASH' || applyErr?.name === 'InjectedCrash') {
+      throw applyErr;
+    }
+    if (applyErr?.lockOwnershipLost === true) {
+      throw applyErr;
+    }
+    // Terminal receipt convergence failure AFTER the target was applied,
+    // verified, and durably COMMITTED: the complete verifiable record is
+    // already on disk at its latest durable state (the full COMMITTED
+    // journal, or the durable receipt if cleanup failed). The RECOVERY_REQUIRED
+    // protocol must NOT run — COMMITTED has no outgoing transitions, the
+    // target must never be reported as needing rollback, and re-running
+    // convergence completes the record. Propagate the honest error verbatim.
+    if (applyErr?.terminalReceiptConvergenceFailed === true) {
+      throw applyErr;
+    }
+
+    const { recoveryError } = await tryRecoveryProtocol({
+      rootHandle: handle,
+      txnHandle,
+      transactionId,
+      originalError: applyErr instanceof ReleaseError ? applyErr : new ReleaseError(
+        typeof applyErr?.code === 'string' ? applyErr.code : TRANSACTION_INCOMPLETE,
+        applyErr?.message || 'safe filesystem operation failed',
+      ),
+      artifacts: writeSet,
+      journalCreated,
+      recoverCommand,
+    });
+
+    if (recoveryError) {
+      throw recoveryError;
+    }
+
+    throw applyErr;
+  }
+  } finally {
+    let closeError;
+    if (txnResult?.close) {
+      try {
+        await txnResult.close();
+      } catch (error) {
+        closeError = error;
+      }
+    }
+    if (ownsRootHandle) {
+      try {
+        await handle.close();
+      } catch (error) {
+        closeError ??= error;
+      }
+    }
+    if (closeError) throw closeError;
+  }
+}
+
+/**
  * Apply an artifact plan with durable transaction journaling.
  *
- * All filesystem mutations use the safe-fs backend. No Node path writes.
+ * Reads and digest-verifies the artifact-plan v1 plan file through safe-fs
+ * handles, validates the closed v1 schema, then delegates the write set to
+ * the generic applyWriteSetUnderLock transaction core. All filesystem
+ * mutations use the safe-fs backend. No Node path writes.
  *
  * @param {object} options
  * @param {string} options.root — Repository root (absolute).
@@ -1011,15 +1395,6 @@ async function applyArtifactPlanUnderLock({
   // === PHASE 1: validate plan file through safe-fs ===
 
   const handle = await safeFs.openRoot(root);
-  let txnResult;
-  const assertLockAuthority = async () => {
-    try {
-      await assertLockOwner();
-    } catch (error) {
-      if (error && typeof error === 'object') error.lockOwnershipLost = true;
-      throw error;
-    }
-  };
   try {
 
   // Convert the absolute plan path to a canonical root-relative path before
@@ -1028,20 +1403,20 @@ async function applyArtifactPlanUnderLock({
   const planFileData = await withParentHandle(handle, relPlanPath, async (parent, leaf) => {
     const planEntry = await parent.readEntry(leaf);
     if (!planEntry || planEntry.kind === 'absent') {
-      throw new ReleaseError(PLAN_STALE, 'plan file does not exist', { path: planPath });
+      throw new ReleaseError(PLAN_STALE, 'plan file does not exist', { path: redactSensitivePaths(planPath) });
     }
     const planIsRegular = planEntry.kind === 'regular'
       || planEntry.type === 'file'
       || planEntry.type === 'blob';
     if (!planIsRegular) {
-      throw new ReleaseError(PATH_UNSAFE, 'plan path is not a regular file', { path: planPath });
+      throw new ReleaseError(PATH_UNSAFE, 'plan path is not a regular file', { path: redactSensitivePaths(planPath) });
     }
     if (typeof planEntry.nlink === 'number' && planEntry.nlink !== 1) {
       throw new ReleaseError(PATH_UNSAFE, 'plan file has unexpected hard link count');
     }
     const data = await parent.readFile(leaf);
     if (!data) {
-      throw new ReleaseError(PLAN_STALE, 'plan file is unreadable', { path: planPath });
+      throw new ReleaseError(PLAN_STALE, 'plan file is unreadable', { path: redactSensitivePaths(planPath) });
     }
     if (Number(data.nlink) !== 1) {
       throw new ReleaseError(PATH_UNSAFE, 'plan file has unexpected hard link count');
@@ -1056,7 +1431,7 @@ async function applyArtifactPlanUnderLock({
     throw new ReleaseError(
       PLAN_STALE,
       'plan file is not valid JSON',
-      { path: planPath, error: err.message },
+      { path: redactSensitivePaths(planPath), error: err.message },
     );
   }
 
@@ -1071,230 +1446,38 @@ async function applyArtifactPlanUnderLock({
     );
   }
 
-  // === PHASE 3: full preflight + CAS (zero side effects) ===
+  // === PHASE 3: closed artifact-plan v1 schema (zero side effects) ===
 
-  await performPreflightAndCas(handle, plan, planPath);
+  assertArtifactPlanClosedSchema(plan, planPath);
 
-  if (faultInjector) {
-    await faultInjector('preflight-complete');
-  }
-
-  // === PHASE 4: probe safe-fs backend ===
-
-  const probeResult = await safeFs.probe(root);
-  if (!probeResult.supported) {
-    throw new ReleaseError(
-      SAFE_WRITE_UNAVAILABLE,
-      'safe write primitives are not functional on this platform',
-      { platform: process.platform },
-    );
-  }
-  if (faultInjector) await faultInjector('after-probe');
-  await assertLockAuthority();
-
-  // === PHASE 5: create transaction and journal ===
-
-  const transactionId = generateTransactionId(clock);
-  let journalCreated = false;
-
-  const oldManifest = await buildOldManifest(handle, plan.artifacts);
-  const newManifest = buildNewManifest(plan.artifacts);
-
-  try {
-    await assertLockAuthority();
-    txnResult = await createTransactionJournal({
-      rootHandle: handle,
-      transactionId,
-      planDigest,
-      canonicalPlan: plan,
-      oldManifest,
-      newManifest,
-    });
-    journalCreated = true;
-  } catch (journalErr) {
-    // Journal creation failed — no side effects, clean failure
-    throw journalErr;
-  }
-
-  const { txnHandle } = txnResult;
-
-  try {
-    if (faultInjector) await faultInjector('after-prepared');
-    // === PHASE 5a: transition to APPLYING ===
-
-    await assertLockAuthority();
-    await writeJournalTransition({
-      txnHandle,
-      transactionId,
-      from: 'PREPARED',
-      to: 'APPLYING',
-    });
-    if (faultInjector) await faultInjector('after-applying-transition');
-
-    // === PHASE 6: apply each artifact with write-ahead journaling ===
-
-    const results = [];
-    for (let i = 0; i < plan.artifacts.length; i++) {
-      const artifact = plan.artifacts[i];
-
-      // Write-ahead: record entry index BEFORE mutation
-      await assertLockAuthority();
-      await recordAppliedEntry({
-        txnHandle,
-        transactionId,
-        entryIndex: i,
-        entry: { id: artifact.id, path: artifact.path, status: 'pending' },
-      });
-      if (faultInjector) await faultInjector(`after-entry-pending:${i}`);
-
-      // P0-4: Re-exact CAS before each target mutation
-      const canonicalPath = artifact.path.endsWith('/')
-        ? artifact.path.slice(0, -1)
-        : artifact.path;
-      const current = await assertFullCas(handle, artifact.oldEntry, canonicalPath);
-
-      // P0-4: Create backup from the SAME stable read as CAS verification
-      // backup bytes must come from this CAS read, not a separate one
-      if (artifact.oldEntry && artifact.oldEntry.kind === 'regular') {
-        // The exact bytes and unforgeable identity token come from the same
-        // stable read used for this per-entry CAS.
-        const expectedOldSha = artifact.oldEntry.sha256.startsWith('sha256:')
-          ? artifact.oldEntry.sha256
-          : `sha256:${artifact.oldEntry.sha256}`;
-        if (current.sha256 !== expectedOldSha) {
-          throw new ReleaseError(
-            PLAN_STALE,
-            `CAS mismatch during backup read: ${canonicalPath} sha256 changed`,
-            { path: canonicalPath },
-          );
-        }
-        await assertLockAuthority();
-        await createBackup({
-          txnHandle,
-          transactionId,
-          entryIndex: i,
-          oldEntry: { ...artifact.oldEntry, bytes: current.bytes },
-        });
-      } else {
-        await assertLockAuthority();
-        await createBackup({
-          txnHandle,
-          transactionId,
-          entryIndex: i,
-          oldEntry: { kind: 'absent' },
-        });
-      }
-      if (faultInjector) await faultInjector(`after-entry-backup:${i}`);
-
-      // Apply artifact mutation through safe-fs handle
-      if (faultInjector) await faultInjector(`before-entry-mutation:${i}`);
-      await assertLockAuthority();
-      await applySingleArtifact(
-        handle,
-        artifact,
-        current?.kind === 'regular' ? current.identityToken : null,
-      );
-      if (faultInjector) await faultInjector(`after-entry-mutation:${i}`);
-
-      // Record applied
-      await assertLockAuthority();
-      await recordAppliedEntry({
-        txnHandle,
-        transactionId,
-        entryIndex: i,
-        entry: { id: artifact.id, path: artifact.path, status: 'applied' },
-      });
-      if (faultInjector) await faultInjector(`after-entry-applied:${i}`);
-
-      results.push({ id: artifact.id, path: artifact.path, applied: true });
-
-    }
-
-    // === PHASE 7: mark APPLIED → VERIFYING → COMMITTED ===
-
-    await assertLockAuthority();
-    await writeJournalTransition({
-      txnHandle,
-      transactionId,
-      from: 'APPLYING',
-      to: 'APPLIED',
-    });
-    if (faultInjector) await faultInjector('after-applied-transition');
-
-    await assertLockAuthority();
-    await writeJournalTransition({
-      txnHandle,
-      transactionId,
-      from: 'APPLIED',
-      to: 'VERIFYING',
-    });
-    if (faultInjector) await faultInjector('after-verifying-transition');
-
-    await verifyManifest(handle, plan.artifacts);
-    if (faultInjector) await faultInjector('after-verify');
-
-    await assertLockAuthority();
-    await writeJournalTransition({
-      txnHandle,
-      transactionId,
-      from: 'VERIFYING',
-      to: 'COMMITTED',
-    });
-    if (faultInjector) await faultInjector('after-committed');
-
-    const finalJournal = await readJournal(txnHandle, transactionId);
-
-    return Object.freeze({
-      transactionId,
-      state: 'COMMITTED',
-      results: Object.freeze(results),
-      journal: finalJournal,
-    });
-  } catch (applyErr) {
-    // === RECOVERY PROTOCOL ===
-
-    // A fault hook marked as a hard crash models abrupt process death: the
-    // latest durable journal state must remain untouched for the next process.
-    if (applyErr?.code === 'INJECTED_CRASH' || applyErr?.name === 'InjectedCrash') {
-      throw applyErr;
-    }
-    if (applyErr?.lockOwnershipLost === true) {
-      throw applyErr;
-    }
-
-    const { recoveryError } = await tryRecoveryProtocol({
-      rootHandle: handle,
-      txnHandle,
-      transactionId,
-      originalError: applyErr instanceof ReleaseError ? applyErr : new ReleaseError(
-        typeof applyErr?.code === 'string' ? applyErr.code : TRANSACTION_INCOMPLETE,
-        applyErr?.message || 'safe filesystem operation failed',
-      ),
-      artifacts: plan.artifacts,
-      journalCreated,
-    });
-
-    if (recoveryError) {
-      throw recoveryError;
-    }
-
-    throw applyErr;
-  }
+  // === Delegate to the generic write-set transaction core ===
+  // The closed v1 schema guarantees every artifact carries id/path/oldEntry/
+  // newEntry (bytes decoded in place). Path safety, path uniqueness, full
+  // CAS, probing, durable journaling, per-entry CAS/backup, manifest
+  // verification, recovery, and the fault-injector point names all come from
+  // the shared applyWriteSetUnderLock core.
+  const writeSet = plan.artifacts.map((artifact) => ({
+    id: artifact.id,
+    path: artifact.path,
+    oldEntry: artifact.oldEntry,
+    newEntry: artifact.newEntry,
+  }));
+  return await applyWriteSetUnderLock({
+    root,
+    writeSet,
+    canonicalPlan: plan,
+    planDigest,
+    safeFs,
+    faultInjector,
+    clock,
+    assertLockOwner,
+    rootHandle: handle,
+  });
   } finally {
-    let closeError;
-    if (txnResult?.close) {
-      try {
-        await txnResult.close();
-      } catch (error) {
-        closeError = error;
-      }
-    }
-    try {
-      await handle.close();
-    } catch (error) {
-      closeError ??= error;
-    }
-    if (closeError) throw closeError;
+    // The root handle is owned by this wrapper; the generic core reuses it
+    // without closing it (mirrors the pre-refactor single-handle lifecycle).
+    // A close failure after any outcome fails closed.
+    await handle.close();
   }
 }
 

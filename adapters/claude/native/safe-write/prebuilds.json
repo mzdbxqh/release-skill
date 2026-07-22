@@ -3,7 +3,7 @@
   "prebuilds": {
     "darwin-arm64": {
       "path": "prebuilds/darwin-arm64/safe_write.node",
-      "sha256": "a0e39732c359f3faa23715e6d17d8bc5fec5c5b86e0390220e1beb9f5def2d2e",
+      "sha256": "f5ffc367a1c49fed812dc430246cd8b07fb722653cc9738acabcedb17d6bab67",
       "exports": [
         "openRoot",
         "openDir",
