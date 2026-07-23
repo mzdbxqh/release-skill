@@ -2,37 +2,39 @@
 
 [English](README.md) · 安装指南：[中文](INSTALL.zh-CN.md) / [English](INSTALL.md)
 
-<!-- release-skill:release-version: 0.1.9 -->
+<!-- release-skill:release-version: 0.1.10 -->
 面向 Claude Code、Codex 和 Kimi Code 的发布准备工具，完整保留人工维护的文件内容。
 
 release-skill 帮助维护者回答三个问题：准备发布什么、还有哪些检查未通过、最终发布的内容是什么。它先冻结并供人工审阅，再从同一份冻结产物发布，不会在最后一步重新生成 README、重新打包当前工作区或覆盖人工内容。
 
 <!-- release-skill:managed:start id=latest-release -->
-**0.1.9** (2026-07-23)
+**0.1.10** (2026-07-24)
 
-v0.1.9 修复一个结构性的 marketplace 安装校验失败：声明插件 `source` 子目录（如 `./adapters/claude`）的消费者安装现在能把安装载荷绑定到密封整 unit 快照中声明的子树，Claude 根目录 `.in_use` 标记作为消费者所有的传输元数据获得豁免。密封快照摘要、发布计划 schema 与 prepare 冻结均未改动，已冻结计划无需重新审批即可 reconcile。npm 包名（`release-skill`）、发布身份（`publisher: mzdbxqh`）、公开仓库（`ifoohoo/release-skill`）与公司维护主体保持不变。
+v0.1.10 修复 codex marketplace 安装校验失败：codex CLI 安装时会在插件安装根目录生成 `.codex-plugin/migrated-command-skills/` 子树（commands 迁移为 skill 格式的产物）。这部分消费者所有的传输元数据现在与根目录 `.git` 检出一样获得豁免；冻结快照排除清单扩展支持多段相对路径前缀，单段行为保持不变。密封快照摘要、发布计划 schema 与 prepare 冻结均未改动，已冻结计划无需重新审批即可 reconcile。npm 包名（`release-skill`）、发布身份（`publisher: mzdbxqh`）、公开仓库（`ifoohoo/release-skill`）与公司维护主体保持不变。
 
 **修复**
 
-- **子目录 source 布局的 marketplace 载荷绑定**：消费者清单可以声明
-  `./adapters/claude` 这样的插件 `source` 子目录，此时消费者 CLI 只安装该子树，
-  而密封权威是整个 unit 快照。安装校验现在先重验密封整快照摘要，再从摘要已验证
-  的快照条目内部读取清单声明的 source，并把安装载荷绑定到剥离前缀后的子树；
-  根布局与 Kimi 保持整树比较。这解决了 flow-architect v0.4.1 与 v0.5.0 的
-  marketplace 安装 PARTIAL 失败；密封摘要、计划 schema 与 prepare 冻结均未改动，
-  已冻结计划可以不变地 reconcile 收口。
-- **Claude `.in_use` 传输标记豁免**：Claude CLI 会在插件安装根目录写入空的
-  `.in_use` 标记，现在与既有的 Codex/Kimi `.git` 豁免一样作为消费者所有的传输
-  元数据豁免，并统一为单一共享 helper（observe 诊断回退同样复用）。豁免仅限根
-  直接子项：嵌套标记、多余载荷、字节篡改与密封权威篡改仍然失败关闭。
-- **回归覆盖**：新增协议级 fake-CLI 测试覆盖带 `.in_use` 的子目录 claude
-  完整链路（含字节篡改、多余文件、缺失文件、`.git` 不豁免与嵌套标记负例）、
-  失败关闭的清单异常（重复插件条目、marketplace 名不符、空 source 投影）、
-  带 `.in_use` 的根布局 claude，以及 codex 子目录变体。
+- **Codex `migrated-command-skills` 传输豁免**：codex CLI 安装时会把插件
+  `commands/` 转换为 skill 格式并写入安装根目录的
+  `.codex-plugin/migrated-command-skills/`。该消费者所有的子树不属于已发布
+  载荷，导致整树比较在每次真实 codex marketplace 安装中失败；codex 消费者
+  传输豁免从 `['.git']` 扩为 `['.git', '.codex-plugin/migrated-command-skills']`。
+  Claude（`.in_use`）与 Kimi（`.git`）豁免不变，且豁免刻意不扩大为
+  `.codex-plugin/*` 或任意多余文件。flow-architect 真实安装实测验证：除
+  migrated-command-skills 目录外，安装内容与冻结快照逐字节一致。密封摘要、
+  计划 schema 与 prepare 冻结均未改动，已冻结计划可以不变地 reconcile 收口。
+- **多段快照排除，失败关闭**：`computeFrozenSnapshot` 的
+  `excludeRootEntries` 现在接受多段相对路径前缀，命名一个精确排除的子树
+  （`.codex-plugin/migrated-command-skills` 豁免所必需）；单段条目保持历史
+  的根直接子项匹配。畸形条目（非字符串、绝对路径、`..`、反斜杠）失败关闭：
+  错误的排除清单是调用方 bug，不是传输元数据。
+- **回归覆盖**：新增协议级测试覆盖带 CLI 生成 migrated-command-skills 树的
+  根布局 codex execute→observe→verify 完整链路，包含必须仍然失败关闭的字节
+  篡改与多余文件负例。
 <!-- release-skill:managed:end id=latest-release -->
 
 <!-- release-skill:capability:external-write-boundary -->
-> **当前边界：** v0.1.9 是当前发布版本（v0.1.8 曾处于已发布、待独立验证状态）。
+> **当前边界：** v0.1.10 是当前发布版本（v0.1.9 曾处于已发布、待独立验证状态）。
 > v0.1.1 已完成 GitHub 与 npm 的
 > 真实生产发布，是首次生产验证的历史里程碑，并从冻结 Git ref 完成精确 npm
 > 安装及 Claude/Codex 消费者安装验证；“当前发布版本”与“首次生产验证里程碑”

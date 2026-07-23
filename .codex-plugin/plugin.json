@@ -1,6 +1,6 @@
 {
   "name": "release-skill",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
   "author": {
     "name": "广州市风荷科技有限公司"
@@ -19,7 +19,7 @@
     ],
     "defaultPrompt": [
       "Assess this project for release readiness.",
-      "Prepare a release plan for version 0.1.9.",
+      "Prepare a release plan for version 0.1.10.",
       "Help me understand the release workflow."
     ]
   }

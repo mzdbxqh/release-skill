@@ -17,6 +17,16 @@ const execFile = promisify(execFileCb);
  * use reserved prefixes; immutable plans and approvals use exact digest-shaped
  * paths so arbitrary files under similarly named directories remain visible.
  *
+ * `kimi-attestations` holds Kimi's closure-protocol lifecycle artifacts:
+ * the manual installation requirement that publish/reconcile itself emits
+ * for a PARTIAL kimi checkpoint, and the human-written attestation that is
+ * the designed closure input (independently bound to planDigest,
+ * payloadDigest, exact version/tag, install path, responsible person, and
+ * expiry). Neither is publishable source or project configuration — they
+ * never enter the frozen snapshot — so excluding them keeps reconcile's own
+ * requirement output and the flow-required attestation from invalidating
+ * the baseline of every subsequent reconcile.
+ *
  * `project.yaml` is intentionally **not** listed — changes to project
  * configuration must always cause a baseline drift.
  */
@@ -27,6 +37,7 @@ const CONTROL_PLANE_PREFIXES = [
   '.release-skill/lock-audit',
   '.release-skill/runs',
   '.release-skill/transactions',
+  '.release-skill/kimi-attestations',
 ];
 const RESERVED_CONTROL_PREFIXES = [
   ...CONTROL_PLANE_PREFIXES,

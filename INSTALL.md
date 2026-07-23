@@ -2,7 +2,7 @@
 
 [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.9 -->
+<!-- release-skill:release-version: 0.1.10 -->
 ## Prerequisites
 
 - Node.js 22.0.0 or later
@@ -68,7 +68,7 @@ as a version-pinned **manual** install plus trusted observation/attestation:
    default branch), confirm the trust prompt, then reload:
 
    ```
-   /plugins install https://github.com/ifoohoo/release-skill/releases/tag/release-skill-v0.1.9
+   /plugins install https://github.com/ifoohoo/release-skill/releases/tag/release-skill-v0.1.10
    /plugins reload
    ```
 
@@ -83,10 +83,10 @@ as a version-pinned **manual** install plus trusted observation/attestation:
 {
   "consumer": "kimi",
   "plugin": "release-skill",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "entrySkill": "release-help",
   "repo": "ifoohoo/release-skill",
-  "ref": "release-skill-v0.1.9",
+  "ref": "release-skill-v0.1.10",
   "installPath": "<kimiCodeHome>/plugins/managed/release-skill",
   "planDigest": "<64-hex frozen plan digest>",
   "payloadDigest": "<64-hex frozen snapshot payload digest>",

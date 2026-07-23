@@ -9,7 +9,7 @@ const __bundlePkgRoot = __bundleResolve(__bundleDirname(__bundleFileURLToPath(im
 // Provide a real require() for CJS packages bundled into ESM (e.g. yaml, ajv).
 const __bundleRealRequire = __bundleCreateRequire(import.meta.url);
 // Package identity injected at build time — closure-independent --version probe.
-const __bundlePkg = Object.freeze({"name":"release-skill","version":"0.1.9"});
+const __bundlePkg = Object.freeze({"name":"release-skill","version":"0.1.10"});
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -17816,7 +17816,8 @@ var init_baseline = __esm({
       ".release-skill/lock",
       ".release-skill/lock-audit",
       ".release-skill/runs",
-      ".release-skill/transactions"
+      ".release-skill/transactions",
+      ".release-skill/kimi-attestations"
     ];
     RESERVED_CONTROL_PREFIXES = [
       ...CONTROL_PLANE_PREFIXES,
@@ -19013,14 +19014,30 @@ async function computeFrozenSnapshot(snapshotDir, { excludeRootEntries = [] } = 
     throw frozenError("frozen snapshot root must be a real directory");
   }
   const entries = [];
-  const excluded = new Set(excludeRootEntries);
+  const excludedRootNames = /* @__PURE__ */ new Set();
+  const excludedPathPrefixes = [];
+  for (const entry of excludeRootEntries) {
+    if (typeof entry !== "string") {
+      throw frozenError("frozen snapshot exclusion entries must be strings");
+    }
+    const segments = entry.split("/").filter((segment) => segment !== "" && segment !== ".");
+    if (segments.length === 0 || entry.startsWith("/") || entry.includes("\\") || segments.some((segment) => segment === "..")) {
+      throw frozenError(`frozen snapshot exclusion entry is not a safe relative path: ${JSON.stringify(entry)}`);
+    }
+    if (segments.length === 1) {
+      excludedRootNames.add(segments[0]);
+    } else {
+      excludedPathPrefixes.push(segments.join("/"));
+    }
+  }
   async function walk(dir) {
     const children = await readdir3(dir, { withFileTypes: true });
     children.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
     for (const child of children) {
-      if (dir === root && excluded.has(child.name)) continue;
+      if (dir === root && excludedRootNames.has(child.name)) continue;
       const absolute = join3(dir, child.name);
       const rel = relative7(root, absolute).split("\\").join("/");
+      if (excludedPathPrefixes.some((prefix) => rel === prefix || rel.startsWith(`${prefix}/`))) continue;
       const st = await lstat5(absolute);
       if (st.isSymbolicLink()) {
         throw frozenError(`frozen snapshot contains symlink: ${rel}`);
@@ -76932,7 +76949,8 @@ function transportPayload(entries) {
 }
 function consumerTransportExclusions(consumer) {
   if (consumer === "claude") return [".in_use"];
-  if (consumer === "codex" || consumer === "kimi") return [".git"];
+  if (consumer === "codex") return [".git", ".codex-plugin/migrated-command-skills"];
+  if (consumer === "kimi") return [".git"];
   return [];
 }
 function extractDeclaredPluginSource(consumer, entry) {

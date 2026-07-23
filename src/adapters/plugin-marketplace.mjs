@@ -50,12 +50,18 @@ function transportPayload(entries) {
 
 // Consumer-owned transport metadata written into the plugin install root
 // that is not part of the published payload. Codex checks out the
-// repository (root `.git` metadata); Claude marks in-use plugin checkouts
-// with an empty root `.in_use` marker. Exclusions apply to root entries
-// only; all payload paths keep the fail-closed file checks.
+// repository (root `.git` metadata) and materializes migrated command
+// skills under `.codex-plugin/migrated-command-skills/` (the CLI converts
+// plugin commands/ into skill format at install time); Claude marks in-use
+// plugin checkouts with an empty root `.in_use` marker. Single-segment
+// exclusions apply to root entries only; the multi-segment exclusion names
+// the exact CLI-generated subtree. All other payload paths keep the
+// fail-closed file checks — the exemption must never widen to
+// ".codex-plugin/*" or arbitrary extra files.
 function consumerTransportExclusions(consumer) {
   if (consumer === 'claude') return ['.in_use'];
-  if (consumer === 'codex' || consumer === 'kimi') return ['.git'];
+  if (consumer === 'codex') return ['.git', '.codex-plugin/migrated-command-skills'];
+  if (consumer === 'kimi') return ['.git'];
   return [];
 }
 

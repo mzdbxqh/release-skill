@@ -1,5 +1,39 @@
 # Changelog
 
+<!-- release-skill:changelog:start version=0.1.10 locale=en baseline=sha256:ec4dbf3f44f1295d9af20e0fbf1ced4341d9b65d0c93598104e228244e33fa2b -->
+## [0.1.10] - 2026-07-24
+
+v0.1.10 fixes the codex marketplace install verification failure caused by the codex CLI materializing a `.codex-plugin/migrated-command-skills/` subtree (commands migrated to skill format) in the plugin install root at install time. That consumer-owned transport metadata is now exempted alongside the root `.git` checkout, and the frozen snapshot exclusion list supports multi-segment relative path prefixes while single-segment root-only behavior is unchanged. The sealed snapshot digest, release plan schema, and prepare-side freezing are unchanged, so already-frozen plans reconcile without re-approval. The npm package name (`release-skill`), publishing identity (`publisher: mzdbxqh`), public repository (`ifoohoo/release-skill`), and corporate maintainer remain unchanged.
+
+### Fixed
+
+- **Codex `migrated-command-skills` transport exemption**: the codex CLI
+  converts plugin `commands/` into skill format at install time and writes the
+  result under `.codex-plugin/migrated-command-skills/` in the install root.
+  That consumer-owned subtree is not part of the published payload, so the
+  whole-tree comparison failed every real codex marketplace install; the
+  codex consumer transport exemptions widen from `['.git']` to
+  `['.git', '.codex-plugin/migrated-command-skills']`. Claude (`.in_use`) and
+  Kimi (`.git`) exemptions are unchanged, and the exemption deliberately
+  never widens to `.codex-plugin/*` or arbitrary extra files. Verified
+  against a real flow-architect install: the installed tree is byte-identical
+  to the frozen snapshot except for the migrated-command-skills directory.
+  Already-frozen plans reconcile unchanged because the sealed digest, plan
+  schema, and prepare-side freezing are untouched.
+- **Multi-segment snapshot exclusions, fail-closed**:
+  `computeFrozenSnapshot`'s `excludeRootEntries` now accepts multi-segment
+  relative path prefixes naming an exact excluded subtree (required for the
+  `.codex-plugin/migrated-command-skills` exemption); single-segment entries
+  keep the historical root-only matching. Malformed entries (non-string,
+  absolute, `..`, backslash) fail closed: a bad exclusion list is a caller
+  bug, not transport metadata.
+- **Regression coverage**: new protocol-level tests cover the root-layout
+  codex execute→observe→verify cycle with the CLI-generated
+  migrated-command-skills tree present, including byte-tamper and extra-file
+  negatives that must still fail closed.
+<!-- release-skill:changelog:end version=0.1.10 locale=en -->
+
+
 <!-- release-skill:changelog:start version=0.1.9 locale=en baseline=sha256:409f940c03e2d6fd41d33659b246b3d4b622918b4ac5a3a711d83aa09740ef11 -->
 ## [0.1.9] - 2026-07-23
 

@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md) · Installation: [English](INSTALL.md) / [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.9 -->
+<!-- release-skill:release-version: 0.1.10 -->
 Release preparation for Claude Code, Codex, and Kimi Code, with human-edited files kept intact.
 
 release-skill helps a maintainer answer three questions: what will be released,
@@ -11,41 +11,41 @@ reviewed artifacts first and publishes those same artifacts later; it does not
 regenerate a README or re-pack the live workspace at the last step.
 
 <!-- release-skill:managed:start id=latest-release -->
-**0.1.9** (2026-07-23)
+**0.1.10** (2026-07-24)
 
-v0.1.9 fixes a structural marketplace install verification failure: consumer installs that declare a plugin `source` subdirectory (e.g. `./adapters/claude`) now bind the installed payload to the declared subtree of the sealed whole-unit snapshot, and Claude's root `.in_use` marker is exempted as consumer-owned transport metadata. The sealed snapshot digest, release plan schema, and prepare-side freezing are unchanged, so already-frozen plans reconcile without re-approval. The npm package name (`release-skill`), publishing identity (`publisher: mzdbxqh`), public repository (`ifoohoo/release-skill`), and corporate maintainer remain unchanged.
+v0.1.10 fixes the codex marketplace install verification failure caused by the codex CLI materializing a `.codex-plugin/migrated-command-skills/` subtree (commands migrated to skill format) in the plugin install root at install time. That consumer-owned transport metadata is now exempted alongside the root `.git` checkout, and the frozen snapshot exclusion list supports multi-segment relative path prefixes while single-segment root-only behavior is unchanged. The sealed snapshot digest, release plan schema, and prepare-side freezing are unchanged, so already-frozen plans reconcile without re-approval. The npm package name (`release-skill`), publishing identity (`publisher: mzdbxqh`), public repository (`ifoohoo/release-skill`), and corporate maintainer remain unchanged.
 
 **Fixed**
 
-- **Marketplace payload binding for subdirectory source layouts**: consumer
-  marketplaces may declare a plugin `source` subdirectory such as
-  `./adapters/claude`; the consumer CLI then installs only that subtree while
-  the sealed authority is the whole unit snapshot. Install verification now
-  revalidates the sealed whole-snapshot digest, re-reads the declared source
-  from the marketplace manifest inside the digest-verified snapshot entries,
-  and binds the installed payload to that prefix-stripped subtree. Root
-  layouts and Kimi keep the whole-tree comparison. This resolves the
-  flow-architect v0.4.1 and v0.5.0 PARTIAL marketplace install failures;
-  already-frozen plans reconcile unchanged because the sealed digest, plan
+- **Codex `migrated-command-skills` transport exemption**: the codex CLI
+  converts plugin `commands/` into skill format at install time and writes the
+  result under `.codex-plugin/migrated-command-skills/` in the install root.
+  That consumer-owned subtree is not part of the published payload, so the
+  whole-tree comparison failed every real codex marketplace install; the
+  codex consumer transport exemptions widen from `['.git']` to
+  `['.git', '.codex-plugin/migrated-command-skills']`. Claude (`.in_use`) and
+  Kimi (`.git`) exemptions are unchanged, and the exemption deliberately
+  never widens to `.codex-plugin/*` or arbitrary extra files. Verified
+  against a real flow-architect install: the installed tree is byte-identical
+  to the frozen snapshot except for the migrated-command-skills directory.
+  Already-frozen plans reconcile unchanged because the sealed digest, plan
   schema, and prepare-side freezing are untouched.
-- **Claude `.in_use` transport marker exemption**: the Claude CLI writes an
-  empty `.in_use` marker into the plugin install root; it is now exempted as
-  consumer-owned transport metadata alongside the existing Codex/Kimi `.git`
-  exemption, through a single shared exclusion helper that also backs the
-  observe-time diagnostic fallback. Exemptions remain root-only: nested
-  markers, extra payload, byte tampering, and sealed authority tampering
-  still fail closed.
-- **Regression coverage**: new protocol-level fake-CLI tests cover the
-  subdirectory claude cycle with `.in_use` (including byte-tamper,
-  extra-file, missing-file, `.git`-not-exempt, and nested-marker negatives),
-  fail-closed manifest anomalies (duplicate plugin entry, wrong marketplace
-  name, empty source projection), root-layout claude with `.in_use`, and a
-  codex subdirectory variant.
+- **Multi-segment snapshot exclusions, fail-closed**:
+  `computeFrozenSnapshot`'s `excludeRootEntries` now accepts multi-segment
+  relative path prefixes naming an exact excluded subtree (required for the
+  `.codex-plugin/migrated-command-skills` exemption); single-segment entries
+  keep the historical root-only matching. Malformed entries (non-string,
+  absolute, `..`, backslash) fail closed: a bad exclusion list is a caller
+  bug, not transport metadata.
+- **Regression coverage**: new protocol-level tests cover the root-layout
+  codex execute→observe→verify cycle with the CLI-generated
+  migrated-command-skills tree present, including byte-tamper and extra-file
+  negatives that must still fail closed.
 <!-- release-skill:managed:end id=latest-release -->
 
 <!-- release-skill:capability:external-write-boundary -->
-> **Current boundary:** v0.1.9 is the current release (v0.1.8 previously held
-> published status before the marketplace payload binding fix was added).
+> **Current boundary:** v0.1.10 is the current release (v0.1.9 previously held
+> published status before the codex migrated-command-skills fix was added).
 > v0.1.1 completed a real production release to GitHub and npm — the first
 > production-verified milestone — followed by
 > exact npm installation and Claude/Codex consumer installation verification

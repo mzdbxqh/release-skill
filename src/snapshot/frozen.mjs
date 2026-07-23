@@ -83,9 +83,14 @@ async function readStableRegularFile(filePath, displayPath) {
  *
  * `excludeRootEntries` is reserved for consumer-owned transport metadata
  * that is not part of the published payload: Codex's root `.git` checkout
- * metadata and Claude's root `.in_use` in-use plugin marker. Exclusions
- * only apply to direct children of the root; all payload paths retain the
- * normal fail-closed file checks.
+ * metadata, Codex's CLI-generated `.codex-plugin/migrated-command-skills/`
+ * subtree, and Claude's root `.in_use` in-use plugin marker. Single-segment
+ * entries only match direct children of the root (historical behavior);
+ * multi-segment entries name an exact relative path whose subtree is
+ * skipped. Every other payload path retains the normal fail-closed file
+ * checks — the exemption must never widen to whole directories or
+ * arbitrary extra files. Malformed entries (absolute, "..", backslash)
+ * fail closed: a bad exclusion list is a caller bug, not transport metadata.
  */
 export async function computeFrozenSnapshot(snapshotDir, { excludeRootEntries = [] } = {}) {
   const root = await realpath(snapshotDir);
@@ -95,14 +100,33 @@ export async function computeFrozenSnapshot(snapshotDir, { excludeRootEntries = 
   }
 
   const entries = [];
-  const excluded = new Set(excludeRootEntries);
+  const excludedRootNames = new Set();
+  const excludedPathPrefixes = [];
+  for (const entry of excludeRootEntries) {
+    if (typeof entry !== 'string') {
+      throw frozenError('frozen snapshot exclusion entries must be strings');
+    }
+    const segments = entry.split('/').filter((segment) => segment !== '' && segment !== '.');
+    if (
+      segments.length === 0 || entry.startsWith('/') || entry.includes('\\') ||
+      segments.some((segment) => segment === '..')
+    ) {
+      throw frozenError(`frozen snapshot exclusion entry is not a safe relative path: ${JSON.stringify(entry)}`);
+    }
+    if (segments.length === 1) {
+      excludedRootNames.add(segments[0]);
+    } else {
+      excludedPathPrefixes.push(segments.join('/'));
+    }
+  }
   async function walk(dir) {
     const children = await readdir(dir, { withFileTypes: true });
     children.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const child of children) {
-      if (dir === root && excluded.has(child.name)) continue;
+      if (dir === root && excludedRootNames.has(child.name)) continue;
       const absolute = join(dir, child.name);
       const rel = relative(root, absolute).split('\\').join('/');
+      if (excludedPathPrefixes.some((prefix) => rel === prefix || rel.startsWith(`${prefix}/`))) continue;
       const st = await lstat(absolute);
       if (st.isSymbolicLink()) {
         throw frozenError(`frozen snapshot contains symlink: ${rel}`);
