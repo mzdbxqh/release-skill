@@ -1,0 +1,24 @@
+{
+  "comment": "Registered Node-API prebuilds. Each entry is loaded only after path, file identity, exports, and SHA-256 verification.",
+  "prebuilds": {
+    "darwin-arm64": {
+      "path": "prebuilds/darwin-arm64/safe_write.node",
+      "sha256": "f5ffc367a1c49fed812dc430246cd8b07fb722653cc9738acabcedb17d6bab67",
+      "exports": [
+        "openRoot",
+        "openDir",
+        "readEntry",
+        "readFile",
+        "createTemp",
+        "rename",
+        "abortTemp",
+        "mkdir",
+        "rmdir",
+        "unlink",
+        "chmod",
+        "fsync",
+        "close"
+      ]
+    }
+  }
+}

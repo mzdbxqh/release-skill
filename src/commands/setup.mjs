@@ -33,7 +33,7 @@ import { readTrustedPackageResource } from '../core/trusted-resource.mjs';
 
 const execFile = promisify(execFileCb);
 const SKIP_DIRS = new Set([
-  '.git', '.release-skill', '.worktrees', '.claude', '.codex', '.cache', '.tmp',
+  '.git', '.release-skill', '.worktrees', '.claude', '.codex', '.kimi', '.cache', '.tmp',
   '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.venv', 'venv',
   'node_modules', 'dist', 'coverage', 'build', 'out', 'tmp', 'temp',
   'runs', 'test', 'tests', 'test-fixtures', 'fixtures', 'examples',
@@ -88,6 +88,7 @@ async function walkDiscoveryFiles(root, maxDepth = 8) {
           /^CHANGELOG(?:\.|$)/i.test(child.name) ||
           absolute.endsWith('/.claude-plugin/plugin.json') ||
           absolute.endsWith('/.codex-plugin/plugin.json') ||
+          absolute.endsWith('/.kimi-plugin/plugin.json') ||
           absolute.endsWith('/.claude-plugin/marketplace.json') ||
           absolute.endsWith('/.codex-plugin/marketplace.json'))
       ) {
@@ -422,7 +423,7 @@ async function discoverFacts(root) {
   const files = await walkDiscoveryFiles(root);
   const packageFiles = files.filter((path) => (
     basename(path) === 'package.json' &&
-    !/[\\/]adapters[\\/](?:claude|codex)[\\/]package\.json$/.test(path)
+    !/[\\/]adapters[\\/](?:claude|codex|kimi)[\\/]package\.json$/.test(path)
   ));
   const pluginFiles = files.filter((path) => path.endsWith('/plugin.json'));
   const marketplaceFiles = files.filter((path) => path.endsWith('/marketplace.json'));
@@ -458,7 +459,9 @@ async function discoverFacts(root) {
     const value = await readJsonBounded(path, 'discovered plugin manifest');
     manifests.push({
       path: safeRelative(root, path),
-      host: path.includes('/.claude-plugin/') ? 'claude' : 'codex',
+      host: path.includes('/.claude-plugin/') ? 'claude'
+        : path.includes('/.kimi-plugin/') ? 'kimi'
+          : 'codex',
       kind: path.endsWith('/marketplace.json') ? 'marketplace' : 'plugin',
       name: typeof value.name === 'string' ? value.name : null,
       version: typeof value.version === 'string' ? value.version : null,
@@ -483,7 +486,8 @@ async function discoverFacts(root) {
         name: skillIndex >= 0 ? segments[skillIndex + 1] ?? null : null,
         host: relPath.includes('/adapters/claude/') ? 'claude'
           : relPath.includes('/adapters/codex/') ? 'codex'
-            : 'shared',
+            : relPath.includes('/adapters/kimi/') ? 'kimi'
+              : 'shared',
       };
     })
     .filter((item) => item.name)
@@ -651,7 +655,7 @@ function buildCandidates(facts) {
   const ids = new Set();
   const knownFiles = new Set(facts.fileDigests.map((file) => file.path));
   const manifestRoots = facts.manifests.map((manifest) => {
-    const match = manifest.path.match(/^(.*?)(?:\/)?(?:\.claude-plugin|\.codex-plugin)\/(?:plugin|marketplace)\.json$/);
+    const match = manifest.path.match(/^(.*?)(?:\/)?(?:\.claude-plugin|\.codex-plugin|\.kimi-plugin)\/(?:plugin|marketplace)\.json$/);
     return { ...manifest, root: match?.[1] || '.' };
   });
   const manifestOwners = new Map();
@@ -698,6 +702,7 @@ function buildCandidates(facts) {
     ) distributions.push('npm');
     if (pluginHosts.includes('claude')) distributions.push('claude-plugin');
     if (pluginHosts.includes('codex')) distributions.push('codex-plugin');
+    if (pluginHosts.includes('kimi')) distributions.push('kimi-plugin');
     if (pkg.private && matchingLegacyUnits.length === 0 && facts.legacyReleaseConfigs.length > 0) continue;
     if (pkg.private && distributions.length === 0) continue;
 

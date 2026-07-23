@@ -68,6 +68,7 @@ const ADAPTER_ACTION_TYPE_MAP = {
   'github-release': 'github-release',
   'claude-marketplace-install': 'claude-marketplace-install',
   'codex-marketplace-install': 'codex-marketplace-install',
+  'kimi-marketplace-install': 'kimi-marketplace-install',
 };
 
 // ---------------------------------------------------------------------------
@@ -706,7 +707,8 @@ export async function verifyRelease(options) {
     // =======================================================================
     // Step 3: Verify all actions via adapters
     //
-    // Marketplace actions (claude-marketplace-install, codex-marketplace-install)
+    // Marketplace actions (claude-marketplace-install, codex-marketplace-install,
+    // kimi-marketplace-install)
     // are verified as fresh, isolated consumer installs in verify's own runDir.
     // This ensures verify does not read the publish run's consumer install
     // directories or evidence.
@@ -721,6 +723,7 @@ export async function verifyRelease(options) {
     const MARKETPLACE_TYPES = new Set([
       'claude-marketplace-install',
       'codex-marketplace-install',
+      'kimi-marketplace-install',
     ]);
 
     for (const action of actions) {
@@ -831,7 +834,9 @@ export async function verifyRelease(options) {
 
         const distribution = action.type === 'claude-marketplace-install'
           ? 'claude-plugin'
-          : 'codex-plugin';
+          : action.type === 'codex-marketplace-install'
+            ? 'codex-plugin'
+            : 'kimi-plugin';
         const installPath = verifyResult.observation?.installPath;
         consumerGateResults.push(...await runConsumerVerificationGates({
           plan,
@@ -845,10 +850,15 @@ export async function verifyRelease(options) {
                 HOME: resolve(runDir, 'consumers', `claude-${action.parameters.plugin}`),
                 CLAUDE_CONFIG_DIR: resolve(runDir, 'consumers', `claude-${action.parameters.plugin}`, '.claude'),
               }
-            : {
-                HOME: resolve(runDir, 'consumers', `codex-${action.parameters.plugin}`),
-                CODEX_HOME: resolve(runDir, 'consumers', `codex-${action.parameters.plugin}`),
-              },
+            : action.type === 'codex-marketplace-install'
+              ? {
+                  HOME: resolve(runDir, 'consumers', `codex-${action.parameters.plugin}`),
+                  CODEX_HOME: resolve(runDir, 'consumers', `codex-${action.parameters.plugin}`),
+                }
+              : {
+                  HOME: resolve(runDir, 'consumers', `kimi-${action.parameters.plugin}`),
+                  KIMI_CODE_HOME: resolve(runDir, 'consumers', `kimi-${action.parameters.plugin}`),
+                },
         }));
       } else {
         // --- Non-marketplace: read-only adapter.verify() ---

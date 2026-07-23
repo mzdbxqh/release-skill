@@ -2,10 +2,10 @@
  * Pure producer: build adapters from skills and plugin templates.
  *
  * Reads skill metadata from skills-src/ and plugin.json templates,
- * generates self-contained adapter directories for each platform (claude, codex).
+ * generates self-contained adapter directories for each platform (claude, codex, kimi).
  *
  * Each adapter root contains:
- * - Plugin manifest (.claude-plugin/ or .codex-plugin/)
+ * - Plugin manifest (.claude-plugin/, .codex-plugin/, or .kimi-plugin/)
  * - Skills with host-specific root resolution
  * - bin/release-skill.mjs (wrapper) + bin/release-skill.bundle.mjs (self-contained bundle)
  * - schemas/ (JSON Schema files)
@@ -205,6 +205,12 @@ const PLATFORMS = [
     templateFileName: 'plugin.json',
     hasMarketplace: false,
   },
+  {
+    name: 'kimi',
+    pluginDirName: '.kimi-plugin',
+    templateFileName: 'plugin.json',
+    hasMarketplace: false,
+  },
 ];
 
 const REQUIRED_SCHEMA_FILES = Object.freeze([
@@ -291,36 +297,60 @@ const CODEX_PREAMBLE = `\
 `;
 
 /**
+ * Preamble prepended to every Kimi Code SKILL.md.
+ *
+ * Kimi Code's official Agent Skills contract defines the body placeholder
+ * `${KIMI_SKILL_DIR}`: the host expands it to the absolute directory containing
+ * the current SKILL.md before sending the body to the agent. This is the ONLY
+ * authoritative input for locating the entry point — the agent must NOT guess
+ * any undocumented host-metadata path. The literal placeholder is emitted
+ * verbatim (the generator does not pre-expand it); the host expands it at load
+ * time. Generated skills live at `<pluginRoot>/skills/<name>/SKILL.md`, so the
+ * plugin root is two levels above the expanded skill directory.
+ */
+const KIMI_PREAMBLE = `\
+> **Kimi Code 安装入口解析协议**：Kimi Code 官方技能契约提供正文占位符 \`\${KIMI_SKILL_DIR}\`，宿主在向 Agent 发送正文前会将其展开为当前 \`SKILL.md\` 所在目录的绝对路径。必须把展开后的字面量作为当前技能目录的唯一权威输入，记为 \`SKILL_DIR\`。\n\
+> 禁止从工作目录、可执行搜索路径、源码仓库、shell 调用上下文或任何未记载的宿主元数据路径猜测技能目录。若正文中的 \`\${KIMI_SKILL_DIR}\` 未被宿主展开（仍是字面量占位符），立即停止并报告安装定位失败。\n\
+> 对 \`SKILL_DIR\` 执行 \`realpath\`，取其目录向上两级得到 \`PLUGIN_ROOT\`；校验真实技能路径匹配 \`PLUGIN_ROOT/skills/*/SKILL.md\` 且仍位于插件根内（路径包含检查）。\n\
+> 令 \`RELEASE_SKILL_ENTRY=PLUGIN_ROOT/bin/release-skill.mjs\`，对入口执行 \`realpath\` containment、\`lstat\` 非符号链接且为普通文件校验。\n\
+> 每一次 shell 工具调用都必须在同一个调用中用上述已验证绝对值设置 \`RELEASE_SKILL_ENTRY\`，然后执行 \`node "$RELEASE_SKILL_ENTRY" ...\`；不得依赖前一次 shell 的变量。\n\
+>\n\
+`;
+
+/**
  * Render SKILL.md content for a specific platform.
  *
  * - Claude: verbatim copy (uses ${CLAUDE_PLUGIN_ROOT})
  * - Codex: replaces the Claude-only path with $RELEASE_SKILL_ENTRY,
  *   and prepends the path resolution protocol preamble.
+ * - Kimi: same substitution as Codex, with the Kimi Code preamble.
  *
  * @param {string} content - Canonical SKILL.md content.
- * @param {string} platformName - 'claude' or 'codex'.
+ * @param {string} platformName - 'claude', 'codex', or 'kimi'.
  * @returns {string}
  */
 function renderSkillForPlatform(content, platformName) {
   if (platformName === 'claude') return content;
 
-  if (platformName === 'codex') {
+  if (platformName === 'codex' || platformName === 'kimi') {
+    const hostLabel = platformName === 'codex' ? 'Codex' : 'Kimi';
+    const preamble = platformName === 'codex' ? CODEX_PREAMBLE : KIMI_PREAMBLE;
     let rendered = content.replaceAll(
       '${CLAUDE_PLUGIN_ROOT}/bin/release-skill.mjs',
       '$RELEASE_SKILL_ENTRY',
     );
-    // A remaining bare host-root reference has no safe Codex equivalent.
+    // A remaining bare host-root reference has no safe path-derived equivalent.
     if (rendered.includes('${CLAUDE_PLUGIN_ROOT}')) {
-      throw new Error('Codex rendering found an unsupported bare CLAUDE_PLUGIN_ROOT reference');
+      throw new Error(`${hostLabel} rendering found an unsupported bare CLAUDE_PLUGIN_ROOT reference`);
     }
     // Preserve YAML frontmatter as the first bytes so the host can discover
     // the skill. Insert the host-specific protocol immediately after it.
     const frontmatterEnd = rendered.indexOf('\n---\n', 4);
     if (!rendered.startsWith('---\n') || frontmatterEnd < 0) {
-      throw new Error('Codex rendering requires a valid leading YAML frontmatter block');
+      throw new Error(`${hostLabel} rendering requires a valid leading YAML frontmatter block`);
     }
     const insertionPoint = frontmatterEnd + '\n---\n'.length;
-    return `${rendered.slice(0, insertionPoint)}\n${CODEX_PREAMBLE}${rendered.slice(insertionPoint)}`;
+    return `${rendered.slice(0, insertionPoint)}\n${preamble}${rendered.slice(insertionPoint)}`;
   }
 
   return content;

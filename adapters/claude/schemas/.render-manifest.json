@@ -22,12 +22,12 @@
       "bytes": 2390
     },
     "release-plan.schema.json": {
-      "digest": "13baa16d9a762cc04c7f28fc9d31ed81d381008c71eb044f4e97de252b4cc324",
-      "bytes": 22942
+      "digest": "69feff34b2fee517fd9ae89f576840c0abf331df9e9537f2798f62fab9a6720f",
+      "bytes": 23091
     },
     "release-project.schema.json": {
-      "digest": "4e46d6b1956a14d01471e7cf1cde3c0a6971c4f8844603fedd2a52f3535a43b6",
-      "bytes": 24167
+      "digest": "e9e3d090ee9c7a963e7346250328e30bf91a16a0962e5bc85deeab7c756c9e95",
+      "bytes": 24329
     },
     "release-run.schema.json": {
       "digest": "74f087f8815f00997c6ad3bac033660b9b69de226a6f5c48a96194dba0fa872c",

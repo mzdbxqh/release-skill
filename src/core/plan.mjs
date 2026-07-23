@@ -285,6 +285,7 @@ const EXPECTED_ADAPTER = {
   'npm-publish': 'npm',
   'claude-marketplace-install': 'plugin-marketplace',
   'codex-marketplace-install': 'plugin-marketplace',
+  'kimi-marketplace-install': 'plugin-marketplace',
   'set-default-branch': 'git-github',
 };
 
@@ -301,6 +302,7 @@ const REQUIRED_ACTION_TYPES = ['push-snapshot', 'create-tag', 'github-release'];
  * - 1 npm-publish    (adapter: npm) — only if the unit has an npm distribution
  * - 1 claude-marketplace-install (adapter: plugin-marketplace) — only if the unit has a claude-plugin distribution
  * - 1 codex-marketplace-install  (adapter: plugin-marketplace) — only if the unit has a codex-plugin distribution
+ * - 1 kimi-marketplace-install   (adapter: plugin-marketplace) — only if the unit has a kimi-plugin distribution
  *
  * Every action must bind to the correct unitId, correct adapter, correct
  * version, correct publicRepo (where applicable), and correct tag derived
@@ -813,6 +815,122 @@ export function validatePlanActionCompleteness(plan, options = {}) {
         _checkRequired(action, 'expected.entrySkill', action.expected?.entrySkill, entrySkill, unitId, failures);
         if (production) {
           _checkRequired(action, 'expected.consumer', action.expected?.consumer, 'codex', unitId, failures);
+          _checkRequired(action, 'expected.repo', action.expected?.repo, publicRepo, unitId, failures);
+          _checkRequired(action, 'expected.ref', action.expected?.ref, expectedTag, unitId, failures);
+          _checkRequired(action, 'expected.entrySkillFound', action.expected?.entrySkillFound, true, unitId, failures);
+          _checkRequired(action, 'expected.manifestDigest', action.expected?.manifestDigest, frozen?.manifestDigest, unitId, failures);
+        }
+      }
+    }
+
+    // kimi-marketplace-install: only required if unit has kimi-plugin distribution
+    const kimiDist = distributions.find((d) => d.type === 'kimi-plugin');
+    if (kimiDist) {
+      const plugin = kimiDist.plugin;
+      // marketplace is NOT a required identity field for kimi: Kimi Code has an
+      // interactive marketplace but no non-interactive install API, so the kimi
+      // action carries no executable marketplace identity (MINOR-1). Only plugin
+      // and entrySkill are required; a declared marketplace is tolerated as an
+      // optional legacy value but never bound as a required condition.
+      const marketplace = kimiDist.marketplace;
+      const entrySkill = kimiDist.entrySkill;
+      if (!plugin || !entrySkill) {
+        failures.push(`unit "${unitId}": kimi-plugin distribution requires plugin and entrySkill`);
+      }
+      expectedCount++;
+      const expectedActionId = `kimi-marketplace-install-${unitId}`;
+      const kimiActions = actions.filter(
+        (a) => a.unitId === unitId && a.type === 'kimi-marketplace-install',
+      );
+
+      if (kimiActions.length === 0) {
+        failures.push(
+          `unit "${unitId}": kimi-plugin distribution declared but "kimi-marketplace-install" action is missing`,
+        );
+      } else if (kimiActions.length > 1) {
+        failures.push(
+          `unit "${unitId}": duplicate kimi-marketplace-install actions (${kimiActions.length} found, expected 1)`,
+        );
+      } else {
+        const action = kimiActions[0];
+
+        if (action.id !== expectedActionId) {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": id is "${action.id}", expected "${expectedActionId}"`,
+          );
+        }
+        if (action.unitId !== unitId) {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": unitId is "${action.unitId}", expected "${unitId}"`,
+          );
+        }
+        if (action.adapter !== 'plugin-marketplace') {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": adapter is "${action.adapter}", expected "plugin-marketplace"`,
+          );
+        }
+        if (action.status !== 'PENDING') {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": status is "${action.status ?? '(missing)'}", expected "PENDING"`,
+          );
+        }
+
+        // Parameter checks
+        _checkRequired(action, 'parameters.consumer', action.parameters?.consumer, 'kimi', unitId, failures);
+        _checkRequired(action, 'parameters.plugin', action.parameters?.plugin, plugin, unitId, failures);
+        // marketplace is optional for kimi (MINOR-1). If a legacy plan still
+        // carries it, it must be consistent with the declared distribution but
+        // is never a required identity condition.
+        if (action.parameters?.marketplace !== undefined && marketplace !== undefined
+          && action.parameters.marketplace !== marketplace) {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": parameters.marketplace is "${action.parameters.marketplace}", expected optional legacy value "${marketplace}"`,
+          );
+        }
+        _checkRequired(action, 'parameters.repo', action.parameters?.repo, publicRepo, unitId, failures);
+        _checkRequired(action, 'parameters.version', action.parameters?.version, targetVersion, unitId, failures);
+        _checkRequired(action, 'parameters.entrySkill', action.parameters?.entrySkill, entrySkill, unitId, failures);
+        if (production) {
+          _checkRequired(action, 'parameters.snapshotPath', action.parameters?.snapshotPath, frozen?.path, unitId, failures);
+          _checkRequired(action, 'parameters.ref', action.parameters?.ref, expectedTag, unitId, failures);
+          _checkRequired(action, 'parameters.manifestDigest', action.parameters?.manifestDigest, frozen?.manifestDigest, unitId, failures);
+        }
+        // timeoutMs is mandatory for all marketplace install actions.
+        // Legacy plans (pre-v0.1.5) lack this field; legacyCompatibility
+        // relaxes the check for reconcile/verify paths only, and only when
+        // the property is genuinely absent (undefined). An explicit null is
+        // NOT "absent" -- it is an invalid value and always fails closed,
+        // like strings or out-of-range numbers, even in legacyCompatibility.
+        {
+          const raw = action.parameters?.timeoutMs;
+          if (raw === undefined) {
+            if (!options.legacyCompatibility) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs is missing, expected a valid timeout (30000-900000)`,
+              );
+            }
+          } else {
+            // Field is present -- always validate range/type, even in legacy mode
+            if (typeof raw !== 'number' || !Number.isFinite(raw) || !Number.isInteger(raw)) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be a finite integer, got: ${JSON.stringify(raw)}`,
+              );
+            } else if (raw < 30000 || raw > 900000) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be between 30000 and 900000, got: ${raw}`,
+              );
+            }
+          }
+        }
+
+        // Expected checks. marketplace is NOT part of the kimi expected
+        // identity (MINOR-1): the kimi observation never binds a marketplace.
+        _checkRequired(action, 'expected.installed', action.expected?.installed, true, unitId, failures);
+        _checkRequired(action, 'expected.plugin', action.expected?.plugin, plugin, unitId, failures);
+        _checkRequired(action, 'expected.version', action.expected?.version, targetVersion, unitId, failures);
+        _checkRequired(action, 'expected.entrySkill', action.expected?.entrySkill, entrySkill, unitId, failures);
+        if (production) {
+          _checkRequired(action, 'expected.consumer', action.expected?.consumer, 'kimi', unitId, failures);
           _checkRequired(action, 'expected.repo', action.expected?.repo, publicRepo, unitId, failures);
           _checkRequired(action, 'expected.ref', action.expected?.ref, expectedTag, unitId, failures);
           _checkRequired(action, 'expected.entrySkillFound', action.expected?.entrySkillFound, true, unitId, failures);

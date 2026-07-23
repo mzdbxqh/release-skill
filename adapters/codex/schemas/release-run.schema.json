@@ -126,6 +126,7 @@
               "github-release",
               "claude-marketplace-install",
               "codex-marketplace-install",
+              "kimi-marketplace-install",
               "set-default-branch"
             ],
             "description": "Type of external action"

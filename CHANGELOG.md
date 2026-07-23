@@ -1,5 +1,27 @@
 # Changelog
 
+<!-- release-skill:changelog:start version=0.1.8 locale=en baseline=sha256:1e1a0af9d5807bceb7af1eae88b726f67e6811dba4db579fd625c07f3bdbca89 -->
+## [0.1.8] - 2026-07-23
+
+v0.1.8 adds Kimi Code as a first-class plugin host without rewriting the already-published v0.1.7 artifacts. Kimi delivery uses a generated self-contained adapter and a fail-closed, plan-bound manual installation attestation because Kimi Code has no scriptable non-interactive plugin installation interface. The npm package name (`release-skill`), publishing identity (`publisher: mzdbxqh`), public repository (`ifoohoo/release-skill`), and corporate maintainer remain unchanged.
+
+### Changed
+
+- **Kimi Code plugin delivery and verification**: v0.1.8 adds the root
+  `.kimi-plugin/plugin.json`, a generated self-contained `adapters/kimi/` bundle,
+  and public installation guidance. Because Kimi Code exposes no scriptable
+  non-interactive plugin installation interface, production publish emits a
+  version-pinned manual installation requirement and enters `PARTIAL`; an
+  isolated `KIMI_CODE_HOME` installation and a trusted attestation bound
+  independently to the frozen plan digest and payload digest are required before
+  `reconcile` can reach `PUBLISHED` and `verify` can reach `VERIFIED`.
+- **Immutable v0.1.7 history preserved**: the existing v0.1.7 Git tag,
+  GitHub Release, npm version, and public commit remain untouched. The v0.1.8
+  production plan binds the published v0.1.7 commit
+  `fe5897456d4166a2ec60e99405836b122562b80d` as its previous public baseline.
+<!-- release-skill:changelog:end version=0.1.8 locale=en -->
+
+
 <!-- release-skill:changelog:start version=0.1.7 locale=en baseline=sha256:e41fd6460f5bb63343547f04b08e2cfcdd8a64cb53806cbcf39870a2fe27b03e -->
 ## [0.1.7] - 2026-07-23
 

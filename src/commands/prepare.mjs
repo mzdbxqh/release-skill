@@ -966,6 +966,35 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
           status: 'PENDING',
         });
       }
+      const kimiDist = (unit.distributions ?? []).find((d) => d.type === 'kimi-plugin');
+      if (kimiDist) {
+        const identity = marketplaceIdentity(kimiDist);
+        const kimiTimeoutMs = Number.isInteger(kimiDist.timeoutMs) ? kimiDist.timeoutMs : 300000;
+        // Kimi Code has no non-interactive install/marketplace API, so the kimi
+        // action carries no marketplace identity (MINOR-1). plugin + entrySkill
+        // are the meaningful identity fields.
+        actions.push({
+          id: `kimi-marketplace-install-${unit.id}`,
+          type: 'kimi-marketplace-install',
+          adapter: 'plugin-marketplace',
+          unitId: unit.id,
+          parameters: {
+            consumer: 'kimi',
+            plugin: identity.plugin,
+            repo: unit.publicRepo,
+            version,
+            entrySkill: identity.entrySkill,
+            timeoutMs: kimiTimeoutMs,
+          },
+          expected: {
+            installed: true,
+            plugin: identity.plugin,
+            version,
+            entrySkill: identity.entrySkill,
+          },
+          status: 'PENDING',
+        });
+      }
     }
     return actions;
   }
@@ -1170,6 +1199,42 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
           consumer: 'codex',
           plugin: identity.plugin,
           marketplace: identity.marketplace,
+          repo: unit.publicRepo,
+          version: unitVersion,
+          ref: resolvedTag,
+          entrySkill: identity.entrySkill,
+          entrySkillFound: true,
+          manifestDigest: asset.manifestDigest,
+        },
+        status: 'PENDING',
+      });
+    }
+    const kimiDist = (unit.distributions ?? []).find((d) => d.type === 'kimi-plugin');
+    if (kimiDist) {
+      const identity = marketplaceIdentity(kimiDist);
+      const kimiTimeoutMs = Number.isInteger(kimiDist.timeoutMs) ? kimiDist.timeoutMs : 300000;
+      // No marketplace identity for kimi (MINOR-1): Kimi Code has an interactive
+      // marketplace but no non-interactive install API.
+      actions.push({
+        id: `kimi-marketplace-install-${unit.id}`,
+        type: 'kimi-marketplace-install',
+        adapter: 'plugin-marketplace',
+        unitId: unit.id,
+        parameters: {
+          consumer: 'kimi',
+          plugin: identity.plugin,
+          repo: unit.publicRepo,
+          ref: resolvedTag,
+          version: unitVersion,
+          entrySkill: identity.entrySkill,
+          snapshotPath: asset.snapshotPath,
+          manifestDigest: asset.manifestDigest,
+          timeoutMs: kimiTimeoutMs,
+        },
+        expected: {
+          installed: true,
+          consumer: 'kimi',
+          plugin: identity.plugin,
           repo: unit.publicRepo,
           version: unitVersion,
           ref: resolvedTag,

@@ -2,7 +2,7 @@
 
 [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.7 -->
+<!-- release-skill:release-version: 0.1.8 -->
 ## Prerequisites
 
 - Node.js 22.0.0 or later
@@ -34,6 +34,77 @@ release-skill help
 ```
 
 You should see the version number and the list of available commands.
+
+## Install as a Kimi Code plugin
+
+Kimi Code is a supported plugin host alongside Claude Code and Codex. The
+Kimi Code plugin manifest lives at `.kimi-plugin/plugin.json`, mirroring
+`.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`, and the package
+ships `adapters/kimi/` next to `adapters/claude/` and `adapters/codex/`.
+
+Kimi Code has an interactive plugin marketplace but **no scriptable,
+non-interactive install API**. release-skill therefore models Kimi installation
+as a version-pinned **manual** install plus trusted observation/attestation:
+`publish`/`verify` never auto-install Kimi plugins. The closed loop is:
+
+1. `publish` performs the automated writes (Git branch/tag, npm, GitHub
+   Release), then reaches the `kimi-marketplace-install` checkpoint. Because
+   there is no scriptable install, that checkpoint **fails closed** and the run
+   lands in `PARTIAL` — the successful automated writes are NOT undone. The
+   checkpoint observation (and the requirement file below) gives the isolated
+   `KIMI_CODE_HOME`, the pinned install URL, and the attestation path.
+2. Read the requirement at
+   `<root>/.release-skill/kimi-attestations/<planDigest>/<plugin>/release-skill-kimi-manual-install.json`.
+3. Launch Kimi Code with that **isolated** home so the managed copy lands inside
+   it (do not use your ordinary `~/.kimi-code`):
+
+   ```
+   HOME=<kimiCodeHome> KIMI_CODE_HOME=<kimiCodeHome> kimi
+   ```
+
+   The plugin installs to `<kimiCodeHome>/plugins/managed/<plugin>/`.
+4. In that isolated session, install from the release tag pinned to the exact
+   version (never the bare repository URL, which installs the latest release or
+   default branch), confirm the trust prompt, then reload:
+
+   ```
+   /plugins install https://github.com/ifoohoo/release-skill/releases/tag/release-skill-v0.1.8
+   /plugins reload
+   ```
+
+5. Write the attestation JSON to
+   `<root>/.release-skill/kimi-attestations/<planDigest>/<plugin>/release-skill-kimi-attestation.json`.
+   `planDigest` MUST be the frozen **plan** digest; `payloadDigest` MUST be the
+   frozen snapshot **payload** digest; `installPath` MUST be the isolated
+   managed directory above; `attestedAt` must not be in the future and
+   `expiresAt` must be within 24 hours of `attestedAt`. Example:
+
+```json
+{
+  "consumer": "kimi",
+  "plugin": "release-skill",
+  "version": "0.1.8",
+  "entrySkill": "release-help",
+  "repo": "ifoohoo/release-skill",
+  "ref": "release-skill-v0.1.8",
+  "installPath": "<kimiCodeHome>/plugins/managed/release-skill",
+  "planDigest": "<64-hex frozen plan digest>",
+  "payloadDigest": "<64-hex frozen snapshot payload digest>",
+  "attestedBy": "<person responsible>",
+  "attestedAt": "2026-07-23T00:00:00.000Z",
+  "expiresAt": "2026-07-23T12:00:00.000Z"
+}
+```
+
+6. Run `release-skill reconcile --run <publish-run>` (promotes `PARTIAL` →
+   `PUBLISHED`) and then `release-skill verify --run <reconcile-run>` (→
+   `VERIFIED`). Both read the attestation from the same plan-digest-keyed
+   directory, so their fresh run directories do not lose the proof.
+
+Installing into the ordinary `~/.kimi-code` is **not** acceptable proof: the
+attested `installPath` must resolve inside the requirement's isolated
+`KIMI_CODE_HOME` managed root, otherwise verification fails closed and the Kimi
+unit never reaches `VERIFIED`.
 
 ## Development Install (Local Checkout)
 
@@ -273,7 +344,7 @@ requirements.
 
 Use a `snapshot-verify` gate for checks that should run against a disposable
 writable copy of the frozen public snapshot. Use `consumer-verify` for commands
-that must run from an exact isolated npm/Claude/Codex installation root. Gate
+that must run from an exact isolated npm/Claude/Codex/Kimi Code installation root. Gate
 commands are executable arrays, not shell strings, and must declare unit,
 distribution when applicable, cwd, timeout, and environment allowlist.
 

@@ -115,6 +115,13 @@ async function performEnvironmentChecks() {
     usage: '仅当计划声明 codex-plugin distribution 时用于消费者安装验证',
   };
 
+  const kimiCheck = await checkDependency('kimi', ['--version']);
+  checks.kimi = {
+    ...kimiCheck,
+    required: false,
+    usage: '仅当计划声明 kimi-plugin distribution 时用于消费者安装验证',
+  };
+
   return checks;
 }
 
@@ -148,7 +155,7 @@ function getCapabilityMaturity() {
     publish: {
       available: true,
       mode: 'controlled production (protocol-tested; no OS/network sandbox)',
-      description: 'Publishes frozen GitHub/npm artifacts and runs configured Claude/Codex consumer checkpoints with approval and exact digest confirmation',
+      description: 'Publishes frozen GitHub/npm artifacts and runs configured Claude/Codex/Kimi consumer checkpoints with approval and exact digest confirmation',
     },
     reconcile: {
       available: true,
@@ -158,7 +165,7 @@ function getCapabilityMaturity() {
     verify: {
       available: true,
       mode: 'fresh consumer verification (protocol-tested; no OS/network sandbox)',
-      description: 'Recheck remote state, exact npm installation, CLI help, and configured Claude/Codex installs before VERIFIED',
+      description: 'Recheck remote state, exact npm installation, CLI help, and configured Claude/Codex/Kimi installs before VERIFIED',
     },
   };
 }
@@ -298,6 +305,7 @@ if (!command || command === 'help') {
           conditionalConsumers: {
             claude: '声明 claude-plugin distribution 时必须可用',
             codex: '声明 codex-plugin distribution 时必须可用',
+            kimi: '声明 kimi-plugin distribution 时必须可用',
           },
         },
       },
@@ -309,9 +317,9 @@ if (!command || command === 'help') {
         prepare: 'offline local writes; configured hooks/gates require their explicit side-effect acknowledgements',
         docs: 'read-only dry-run by default; write requires --write, exact --confirm-refresh, and --ack-local-document-write; never commits, pushes, or publishes',
         onlinePrepare: 'previous-public-baseline observation available; production mode freezes publish artifacts and fails closed on drift or unknown state',
-        publish: 'GitHub/npm plus configured Claude/Codex consumer checkpoints are protocol-tested without an OS/network sandbox; approval and exact digest confirmation required',
+        publish: 'GitHub/npm plus configured Claude/Codex/Kimi consumer checkpoints are protocol-tested without an OS/network sandbox; approval and exact digest confirmation required',
         reconcile: 'PARTIAL recovery is protocol-tested without an OS/network sandbox; remote conflicts require human intervention',
-        verify: 'fresh exact npm and Claude/Codex consumer installation checks are protocol-tested without an OS/network sandbox; configured consumer processes require explicit acknowledgement; success reaches VERIFIED',
+        verify: 'fresh exact npm and Claude/Codex/Kimi consumer installation checks are protocol-tested without an OS/network sandbox; configured consumer processes require explicit acknowledgement; success reaches VERIFIED',
       },
       recommendations: [],
     };
@@ -345,6 +353,10 @@ if (!command || command === 'help') {
 
     if (!checks.codex.available) {
       output.recommendations.push('Install Codex CLI before releasing a configured codex-plugin distribution');
+    }
+
+    if (!checks.kimi.available) {
+      output.recommendations.push('Install Kimi Code CLI before releasing a configured kimi-plugin distribution');
     }
 
     console.log(JSON.stringify(output, null, 2));

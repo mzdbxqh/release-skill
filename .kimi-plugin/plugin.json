@@ -1,0 +1,27 @@
+{
+  "name": "release-skill",
+  "version": "0.1.8",
+  "description": "Safe preparation and frozen GitHub/npm production publishing with full happy end verification",
+  "author": {
+    "name": "广州市风荷科技有限公司"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/ifoohoo/release-skill#readme",
+  "keywords": [
+    "release",
+    "publish",
+    "governance",
+    "skill",
+    "claude-code",
+    "codex",
+    "kimi-code"
+  ],
+  "skills": "./adapters/kimi/skills/",
+  "interface": {
+    "displayName": "Release Skill",
+    "shortDescription": "Safe preparation and frozen GitHub/npm publishing",
+    "longDescription": "Prepares byte-faithful public snapshots without rewriting project source files and publishes approved frozen GitHub/npm artifacts. Full happy end verification confirms consumer installation from frozen Git ref.",
+    "developerName": "ifoohoo",
+    "websiteURL": "https://github.com/ifoohoo/release-skill"
+  }
+}

@@ -138,7 +138,8 @@
                   "enum": [
                     "npm",
                     "claude-plugin",
-                    "codex-plugin"
+                    "codex-plugin",
+                    "kimi-plugin"
                   ]
                 },
                 "package": {
@@ -205,7 +206,7 @@
                   "type": "integer",
                   "minimum": 30000,
                   "maximum": 900000,
-                  "description": "Timeout in milliseconds for plugin marketplace install commands. Only valid for claude-plugin and codex-plugin distributions."
+                  "description": "Timeout in milliseconds for plugin marketplace install commands (claude-plugin, codex-plugin). Kimi Code has no scriptable install command, so for kimi-plugin this bounds the read-only observation/verification only, not an install command. Only valid for claude-plugin, codex-plugin, and kimi-plugin distributions."
                 }
               },
               "allOf": [
@@ -236,7 +237,8 @@
                       "type": {
                         "enum": [
                           "claude-plugin",
-                          "codex-plugin"
+                          "codex-plugin",
+                          "kimi-plugin"
                         ]
                       }
                     }
@@ -257,6 +259,21 @@
                     "required": [
                       "plugin",
                       "marketplace",
+                      "entrySkill"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "kimi-plugin"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "plugin",
                       "entrySkill"
                     ]
                   }
@@ -792,7 +809,8 @@
               "enum": [
                 "npm",
                 "claude-plugin",
-                "codex-plugin"
+                "codex-plugin",
+                "kimi-plugin"
               ]
             }
           }

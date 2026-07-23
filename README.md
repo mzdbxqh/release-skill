@@ -2,8 +2,8 @@
 
 [简体中文](README.zh-CN.md) · Installation: [English](INSTALL.md) / [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.7 -->
-Release preparation for Claude Code and Codex, with human-edited files kept intact.
+<!-- release-skill:release-version: 0.1.8 -->
+Release preparation for Claude Code, Codex, and Kimi Code, with human-edited files kept intact.
 
 release-skill helps a maintainer answer three questions: what will be released,
 which checks still fail, and which exact bytes will reach users. It freezes the
@@ -11,38 +11,29 @@ reviewed artifacts first and publishes those same artifacts later; it does not
 regenerate a README or re-pack the live workspace at the last step.
 
 <!-- release-skill:managed:start id=latest-release -->
-**0.1.7** (2026-07-23)
+**0.1.8** (2026-07-23)
 
-v0.1.7 is an organizational migration release. The public GitHub repository moves from `mzdbxqh/release-skill` to `ifoohoo/release-skill` (the repository name is unchanged and GitHub redirects the old URL), the project gains an explicit corporate maintainer and copyright holder (广州市风荷科技有限公司), and the forward-looking repository, maintainer, author, and copyright metadata across the npm package, plugin marketplace manifests, NOTICE, LICENSE, and release configuration are aligned with the new organization. The npm package name (`release-skill`) and the npm publishing identity (`publisher: mzdbxqh`) are unchanged, and the already-published v0.1.6 tag, GitHub Release, and npm version are not rewritten.
+v0.1.8 adds Kimi Code as a first-class plugin host without rewriting the already-published v0.1.7 artifacts. Kimi delivery uses a generated self-contained adapter and a fail-closed, plan-bound manual installation attestation because Kimi Code has no scriptable non-interactive plugin installation interface. The npm package name (`release-skill`), publishing identity (`publisher: mzdbxqh`), public repository (`ifoohoo/release-skill`), and corporate maintainer remain unchanged.
 
 **Changed**
 
-- **Public repository migrated to the `ifoohoo` organization**: the public
-  GitHub repository is transferred from `mzdbxqh/release-skill` to
-  `ifoohoo/release-skill` with the repository name unchanged. The default branch
-  remains `main`, the v0.1.6 tag, release, and history are preserved, and the old
-  URL redirects (HTTP 301) to the new location. The release configuration
-  (`publicRepo` and the bound `previousPublicBaseline`) now points at
-  `ifoohoo/release-skill` with the public v0.1.6 commit
-  `48fb2a258a2786c2e32136ad67bd51f3a280b3b8` as the previous public baseline.
-- **Corporate maintainer and copyright**: the MIT LICENSE (root and public
-  package) now carries a dual copyright line for the release-skill contributors
-  and 广州市风荷科技有限公司, and the NOTICE states that the project is maintained
-  by 广州市风荷科技有限公司 and clarifies that the GitHub repository transfer is an
-  administrative hosting/identity change that does not by itself constitute a
-  copyright assignment.
-- **Forward-looking metadata aligned with the organization**: the npm
-  `package.json` repository, homepage, and issue tracker URLs point at
-  `ifoohoo/release-skill`, and the package adds a corporate author while
-  preserving the release-skill contributors. The Claude Code plugin marketplace
-  owner now identifies the `ifoohoo` organization. The npm package name
-  (`release-skill`) and the npm publishing identity (`publisher: mzdbxqh`) are
-  unchanged.
+- **Kimi Code plugin delivery and verification**: v0.1.8 adds the root
+  `.kimi-plugin/plugin.json`, a generated self-contained `adapters/kimi/` bundle,
+  and public installation guidance. Because Kimi Code exposes no scriptable
+  non-interactive plugin installation interface, production publish emits a
+  version-pinned manual installation requirement and enters `PARTIAL`; an
+  isolated `KIMI_CODE_HOME` installation and a trusted attestation bound
+  independently to the frozen plan digest and payload digest are required before
+  `reconcile` can reach `PUBLISHED` and `verify` can reach `VERIFIED`.
+- **Immutable v0.1.7 history preserved**: the existing v0.1.7 Git tag,
+  GitHub Release, npm version, and public commit remain untouched. The v0.1.8
+  production plan binds the published v0.1.7 commit
+  `fe5897456d4166a2ec60e99405836b122562b80d` as its previous public baseline.
 <!-- release-skill:managed:end id=latest-release -->
 
 <!-- release-skill:capability:external-write-boundary -->
-> **Current boundary:** v0.1.7 is the current release (v0.1.6 previously held
-> this status after completing real production verification).
+> **Current boundary:** v0.1.8 is the current release (v0.1.7 previously held
+> published status before the Kimi Code distribution was added).
 > v0.1.1 completed a real production release to GitHub and npm — the first
 > production-verified milestone — followed by
 > exact npm installation and Claude/Codex consumer installation verification
@@ -59,7 +50,7 @@ v0.1.7 is an organizational migration release. The public GitHub repository move
 > publish global preflight.
 
 <!-- release-skill:capability:safe-first-command -->
-> **Production path verified since the v0.1.1 milestone; v0.1.7 is the current
+> **Production path verified since the v0.1.1 milestone; v0.1.8 is the current
 > release.** The npm-installed CLI is the supported user entry. Source checkout
 > is the development/contributor fallback.
 >
@@ -590,7 +581,18 @@ syntax.
 Production prepare seals a standalone Git commit/tree for every public snapshot
 and creates a fixed tarball for every npm unit. Publish globally preflights all
 actions, then executes and observes public branch, tag, npm, GitHub Release,
-and configured Claude/Codex marketplace installation checkpoints. `verify`
+and configured Claude/Codex marketplace installation checkpoints. Kimi Code has
+no scriptable install API, so its checkpoint **fails closed** and `publish`
+lands in `PARTIAL` after the automated writes, emitting a version-pinned manual
+install requirement. The operator then launches Kimi Code with the requirement's
+isolated `KIMI_CODE_HOME`, runs the pinned `/plugins install <release-tag URL>`,
+writes a trusted attestation (binding the frozen **plan** digest and the
+snapshot **payload** digest) into the plan-digest-keyed directory
+`.release-skill/kimi-attestations/<planDigest>/<plugin>/`, and re-runs
+`reconcile` (→ `PUBLISHED`) and `verify` (→ `VERIFIED`); both read the
+attestation from that same stable location. An install into the ordinary
+`~/.kimi-code` is not accepted. See `INSTALL.md` for the full procedure and the
+attestation JSON fields. `verify`
 installs every exact npm `package@version` in an isolated directory; when
 `smokeBin` is configured it also runs the CLI and validates output. Only when
 all evidence matches does the run reach `VERIFIED`.
@@ -705,8 +707,8 @@ target first; never widen the write scope to resolve them.
 
 ### Parent workspace with npm + plugin sub-units
 
-When a monorepo produces both an npm package and a Claude/Codex plugin from
-different directories, define separate release units. Only add a plugin
+When a monorepo produces both an npm package and a Claude/Codex/Kimi Code
+plugin from different directories, define separate release units. Only add a plugin
 distribution when the unit actually ships a plugin with manifest, marketplace,
 and entry Skill:
 
@@ -782,6 +784,10 @@ releaseUnits:
         marketplace: my-plugin
         entrySkill: my-plugin-help
         timeoutMs: 300000     # optional; range 30000-900000; default 300000
+      - type: kimi-plugin
+        plugin: my-plugin
+        entrySkill: my-plugin-help
+        timeoutMs: 300000     # optional; range 30000-900000; default 300000 (Kimi has no install command; bounds read-only verification)
     publicFiles:
       - from: packages/plugin/.claude-plugin/plugin.json
         to: .claude-plugin/plugin.json
@@ -791,6 +797,9 @@ releaseUnits:
         mode: preserve
       - from: packages/plugin/.codex-plugin/plugin.json
         to: .codex-plugin/plugin.json
+        mode: preserve
+      - from: packages/plugin/.kimi-plugin/plugin.json
+        to: .kimi-plugin/plugin.json
         mode: preserve
       - from: packages/plugin/.agents/plugins/marketplace.json
         to: .agents/plugins/marketplace.json
@@ -811,6 +820,7 @@ releaseUnits:
       - .claude-plugin/plugin.json
       - .claude-plugin/marketplace.json
       - .codex-plugin/plugin.json
+      - .kimi-plugin/plugin.json
       - .agents/plugins/marketplace.json
       - skills/my-plugin-help/SKILL.md
       - README.md
@@ -823,7 +833,8 @@ releaseUnits:
       releaseTitleTemplate: "{unit} {version}"
 ```
 
-Each plugin unit **must** list its Claude/Codex `plugin.json`, `marketplace.json`,
+Each plugin unit **must** list its Claude/Codex/Kimi Code `plugin.json`, the
+Claude/Codex `marketplace.json` files (Kimi Code has no marketplace manifest),
 the entry Skill, and all required public files. A CLI smoke (`smokeBin`) is
 optional for plugin units and only applies when the published npm package
 exposes a CLI binary.
@@ -887,7 +898,10 @@ Successful reconcile returns `PUBLISHED`, not `VERIFIED`; only the fresh
 - publishes only frozen Git objects and npm tarballs, then checks remote
   commit/tree/tag/integrity;
 - installs configured Claude/Codex plugins from the frozen Git ref and proves
-  the entry Skill and payload digest in fresh isolated consumer homes;
+  the entry Skill and payload digest in fresh isolated consumer homes; for Kimi
+  Code (no scriptable install API) it emits a version-pinned manual install
+  requirement and proves the entry Skill and payload digest only from a trusted
+  attestation bound to the frozen plan digest;
 - distinguishes `PUBLISHED` (writes completed) from `VERIFIED` (remote and
   consumer installation evidence completed);
 - stops subsequent checkpoints on failure and writes a separate run record
@@ -954,8 +968,8 @@ the exact installed distribution; gates cannot borrow tests, development
 dependencies, or `node_modules` from the parent workspace.
 
 `snapshot-verify` runs in a disposable writable copy of the frozen public
-snapshot. `consumer-verify` runs from an exact isolated npm/Claude/Codex install
-root. Both use executable arrays instead of shell strings; definitions and
+snapshot. `consumer-verify` runs from an exact isolated npm/Claude/Codex/Kimi
+Code install root. Both use executable arrays instead of shell strings; definitions and
 results enter digest-bound evidence, and prepare/verify require
 `--acknowledge-gate-side-effects`. Gates are still project processes without a
 network sandbox, so release-skill cannot promise that they will not write files

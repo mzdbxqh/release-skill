@@ -348,7 +348,8 @@
                   "enum": [
                     "npm",
                     "claude-plugin",
-                    "codex-plugin"
+                    "codex-plugin",
+                    "kimi-plugin"
                   ]
                 },
                 "package": {
@@ -443,6 +444,21 @@
                     "required": [
                       "plugin",
                       "marketplace",
+                      "entrySkill"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "kimi-plugin"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "plugin",
                       "entrySkill"
                     ]
                   }
@@ -650,6 +666,7 @@
               "github-release",
               "claude-marketplace-install",
               "codex-marketplace-install",
+              "kimi-marketplace-install",
               "set-default-branch"
             ]
           },
@@ -775,7 +792,8 @@
               "enum": [
                 "npm",
                 "claude-plugin",
-                "codex-plugin"
+                "codex-plugin",
+                "kimi-plugin"
               ]
             }
           }

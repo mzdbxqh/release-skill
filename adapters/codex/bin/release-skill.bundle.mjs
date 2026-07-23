@@ -9,7 +9,7 @@ const __bundlePkgRoot = __bundleResolve(__bundleDirname(__bundleFileURLToPath(im
 // Provide a real require() for CJS packages bundled into ESM (e.g. yaml, ajv).
 const __bundleRealRequire = __bundleCreateRequire(import.meta.url);
 // Package identity injected at build time — closure-independent --version probe.
-const __bundlePkg = Object.freeze({"name":"release-skill","version":"0.1.7"});
+const __bundlePkg = Object.freeze({"name":"release-skill","version":"0.1.8"});
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -16344,7 +16344,7 @@ async function walkDiscoveryFiles(root, maxDepth = 8) {
       const absolute = join2(directory, child.name);
       if (child.isDirectory()) {
         if (!SKIP_DIRS.has(child.name)) await walk(absolute, depth + 1);
-      } else if (child.isFile() && (child.name === "package.json" || child.name === "public-release.json" || child.name === "SKILL.md" || /^README(?:\.|$)/i.test(child.name) || /^LICENSE(?:\.|$)/i.test(child.name) || /^CHANGELOG(?:\.|$)/i.test(child.name) || absolute.endsWith("/.claude-plugin/plugin.json") || absolute.endsWith("/.codex-plugin/plugin.json") || absolute.endsWith("/.claude-plugin/marketplace.json") || absolute.endsWith("/.codex-plugin/marketplace.json"))) {
+      } else if (child.isFile() && (child.name === "package.json" || child.name === "public-release.json" || child.name === "SKILL.md" || /^README(?:\.|$)/i.test(child.name) || /^LICENSE(?:\.|$)/i.test(child.name) || /^CHANGELOG(?:\.|$)/i.test(child.name) || absolute.endsWith("/.claude-plugin/plugin.json") || absolute.endsWith("/.codex-plugin/plugin.json") || absolute.endsWith("/.kimi-plugin/plugin.json") || absolute.endsWith("/.claude-plugin/marketplace.json") || absolute.endsWith("/.codex-plugin/marketplace.json"))) {
         found.push(absolute);
       }
     }
@@ -16569,7 +16569,7 @@ async function discoverUnitGit(unitAbsDir, parentRoot) {
 }
 async function discoverFacts(root) {
   const files = await walkDiscoveryFiles(root);
-  const packageFiles = files.filter((path3) => basename(path3) === "package.json" && !/[\\/]adapters[\\/](?:claude|codex)[\\/]package\.json$/.test(path3));
+  const packageFiles = files.filter((path3) => basename(path3) === "package.json" && !/[\\/]adapters[\\/](?:claude|codex|kimi)[\\/]package\.json$/.test(path3));
   const pluginFiles = files.filter((path3) => path3.endsWith("/plugin.json"));
   const marketplaceFiles = files.filter((path3) => path3.endsWith("/marketplace.json"));
   const legacyReleaseFiles = files.filter((path3) => basename(path3) === "public-release.json");
@@ -16601,7 +16601,7 @@ async function discoverFacts(root) {
     const value = await readJsonBounded(path3, "discovered plugin manifest");
     manifests.push({
       path: safeRelative(root, path3),
-      host: path3.includes("/.claude-plugin/") ? "claude" : "codex",
+      host: path3.includes("/.claude-plugin/") ? "claude" : path3.includes("/.kimi-plugin/") ? "kimi" : "codex",
       kind: path3.endsWith("/marketplace.json") ? "marketplace" : "plugin",
       name: typeof value.name === "string" ? value.name : null,
       version: typeof value.version === "string" ? value.version : null
@@ -16620,7 +16620,7 @@ async function discoverFacts(root) {
     return {
       path: relPath,
       name: skillIndex >= 0 ? segments[skillIndex + 1] ?? null : null,
-      host: relPath.includes("/adapters/claude/") ? "claude" : relPath.includes("/adapters/codex/") ? "codex" : "shared"
+      host: relPath.includes("/adapters/claude/") ? "claude" : relPath.includes("/adapters/codex/") ? "codex" : relPath.includes("/adapters/kimi/") ? "kimi" : "shared"
     };
   }).filter((item) => item.name).sort((a, b) => canonicalJson(a).localeCompare(canonicalJson(b)));
   const unitGit = {};
@@ -16764,7 +16764,7 @@ function buildCandidates(facts) {
   const ids = /* @__PURE__ */ new Set();
   const knownFiles = new Set(facts.fileDigests.map((file) => file.path));
   const manifestRoots = facts.manifests.map((manifest) => {
-    const match = manifest.path.match(/^(.*?)(?:\/)?(?:\.claude-plugin|\.codex-plugin)\/(?:plugin|marketplace)\.json$/);
+    const match = manifest.path.match(/^(.*?)(?:\/)?(?:\.claude-plugin|\.codex-plugin|\.kimi-plugin)\/(?:plugin|marketplace)\.json$/);
     return { ...manifest, root: match?.[1] || "." };
   });
   const manifestOwners = /* @__PURE__ */ new Map();
@@ -16790,6 +16790,7 @@ function buildCandidates(facts) {
     if (!pkg.private && pkg.name && !npmExplicitlyForbidden) distributions.push("npm");
     if (pluginHosts.includes("claude")) distributions.push("claude-plugin");
     if (pluginHosts.includes("codex")) distributions.push("codex-plugin");
+    if (pluginHosts.includes("kimi")) distributions.push("kimi-plugin");
     if (pkg.private && matchingLegacyUnits.length === 0 && facts.legacyReleaseConfigs.length > 0) continue;
     if (pkg.private && distributions.length === 0) continue;
     const unitGitEntry = unitGit[pkg.directory];
@@ -17496,6 +17497,7 @@ var init_setup = __esm({
       ".worktrees",
       ".claude",
       ".codex",
+      ".kimi",
       ".cache",
       ".tmp",
       ".pytest_cache",
@@ -18188,7 +18190,7 @@ function identifyTopology(config) {
   const uniqueDistTypes = [...new Set(allDistTypes)];
   let type = "unknown";
   const hasNpm = uniqueDistTypes.includes("npm");
-  const hasPlugin = uniqueDistTypes.includes("claude-plugin") || uniqueDistTypes.includes("codex-plugin");
+  const hasPlugin = uniqueDistTypes.includes("claude-plugin") || uniqueDistTypes.includes("codex-plugin") || uniqueDistTypes.includes("kimi-plugin");
   if (units.length === 0) {
     type = "no-release-units";
   } else if (units.length === 1) {
@@ -18392,6 +18394,53 @@ async function checkPluginManifests(root, config) {
               severity: Severity.ERROR,
               code: "CODEX_MANIFEST_INVALID",
               message: ".codex-plugin/plugin.json \u89E3\u6790\u5931\u8D25",
+              file: displayPath
+            })
+          );
+        }
+      }
+    }
+    if (distributionTypes.has("kimi-plugin")) {
+      const manifestPath = resolve7(unitRoot, ".kimi-plugin", "plugin.json");
+      const displayPath = unitFile(unit, ".kimi-plugin/plugin.json");
+      const exists = await fileExists(manifestPath);
+      if (!exists) {
+        gaps.push(
+          createGap({
+            scope: GapScope.PROFILE,
+            category: GapCategory.MANIFEST,
+            severity: Severity.ERROR,
+            code: "KIMI_MANIFEST_MISSING",
+            message: `\u53D1\u5E03\u5355\u5143 "${unit.id}" \u7F3A\u5C11 .kimi-plugin/plugin.json \u63D2\u4EF6\u6E05\u5355`,
+            file: displayPath
+          })
+        );
+      } else {
+        try {
+          const content = await readFile5(manifestPath, "utf8");
+          const manifest = JSON.parse(content);
+          const requiredFields = ["name", "version", "description"];
+          const missingFields = requiredFields.filter((f) => !(f in manifest));
+          if (missingFields.length > 0) {
+            gaps.push(
+              createGap({
+                scope: GapScope.PROFILE,
+                category: GapCategory.MANIFEST,
+                severity: Severity.ERROR,
+                code: "KIMI_MANIFEST_INCOMPLETE",
+                message: `Kimi \u63D2\u4EF6\u6E05\u5355\u7F3A\u5C11\u5FC5\u586B\u5B57\u6BB5: ${missingFields.join(", ")}`,
+                file: displayPath
+              })
+            );
+          }
+        } catch {
+          gaps.push(
+            createGap({
+              scope: GapScope.PROFILE,
+              category: GapCategory.MANIFEST,
+              severity: Severity.ERROR,
+              code: "KIMI_MANIFEST_INVALID",
+              message: ".kimi-plugin/plugin.json \u89E3\u6790\u5931\u8D25",
               file: displayPath
             })
           );
@@ -19481,7 +19530,7 @@ function validateGate(gate) {
   if (!gate.scope || typeof gate.scope.unit !== "string") {
     throw gateError(gate, "must declare scope.unit");
   }
-  if (gate.phase === "consumer-verify" && !["npm", "claude-plugin", "codex-plugin"].includes(gate.scope.distribution)) {
+  if (gate.phase === "consumer-verify" && !["npm", "claude-plugin", "codex-plugin", "kimi-plugin"].includes(gate.scope.distribution)) {
     throw gateError(gate, "consumer-verify must declare a supported scope.distribution");
   }
   if (!Array.isArray(gate.command) || gate.command.length === 0 || gate.command.some((value) => typeof value !== "string")) {
@@ -20567,6 +20616,97 @@ function validatePlanActionCompleteness(plan, options = {}) {
         }
       }
     }
+    const kimiDist = distributions.find((d) => d.type === "kimi-plugin");
+    if (kimiDist) {
+      const plugin = kimiDist.plugin;
+      const marketplace = kimiDist.marketplace;
+      const entrySkill = kimiDist.entrySkill;
+      if (!plugin || !entrySkill) {
+        failures.push(`unit "${unitId}": kimi-plugin distribution requires plugin and entrySkill`);
+      }
+      expectedCount++;
+      const expectedActionId = `kimi-marketplace-install-${unitId}`;
+      const kimiActions = actions.filter(
+        (a) => a.unitId === unitId && a.type === "kimi-marketplace-install"
+      );
+      if (kimiActions.length === 0) {
+        failures.push(
+          `unit "${unitId}": kimi-plugin distribution declared but "kimi-marketplace-install" action is missing`
+        );
+      } else if (kimiActions.length > 1) {
+        failures.push(
+          `unit "${unitId}": duplicate kimi-marketplace-install actions (${kimiActions.length} found, expected 1)`
+        );
+      } else {
+        const action = kimiActions[0];
+        if (action.id !== expectedActionId) {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": id is "${action.id}", expected "${expectedActionId}"`
+          );
+        }
+        if (action.unitId !== unitId) {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": unitId is "${action.unitId}", expected "${unitId}"`
+          );
+        }
+        if (action.adapter !== "plugin-marketplace") {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": adapter is "${action.adapter}", expected "plugin-marketplace"`
+          );
+        }
+        if (action.status !== "PENDING") {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": status is "${action.status ?? "(missing)"}", expected "PENDING"`
+          );
+        }
+        _checkRequired(action, "parameters.consumer", action.parameters?.consumer, "kimi", unitId, failures);
+        _checkRequired(action, "parameters.plugin", action.parameters?.plugin, plugin, unitId, failures);
+        if (action.parameters?.marketplace !== void 0 && marketplace !== void 0 && action.parameters.marketplace !== marketplace) {
+          failures.push(
+            `unit "${unitId}", action "${action.id}": parameters.marketplace is "${action.parameters.marketplace}", expected optional legacy value "${marketplace}"`
+          );
+        }
+        _checkRequired(action, "parameters.repo", action.parameters?.repo, publicRepo, unitId, failures);
+        _checkRequired(action, "parameters.version", action.parameters?.version, targetVersion, unitId, failures);
+        _checkRequired(action, "parameters.entrySkill", action.parameters?.entrySkill, entrySkill, unitId, failures);
+        if (production) {
+          _checkRequired(action, "parameters.snapshotPath", action.parameters?.snapshotPath, frozen?.path, unitId, failures);
+          _checkRequired(action, "parameters.ref", action.parameters?.ref, expectedTag, unitId, failures);
+          _checkRequired(action, "parameters.manifestDigest", action.parameters?.manifestDigest, frozen?.manifestDigest, unitId, failures);
+        }
+        {
+          const raw = action.parameters?.timeoutMs;
+          if (raw === void 0) {
+            if (!options.legacyCompatibility) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs is missing, expected a valid timeout (30000-900000)`
+              );
+            }
+          } else {
+            if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw)) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be a finite integer, got: ${JSON.stringify(raw)}`
+              );
+            } else if (raw < 3e4 || raw > 9e5) {
+              failures.push(
+                `unit "${unitId}", action "${action.id}": parameters.timeoutMs must be between 30000 and 900000, got: ${raw}`
+              );
+            }
+          }
+        }
+        _checkRequired(action, "expected.installed", action.expected?.installed, true, unitId, failures);
+        _checkRequired(action, "expected.plugin", action.expected?.plugin, plugin, unitId, failures);
+        _checkRequired(action, "expected.version", action.expected?.version, targetVersion, unitId, failures);
+        _checkRequired(action, "expected.entrySkill", action.expected?.entrySkill, entrySkill, unitId, failures);
+        if (production) {
+          _checkRequired(action, "expected.consumer", action.expected?.consumer, "kimi", unitId, failures);
+          _checkRequired(action, "expected.repo", action.expected?.repo, publicRepo, unitId, failures);
+          _checkRequired(action, "expected.ref", action.expected?.ref, expectedTag, unitId, failures);
+          _checkRequired(action, "expected.entrySkillFound", action.expected?.entrySkillFound, true, unitId, failures);
+          _checkRequired(action, "expected.manifestDigest", action.expected?.manifestDigest, frozen?.manifestDigest, unitId, failures);
+        }
+      }
+    }
     if (branchStrategy === "initialize-default-branch") {
       const oldBranch = productionConfig.expectedCurrentDefaultBranch;
       const newBranch = frozen?.branch;
@@ -20670,6 +20810,7 @@ var init_plan = __esm({
       "npm-publish": "npm",
       "claude-marketplace-install": "plugin-marketplace",
       "codex-marketplace-install": "plugin-marketplace",
+      "kimi-marketplace-install": "plugin-marketplace",
       "set-default-branch": "git-github"
     };
     REQUIRED_ACTION_TYPES = ["push-snapshot", "create-tag", "github-release"];
@@ -66791,6 +66932,7 @@ var init_contract2 = __esm({
       // consumer marketplace install (production)
       CLAUDE_MARKETPLACE_INSTALL: "claude-marketplace-install",
       CODEX_MARKETPLACE_INSTALL: "codex-marketplace-install",
+      KIMI_MARKETPLACE_INSTALL: "kimi-marketplace-install",
       // default branch management
       SET_DEFAULT_BRANCH: "set-default-branch"
     });
@@ -73782,6 +73924,32 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
           status: "PENDING"
         });
       }
+      const kimiDist = (unit.distributions ?? []).find((d) => d.type === "kimi-plugin");
+      if (kimiDist) {
+        const identity = marketplaceIdentity(kimiDist);
+        const kimiTimeoutMs = Number.isInteger(kimiDist.timeoutMs) ? kimiDist.timeoutMs : 3e5;
+        actions.push({
+          id: `kimi-marketplace-install-${unit.id}`,
+          type: "kimi-marketplace-install",
+          adapter: "plugin-marketplace",
+          unitId: unit.id,
+          parameters: {
+            consumer: "kimi",
+            plugin: identity.plugin,
+            repo: unit.publicRepo,
+            version,
+            entrySkill: identity.entrySkill,
+            timeoutMs: kimiTimeoutMs
+          },
+          expected: {
+            installed: true,
+            plugin: identity.plugin,
+            version,
+            entrySkill: identity.entrySkill
+          },
+          status: "PENDING"
+        });
+      }
     }
     return actions;
   }
@@ -73969,6 +74137,40 @@ function buildExternalActions(unitResults, resolvedVersions, productionAssets) {
           consumer: "codex",
           plugin: identity.plugin,
           marketplace: identity.marketplace,
+          repo: unit.publicRepo,
+          version: unitVersion,
+          ref: resolvedTag,
+          entrySkill: identity.entrySkill,
+          entrySkillFound: true,
+          manifestDigest: asset.manifestDigest
+        },
+        status: "PENDING"
+      });
+    }
+    const kimiDist = (unit.distributions ?? []).find((d) => d.type === "kimi-plugin");
+    if (kimiDist) {
+      const identity = marketplaceIdentity(kimiDist);
+      const kimiTimeoutMs = Number.isInteger(kimiDist.timeoutMs) ? kimiDist.timeoutMs : 3e5;
+      actions.push({
+        id: `kimi-marketplace-install-${unit.id}`,
+        type: "kimi-marketplace-install",
+        adapter: "plugin-marketplace",
+        unitId: unit.id,
+        parameters: {
+          consumer: "kimi",
+          plugin: identity.plugin,
+          repo: unit.publicRepo,
+          ref: resolvedTag,
+          version: unitVersion,
+          entrySkill: identity.entrySkill,
+          snapshotPath: asset.snapshotPath,
+          manifestDigest: asset.manifestDigest,
+          timeoutMs: kimiTimeoutMs
+        },
+        expected: {
+          installed: true,
+          consumer: "kimi",
+          plugin: identity.plugin,
           repo: unit.publicRepo,
           version: unitVersion,
           ref: resolvedTag,
@@ -76099,7 +76301,8 @@ var init_reconcile = __esm({
       "npm-publish",
       "github-release",
       "claude-marketplace-install",
-      "codex-marketplace-install"
+      "codex-marketplace-install",
+      "kimi-marketplace-install"
     ];
     ADAPTER_ACTION_TYPE_MAP = {
       "push-commit": "git-push",
@@ -76109,11 +76312,13 @@ var init_reconcile = __esm({
       "npm-publish": "npm-publish",
       "github-release": "github-release",
       "claude-marketplace-install": "claude-marketplace-install",
-      "codex-marketplace-install": "codex-marketplace-install"
+      "codex-marketplace-install": "codex-marketplace-install",
+      "kimi-marketplace-install": "kimi-marketplace-install"
     };
     MARKETPLACE_TYPES = /* @__PURE__ */ new Set([
       "claude-marketplace-install",
-      "codex-marketplace-install"
+      "codex-marketplace-install",
+      "kimi-marketplace-install"
     ]);
     __name(defaultClock2, "defaultClock");
     __name(reconcileRelease, "reconcileRelease");
@@ -76704,7 +76909,9 @@ var init_git_github = __esm({
 // src/adapters/plugin-marketplace.mjs
 var plugin_marketplace_exports = {};
 __export(plugin_marketplace_exports, {
-  createPluginMarketplaceAdapter: () => createPluginMarketplaceAdapter
+  createPluginMarketplaceAdapter: () => createPluginMarketplaceAdapter,
+  readKimiManifest: () => readKimiManifest,
+  resolveKimiEntrySkillFile: () => resolveKimiEntrySkillFile
 });
 import { execFile as execFileCb10 } from "node:child_process";
 import { promisify as promisify10 } from "node:util";
@@ -76734,7 +76941,7 @@ async function verifyInstalledMarketplacePayload(action, context, installPath, c
     throw new Error("frozen marketplace snapshot digest no longer matches the plan");
   }
   const installedSnapshot = await computeFrozenSnapshot(installPath, {
-    excludeRootEntries: consumer === "codex" ? [".git"] : []
+    excludeRootEntries: consumer === "codex" || consumer === "kimi" ? [".git"] : []
   });
   if (JSON.stringify(transportPayload(sourceSnapshot.entries)) !== JSON.stringify(transportPayload(installedSnapshot.entries))) {
     throw new Error("installed marketplace payload differs in path, bytes, size, or non-write mode bits");
@@ -76752,6 +76959,356 @@ async function writeEvidenceAtomic(filePath, value) {
     });
     throw err;
   }
+}
+function normalizePlanForDigest(plan) {
+  const normalized = { ...plan, status: "PREPARED" };
+  if (Array.isArray(plan.externalActions)) {
+    normalized.externalActions = plan.externalActions.map((action) => action && typeof action === "object" && !Array.isArray(action) ? { ...action, status: "PENDING" } : action);
+  }
+  return normalized;
+}
+function resolveBoundPlanDigest(context) {
+  const plan = context?.plan;
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+    throw new Error("context.plan is required to bind the kimi plan digest");
+  }
+  const carried = plan.digest;
+  if (typeof carried !== "string" || !HEX_DIGEST_RE.test(carried)) {
+    throw new Error("context.plan.digest must be a 64-char lowercase hex frozen plan digest");
+  }
+  const normalized = normalizePlanForDigest(plan);
+  if (computePlanDigest(normalized) !== carried) {
+    throw new Error("context.plan.digest does not match the normalized frozen plan (a non-lifecycle field was tampered)");
+  }
+  return carried;
+}
+function kimiAuthorityDir(context, planDigest, plugin) {
+  if (!context?.root) {
+    throw new Error("context.root is required for the kimi attestation authority");
+  }
+  if (!HEX_DIGEST_RE.test(planDigest)) {
+    throw new Error("kimi attestation authority requires a 64-hex plan digest");
+  }
+  if (!SAFE_ID_RE.test(plugin)) {
+    throw new Error(`kimi attestation authority requires a safe plugin id: "${plugin}"`);
+  }
+  const base = resolve19(context.root, ".release-skill", "kimi-attestations");
+  const dir = resolve19(base, planDigest, plugin);
+  const rel = relative16(base, dir);
+  const sep4 = process.platform === "win32" ? "\\" : "/";
+  if (rel === "" || rel === ".." || isAbsolute13(rel) || rel.startsWith(`..${sep4}`) || rel.split(sep4).some((segment) => segment === ".." || segment === "")) {
+    throw new Error("kimi attestation authority path escapes its base");
+  }
+  return dir;
+}
+function buildKimiInstallUrl(repo, ref) {
+  return `https://github.com/${repo}/releases/tag/${ref}`;
+}
+function buildKimiManualInstructions({ installUrl, plugin, version, ref, isolatedHome, attestationDir }) {
+  return [
+    `Kimi Code has no scriptable plugin-install CLI; installation is a manual, interactive step.`,
+    `1) publish fails closed at this kimi checkpoint and leaves the run PARTIAL (the automated Git branch/tag, npm, and GitHub Release writes still complete first).`,
+    `2) Launch Kimi Code with the ISOLATED home from this requirement so the managed copy lands inside it: set HOME="${isolatedHome}" and KIMI_CODE_HOME="${isolatedHome}". The plugin installs to "${isolatedHome}/plugins/managed/${plugin}/".`,
+    `3) In that isolated Kimi Code session run: /plugins install ${installUrl}  (pinned to frozen ref "${ref}", version ${version}; never install the bare repository URL). Confirm the trust prompt for plugin "${plugin}", then run /plugins reload (or /new).`,
+    `4) Write the attestation JSON to: ${attestationDir}/${KIMI_ATTESTATION_FILE}. planDigest MUST be the frozen plan digest; payloadDigest MUST be the frozen snapshot payload digest; installPath MUST be the isolated managed directory above. attestedAt must not be in the future and expiresAt must be within 24 hours of attestedAt.`,
+    `   Required fields: consumer="kimi", plugin, version, entrySkill, repo, ref, installPath, planDigest, payloadDigest, attestedBy, attestedAt, expiresAt.`,
+    `5) Re-run release-skill reconcile (promotes PARTIAL -> PUBLISHED) and then verify (-> VERIFIED). Both read the attestation from this same plan-digest-keyed authority directory, so a fresh run directory does not lose the proof.`,
+    `An install into the ordinary ~/.kimi-code is NOT acceptable proof: the attested installPath must resolve inside this requirement's isolated KIMI_CODE_HOME managed root, otherwise verification fails closed.`
+  ];
+}
+async function readKimiManifest(pluginRootReal) {
+  const candidates = [
+    "kimi.plugin.json",
+    join12(".kimi-plugin", "plugin.json")
+  ];
+  for (const manifestRelative of candidates) {
+    const manifestPath = resolve19(pluginRootReal, manifestRelative);
+    let content;
+    try {
+      content = await readFile17(manifestPath, "utf8");
+    } catch {
+      continue;
+    }
+    let manifest;
+    try {
+      manifest = JSON.parse(content);
+    } catch {
+      throw new Error(`kimi plugin manifest ${manifestRelative} is not valid JSON`);
+    }
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+      throw new Error(`kimi plugin manifest ${manifestRelative} is not an object`);
+    }
+    return { manifest, manifestRelative };
+  }
+  throw new Error("no kimi plugin manifest found (expected kimi.plugin.json or .kimi-plugin/plugin.json)");
+}
+function normalizeKimiSkillsRel(skillsRaw) {
+  if (typeof skillsRaw !== "string" || skillsRaw.length === 0) {
+    throw new Error("kimi manifest skills must be a non-empty relative path when present");
+  }
+  if (skillsRaw.startsWith("/") || skillsRaw.includes("..") || skillsRaw.includes("\\") || /^https?:\/\//i.test(skillsRaw)) {
+    throw new Error(`kimi manifest skills "${skillsRaw}" is not a safe relative path`);
+  }
+  let rel = skillsRaw.replace(/^\.\//, "");
+  rel = rel.replace(/\/+$/, "");
+  if (rel.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new Error(`kimi manifest skills "${skillsRaw}" is not a safe relative path`);
+  }
+  return rel;
+}
+async function resolveKimiEntrySkillFile(pluginRootReal, manifest, entrySkill) {
+  if (!entrySkill || typeof entrySkill !== "string" || !SAFE_ID_RE.test(entrySkill)) {
+    throw new Error(`unsafe entrySkill: "${entrySkill}"`);
+  }
+  let entryAbs;
+  if (manifest.skills === void 0 || manifest.skills === null) {
+    entryAbs = resolve19(pluginRootReal, "SKILL.md");
+  } else {
+    const skillsRel = normalizeKimiSkillsRel(manifest.skills);
+    const skillsRootAbs = skillsRel === "" ? pluginRootReal : resolve19(pluginRootReal, skillsRel);
+    const skillsRootReal = await realpath11(skillsRootAbs).catch(() => null);
+    if (!skillsRootReal) {
+      throw new Error(`kimi manifest skills root does not exist: ${manifest.skills}`);
+    }
+    const skillsContainment = relative16(pluginRootReal, skillsRootReal);
+    const sepK = process.platform === "win32" ? "\\" : "/";
+    if (skillsContainment !== "" && (isAbsolute13(skillsContainment) || skillsContainment === ".." || skillsContainment.startsWith(`..${sepK}`))) {
+      throw new Error(`kimi manifest skills "${manifest.skills}" escapes the plugin root after symlink resolution`);
+    }
+    entryAbs = resolve19(skillsRootReal, entrySkill, "SKILL.md");
+  }
+  let entryLexicalStat;
+  try {
+    entryLexicalStat = await lstat11(entryAbs);
+  } catch {
+    throw new Error(`kimi entry skill not found: ${relative16(pluginRootReal, entryAbs) || "SKILL.md"}`);
+  }
+  if (entryLexicalStat.isSymbolicLink()) {
+    throw new Error("kimi entry skill must not be a symlink");
+  }
+  if (!entryLexicalStat.isFile()) {
+    throw new Error("kimi entry skill is not a regular file");
+  }
+  const entryReal = await realpath11(entryAbs).catch(() => null);
+  if (!entryReal) {
+    throw new Error(`kimi entry skill not found: ${relative16(pluginRootReal, entryAbs) || "SKILL.md"}`);
+  }
+  const entryContainment = relative16(pluginRootReal, entryReal);
+  const sepE = process.platform === "win32" ? "\\" : "/";
+  if (entryContainment !== "" && (isAbsolute13(entryContainment) || entryContainment === ".." || entryContainment.startsWith(`..${sepE}`))) {
+    throw new Error("kimi entry skill escapes the plugin root after symlink resolution");
+  }
+  return entryReal;
+}
+function validateKimiAttestation(attestation, action, isoNow, boundPlanDigest) {
+  if (!attestation || typeof attestation !== "object" || Array.isArray(attestation)) {
+    return { valid: false, error: "kimi attestation is not an object" };
+  }
+  const requiredStrings = ["plugin", "version", "entrySkill", "repo", "ref", "installPath", "payloadDigest", "planDigest", "attestedBy", "attestedAt", "expiresAt"];
+  for (const field of requiredStrings) {
+    if (typeof attestation[field] !== "string" || attestation[field].length === 0) {
+      return { valid: false, error: `kimi attestation missing required field "${field}"` };
+    }
+  }
+  if (attestation.consumer !== "kimi") {
+    return { valid: false, error: `kimi attestation consumer "${attestation.consumer}" must be "kimi"` };
+  }
+  if (!HEX_DIGEST_RE.test(attestation.planDigest)) {
+    return { valid: false, error: "kimi attestation planDigest must be a 64-char lowercase hex digest" };
+  }
+  if (attestation.planDigest !== boundPlanDigest) {
+    return { valid: false, error: "kimi attestation planDigest does not match the frozen plan digest" };
+  }
+  if (attestation.plugin !== action.plugin) {
+    return { valid: false, error: `kimi attestation plugin "${attestation.plugin}" does not match action plugin "${action.plugin}"` };
+  }
+  if (attestation.version !== action.version) {
+    return { valid: false, error: `kimi attestation version "${attestation.version}" does not match action version "${action.version}"` };
+  }
+  if (attestation.entrySkill !== action.entrySkill) {
+    return { valid: false, error: `kimi attestation entrySkill "${attestation.entrySkill}" does not match action entrySkill "${action.entrySkill}"` };
+  }
+  if (attestation.repo !== action.repo) {
+    return { valid: false, error: `kimi attestation repo "${attestation.repo}" does not match action repo "${action.repo}"` };
+  }
+  const expectedRef = action.ref ?? `v${action.version}`;
+  if (attestation.ref !== expectedRef) {
+    return { valid: false, error: `kimi attestation ref "${attestation.ref}" does not match frozen ref "${expectedRef}"` };
+  }
+  if (attestation.payloadDigest !== action.manifestDigest) {
+    return { valid: false, error: "kimi attestation payloadDigest does not match the frozen payload digest" };
+  }
+  const attestedMs = Date.parse(attestation.attestedAt);
+  const expiresMs = Date.parse(attestation.expiresAt);
+  const nowMs = Date.parse(isoNow);
+  if (!Number.isFinite(attestedMs) || !Number.isFinite(expiresMs) || !Number.isFinite(nowMs)) {
+    return { valid: false, error: "kimi attestation attestedAt/expiresAt must be valid ISO timestamps" };
+  }
+  if (attestedMs > nowMs) {
+    return { valid: false, error: "kimi attestation attestedAt is in the future" };
+  }
+  if (expiresMs <= attestedMs) {
+    return { valid: false, error: "kimi attestation expiresAt must be after attestedAt" };
+  }
+  if (expiresMs - attestedMs > KIMI_MAX_ATTESTATION_VALIDITY_MS) {
+    return { valid: false, error: "kimi attestation validity must not exceed 24 hours" };
+  }
+  if (nowMs > expiresMs) {
+    return { valid: false, error: "kimi attestation has expired" };
+  }
+  return { valid: true, error: null };
+}
+async function executeKimiManualRequirement(action, context) {
+  const actionType = ActionType.KIMI_MARKETPLACE_INSTALL;
+  let planDigest;
+  try {
+    planDigest = resolveBoundPlanDigest(context);
+  } catch (planErr) {
+    return createResult({
+      actionType,
+      status: ActionStatus.EXECUTE_FAILED,
+      error: `cannot bind kimi requirement to the frozen plan: ${planErr.message}`
+    });
+  }
+  try {
+    resolveTimeoutMs(action);
+  } catch (timeoutErr) {
+    return createResult({
+      actionType,
+      status: ActionStatus.EXECUTE_FAILED,
+      error: timeoutErr.message
+    });
+  }
+  const ref = action.ref ?? `v${action.version}`;
+  const installUrl = buildKimiInstallUrl(action.repo, ref);
+  let attestationDir;
+  try {
+    attestationDir = kimiAuthorityDir(context, planDigest, action.plugin);
+  } catch (dirErr) {
+    return createResult({
+      actionType,
+      status: ActionStatus.EXECUTE_FAILED,
+      error: dirErr.message
+    });
+  }
+  const kimiHome = resolve19(attestationDir, "kimi-home");
+  const managedParent = resolve19(kimiHome, KIMI_MANAGED_SUBPATH);
+  const managedInstallRoot = resolve19(managedParent, action.plugin);
+  const instructions = buildKimiManualInstructions({
+    installUrl,
+    plugin: action.plugin,
+    version: action.version,
+    ref,
+    isolatedHome: kimiHome,
+    attestationDir
+  });
+  const requirement = {
+    kind: "kimi-manual-install-requirement",
+    consumer: "kimi",
+    plugin: action.plugin,
+    version: action.version,
+    entrySkill: action.entrySkill,
+    repo: action.repo,
+    ref,
+    installUrl,
+    // (A) planDigest binds to the real frozen plan digest;
+    // expectedPayloadDigest binds separately to the snapshot payload digest.
+    planDigest,
+    expectedPayloadDigest: action.manifestDigest,
+    isolatedHome: kimiHome,
+    kimiCodeHome: kimiHome,
+    managedInstallRoot,
+    attestationDir,
+    attestationFile: KIMI_ATTESTATION_FILE,
+    attestationTemplate: {
+      consumer: "kimi",
+      plugin: action.plugin,
+      version: action.version,
+      entrySkill: action.entrySkill,
+      repo: action.repo,
+      ref,
+      installPath: managedInstallRoot,
+      planDigest,
+      payloadDigest: action.manifestDigest,
+      attestedBy: "<person responsible for the manual install>",
+      attestedAt: "<ISO 8601 now; must not be in the future>",
+      expiresAt: "<ISO 8601; within 24h of attestedAt>"
+    },
+    instructions
+  };
+  try {
+    await mkdir11(managedParent, { recursive: true, mode: 448 });
+  } catch (mkdirErr) {
+    return createResult({
+      actionType,
+      status: ActionStatus.EXECUTE_FAILED,
+      error: `cannot create kimi managed parent directory: ${mkdirErr.message}`
+    });
+  }
+  const requirementPath = resolve19(attestationDir, KIMI_REQUIREMENT_FILE);
+  let existing = null;
+  let requirementMissing = false;
+  try {
+    const existingRaw = await readFile17(requirementPath, "utf8");
+    try {
+      existing = JSON.parse(existingRaw);
+    } catch (parseErr) {
+      return createResult({
+        actionType,
+        status: ActionStatus.EXECUTE_FAILED,
+        error: `existing kimi manual-install requirement is invalid JSON; refusing to overwrite: ${parseErr.message}`
+      });
+    }
+  } catch (readErr) {
+    if (readErr?.code === "ENOENT") {
+      requirementMissing = true;
+    } else {
+      return createResult({
+        actionType,
+        status: ActionStatus.EXECUTE_FAILED,
+        error: `existing kimi manual-install requirement cannot be read; refusing to overwrite: ${readErr.message}`
+      });
+    }
+  }
+  if (!requirementMissing) {
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+      return createResult({
+        actionType,
+        status: ActionStatus.EXECUTE_FAILED,
+        error: "existing kimi manual-install requirement is not an object; refusing to overwrite"
+      });
+    }
+    const { createdAt: _existingCreatedAt, ...existingBody } = existing;
+    if (canonicalJson(existingBody) !== canonicalJson(requirement)) {
+      return createResult({
+        actionType,
+        status: ActionStatus.EXECUTE_FAILED,
+        error: "existing kimi manual-install requirement conflicts with the current frozen action; refusing to overwrite"
+      });
+    }
+  } else {
+    await writeEvidenceAtomic(requirementPath, { ...requirement, createdAt: (/* @__PURE__ */ new Date()).toISOString() });
+  }
+  return createResult({
+    actionType,
+    status: ActionStatus.EXECUTED,
+    observation: {
+      installed: false,
+      manualInstallRequired: true,
+      consumer: "kimi",
+      plugin: action.plugin,
+      version: action.version,
+      entrySkill: action.entrySkill,
+      repo: action.repo,
+      ref,
+      installUrl,
+      planDigest,
+      attestationDir,
+      kimiCodeHome: kimiHome,
+      managedInstallRoot,
+      instructions
+    }
+  });
 }
 function validateSafeRef(ref) {
   if (!ref || typeof ref !== "string") {
@@ -76800,13 +77357,17 @@ function validateMarketplaceParams(params) {
     return { valid: false, error: "parameters must be an object" };
   }
   const { consumer, plugin, marketplace, repo, version, entrySkill } = params;
-  if (!["claude", "codex"].includes(consumer)) {
+  if (!["claude", "codex", "kimi"].includes(consumer)) {
     return { valid: false, error: `invalid consumer: "${consumer}"` };
   }
   if (!plugin || !SAFE_ID_RE.test(plugin)) {
     return { valid: false, error: `unsafe plugin identifier: "${plugin}"` };
   }
-  if (!marketplace || !SAFE_ID_RE.test(marketplace)) {
+  if (consumer === "kimi") {
+    if (marketplace !== void 0 && marketplace !== null && !SAFE_ID_RE.test(marketplace)) {
+      return { valid: false, error: `unsafe marketplace identifier: "${marketplace}"` };
+    }
+  } else if (!marketplace || !SAFE_ID_RE.test(marketplace)) {
     return { valid: false, error: `unsafe marketplace identifier: "${marketplace}"` };
   }
   if (!repo || !SAFE_REPO_RE.test(repo)) {
@@ -76945,7 +77506,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
             status: ActionStatus.PREFLIGHT_PASSED
           });
         }
-        if (actionType === ActionType.CLAUDE_MARKETPLACE_INSTALL || actionType === ActionType.CODEX_MARKETPLACE_INSTALL) {
+        if (actionType === ActionType.CLAUDE_MARKETPLACE_INSTALL || actionType === ActionType.CODEX_MARKETPLACE_INSTALL || actionType === ActionType.KIMI_MARKETPLACE_INSTALL) {
           const validation = validateMarketplaceParams(action);
           if (!validation.valid) {
             return createResult({
@@ -77009,6 +77570,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
           }
           const consumer = action.consumer;
           let snapshotDirReal;
+          let kimiSnapshotManifest = null;
           try {
             snapshotDirReal = await resolveFrozenPath(context.root, snapshotPath, "frozen snapshot path");
           } catch (frozenErr) {
@@ -77018,120 +77580,162 @@ function createPluginMarketplaceAdapter(deps = {}) {
               error: `frozen snapshot validation failed: ${frozenErr.message}`
             });
           }
-          const marketplaceRelative = consumer === "claude" ? ".claude-plugin/marketplace.json" : ".agents/plugins/marketplace.json";
-          const marketplacePath = resolve19(snapshotDirReal, marketplaceRelative);
-          const marketplaceResult = await validateManifestFile(marketplacePath, ["name"]);
-          if (!marketplaceResult.valid) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `frozen snapshot ${marketplaceRelative} invalid: ${marketplaceResult.error}`
-            });
+          if (consumer === "kimi") {
+            let kimiManifestResult;
+            try {
+              kimiManifestResult = await readKimiManifest(snapshotDirReal);
+            } catch (manifestErr) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `frozen snapshot kimi manifest invalid: ${manifestErr.message}`
+              });
+            }
+            const kimiManifest = kimiManifestResult.manifest;
+            if (typeof kimiManifest.name !== "string" || kimiManifest.name !== action.plugin) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `plugin manifest name "${kimiManifest.name}" does not match action plugin "${action.plugin}"`
+              });
+            }
+            if (typeof kimiManifest.version !== "string" || kimiManifest.version !== action.version) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `plugin manifest version "${kimiManifest.version}" does not match action version "${action.version}"`
+              });
+            }
+            kimiSnapshotManifest = kimiManifest;
           }
-          if (marketplaceResult.manifest.name !== action.marketplace) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `marketplace.json name "${marketplaceResult.manifest.name}" does not match action marketplace "${action.marketplace}"`
-            });
+          if (consumer !== "kimi") {
+            const marketplaceRelative = consumer === "claude" ? ".claude-plugin/marketplace.json" : ".agents/plugins/marketplace.json";
+            const marketplacePath = resolve19(snapshotDirReal, marketplaceRelative);
+            const marketplaceResult = await validateManifestFile(marketplacePath, ["name"]);
+            if (!marketplaceResult.valid) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `frozen snapshot ${marketplaceRelative} invalid: ${marketplaceResult.error}`
+              });
+            }
+            if (marketplaceResult.manifest.name !== action.marketplace) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `marketplace.json name "${marketplaceResult.manifest.name}" does not match action marketplace "${action.marketplace}"`
+              });
+            }
+            const plugins = marketplaceResult.manifest.plugins;
+            if (!Array.isArray(plugins)) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `${marketplaceRelative} must have a plugins[] array`
+              });
+            }
+            const pluginEntry = plugins.filter((p) => p.name === action.plugin);
+            if (pluginEntry.length !== 1) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `expected exactly one plugins[] entry with name "${action.plugin}", found ${pluginEntry.length}`
+              });
+            }
+            const entry = pluginEntry[0];
+            const sourcePath = consumer === "claude" ? entry.source : entry.source?.source === "local" ? entry.source?.path : null;
+            if (typeof sourcePath !== "string" || sourcePath.length === 0) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `marketplace plugin entry source must be a non-empty relative path${consumer === "codex" ? ' (object with source:"local")' : ""}, got ${JSON.stringify(entry.source)}`
+              });
+            }
+            if (sourcePath.startsWith("/") || sourcePath.includes("..") || sourcePath.includes("\\") || /^https?:\/\//i.test(sourcePath)) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `marketplace plugin entry source "${sourcePath}" is not a safe relative path`
+              });
+            }
+            const sourceDirAbs = resolve19(snapshotDirReal, sourcePath);
+            const sourceDirReal = await realpath11(sourceDirAbs).catch(() => null);
+            if (!sourceDirReal) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `marketplace plugin entry source directory does not exist: ${sourcePath}`
+              });
+            }
+            const sourceRelCheck = relative16(snapshotDirReal, sourceDirReal);
+            if (sourceRelCheck.startsWith("..") || isAbsolute13(sourceRelCheck)) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `marketplace plugin entry source "${sourcePath}" escapes the frozen snapshot`
+              });
+            }
+            const manifestRelative = consumer === "claude" ? join12(sourcePath, ".claude-plugin", "plugin.json") : join12(sourcePath, ".codex-plugin", "plugin.json");
+            const manifestPath = resolve19(snapshotDirReal, manifestRelative);
+            const manifestResult = await validateManifestFile(manifestPath, ["name", "version"]);
+            if (!manifestResult.valid) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `frozen snapshot ${manifestRelative} invalid: ${manifestResult.error}`
+              });
+            }
+            if (consumer === "claude" && entry.version !== action.version) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `marketplace plugin entry version "${entry.version}" does not match action version "${action.version}"`
+              });
+            }
+            const pluginManifestResult = await validateManifestFile(manifestPath, ["name", "version"]);
+            if (!pluginManifestResult.valid) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `frozen snapshot ${manifestRelative} invalid: ${pluginManifestResult.error}`
+              });
+            }
+            if (pluginManifestResult.manifest.name !== entry.name) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `plugin manifest name "${pluginManifestResult.manifest.name}" does not match marketplace entry name "${entry.name}"`
+              });
+            }
+            if (pluginManifestResult.manifest.version !== action.version) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `plugin manifest version "${pluginManifestResult.manifest.version}" does not match action version "${action.version}"`
+              });
+            }
           }
-          const plugins = marketplaceResult.manifest.plugins;
-          if (!Array.isArray(plugins)) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `${marketplaceRelative} must have a plugins[] array`
-            });
-          }
-          const pluginEntry = plugins.filter((p) => p.name === action.plugin);
-          if (pluginEntry.length !== 1) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `expected exactly one plugins[] entry with name "${action.plugin}", found ${pluginEntry.length}`
-            });
-          }
-          const entry = pluginEntry[0];
-          const sourcePath = consumer === "claude" ? entry.source : entry.source?.source === "local" ? entry.source?.path : null;
-          if (typeof sourcePath !== "string" || sourcePath.length === 0) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `marketplace plugin entry source must be a non-empty relative path${consumer === "codex" ? ' (object with source:"local")' : ""}, got ${JSON.stringify(entry.source)}`
-            });
-          }
-          if (sourcePath.startsWith("/") || sourcePath.includes("..") || sourcePath.includes("\\") || /^https?:\/\//i.test(sourcePath)) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `marketplace plugin entry source "${sourcePath}" is not a safe relative path`
-            });
-          }
-          const sourceDirAbs = resolve19(snapshotDirReal, sourcePath);
-          const sourceDirReal = await realpath11(sourceDirAbs).catch(() => null);
-          if (!sourceDirReal) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `marketplace plugin entry source directory does not exist: ${sourcePath}`
-            });
-          }
-          const sourceRelCheck = relative16(snapshotDirReal, sourceDirReal);
-          if (sourceRelCheck.startsWith("..") || isAbsolute13(sourceRelCheck)) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `marketplace plugin entry source "${sourcePath}" escapes the frozen snapshot`
-            });
-          }
-          const manifestRelative = consumer === "claude" ? join12(sourcePath, ".claude-plugin", "plugin.json") : join12(sourcePath, ".codex-plugin", "plugin.json");
-          const manifestPath = resolve19(snapshotDirReal, manifestRelative);
-          const manifestResult = await validateManifestFile(manifestPath, ["name", "version"]);
-          if (!manifestResult.valid) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `frozen snapshot ${manifestRelative} invalid: ${manifestResult.error}`
-            });
-          }
-          if (consumer === "claude" && entry.version !== action.version) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `marketplace plugin entry version "${entry.version}" does not match action version "${action.version}"`
-            });
-          }
-          const pluginManifestResult = await validateManifestFile(manifestPath, ["name", "version"]);
-          if (!pluginManifestResult.valid) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `frozen snapshot ${manifestRelative} invalid: ${pluginManifestResult.error}`
-            });
-          }
-          if (pluginManifestResult.manifest.name !== entry.name) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `plugin manifest name "${pluginManifestResult.manifest.name}" does not match marketplace entry name "${entry.name}"`
-            });
-          }
-          if (pluginManifestResult.manifest.version !== action.version) {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `plugin manifest version "${pluginManifestResult.manifest.version}" does not match action version "${action.version}"`
-            });
-          }
-          const entrySkillFile = resolve19(snapshotDirReal, "skills", action.entrySkill, "SKILL.md");
-          try {
-            await stat5(entrySkillFile);
-          } catch {
-            return createResult({
-              actionType,
-              status: ActionStatus.PREFLIGHT_FAILED,
-              error: `entry skill not found in snapshot: skills/${action.entrySkill}/SKILL.md`
-            });
+          if (consumer === "kimi") {
+            try {
+              await resolveKimiEntrySkillFile(snapshotDirReal, kimiSnapshotManifest, action.entrySkill);
+            } catch (entryErr) {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `entry skill not resolvable in snapshot: ${entryErr.message}`
+              });
+            }
+          } else {
+            const entrySkillFile = resolve19(snapshotDirReal, "skills", action.entrySkill, "SKILL.md");
+            try {
+              await stat5(entrySkillFile);
+            } catch {
+              return createResult({
+                actionType,
+                status: ActionStatus.PREFLIGHT_FAILED,
+                error: `entry skill not found in snapshot: skills/${action.entrySkill}/SKILL.md`
+              });
+            }
           }
           try {
             const { digest: actualDigest } = await computeFrozenSnapshot(snapshotDirReal);
@@ -77255,7 +77859,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
           });
         }
       }
-      if (actionType === ActionType.CLAUDE_MARKETPLACE_INSTALL || actionType === ActionType.CODEX_MARKETPLACE_INSTALL) {
+      if (actionType === ActionType.CLAUDE_MARKETPLACE_INSTALL || actionType === ActionType.CODEX_MARKETPLACE_INSTALL || actionType === ActionType.KIMI_MARKETPLACE_INSTALL) {
         try {
           assertIsolatedConsumerWritesAuthorized(context, actionType);
           const validation = validateMarketplaceParams(action);
@@ -77279,6 +77883,9 @@ function createPluginMarketplaceAdapter(deps = {}) {
               status: ActionStatus.EXECUTE_FAILED,
               error: "context.runDir is required for marketplace install"
             });
+          }
+          if (action.consumer === "kimi") {
+            return executeKimiManualRequirement(action, context);
           }
           const consumer = action.consumer;
           const runDir = context.runDir;
@@ -77317,41 +77924,43 @@ function createPluginMarketplaceAdapter(deps = {}) {
             });
           }
           const ref = action.ref ?? `v${action.version}`;
-          let addOutput;
-          const marketplaceArgs = consumer === "claude" ? ["plugin", "marketplace", "add", `${action.repo}@${ref}`] : ["plugin", "marketplace", "add", action.repo, "--ref", ref, "--json"];
-          try {
-            const addResult = await exec(cliCmd, marketplaceArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
-            if (consumer === "codex") {
-              try {
-                addOutput = JSON.parse(addResult.stdout);
-                if (!addOutput || typeof addOutput !== "object") {
+          let addOutput = null;
+          if (consumer !== "kimi") {
+            const marketplaceArgs = consumer === "claude" ? ["plugin", "marketplace", "add", `${action.repo}@${ref}`] : ["plugin", "marketplace", "add", action.repo, "--ref", ref, "--json"];
+            try {
+              const addResult = await exec(cliCmd, marketplaceArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
+              if (consumer === "codex") {
+                try {
+                  addOutput = JSON.parse(addResult.stdout);
+                  if (!addOutput || typeof addOutput !== "object") {
+                    return createResult({
+                      actionType,
+                      status: ActionStatus.EXECUTE_FAILED,
+                      error: "marketplace add returned invalid JSON output"
+                    });
+                  }
+                  if (addOutput.marketplaceName !== action.marketplace) {
+                    return createResult({
+                      actionType,
+                      status: ActionStatus.EXECUTE_FAILED,
+                      error: `marketplace add marketplaceName "${addOutput.marketplaceName}" does not match action marketplace "${action.marketplace}"`
+                    });
+                  }
+                } catch {
                   return createResult({
                     actionType,
                     status: ActionStatus.EXECUTE_FAILED,
-                    error: "marketplace add returned invalid JSON output"
+                    error: "marketplace add returned malformed JSON"
                   });
                 }
-                if (addOutput.marketplaceName !== action.marketplace) {
-                  return createResult({
-                    actionType,
-                    status: ActionStatus.EXECUTE_FAILED,
-                    error: `marketplace add marketplaceName "${addOutput.marketplaceName}" does not match action marketplace "${action.marketplace}"`
-                  });
-                }
-              } catch {
-                return createResult({
-                  actionType,
-                  status: ActionStatus.EXECUTE_FAILED,
-                  error: "marketplace add returned malformed JSON"
-                });
               }
+            } catch (addErr) {
+              return createResult({
+                actionType,
+                status: ActionStatus.EXECUTE_FAILED,
+                error: `marketplace add failed: ${addErr.message}`
+              });
             }
-          } catch (addErr) {
-            return createResult({
-              actionType,
-              status: ActionStatus.EXECUTE_FAILED,
-              error: `marketplace add failed: ${addErr.message}`
-            });
           }
           let installOutput;
           const installArgs = consumer === "claude" ? ["plugin", "install", `${action.plugin}@${action.marketplace}`] : ["plugin", "add", `${action.plugin}@${action.marketplace}`, "--json"];
@@ -77489,6 +78098,10 @@ function createPluginMarketplaceAdapter(deps = {}) {
      * For Codex: uses pluginId === "plugin@marketplace" match in installed array,
      * reads installedPath from add/install output or list, verifies install dir
      * is inside isolated HOME, computes real manifestDigest.
+     *
+     * For Kimi: uses name === plugin match in installed array, reads
+     * installedPath from validated install evidence, verifies install dir
+     * is inside isolated HOME, computes real manifestDigest.
      */
     async observe(action, context) {
       const { actionType } = action;
@@ -77529,7 +78142,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
             }
           });
         }
-        if (actionType === ActionType.CLAUDE_MARKETPLACE_INSTALL || actionType === ActionType.CODEX_MARKETPLACE_INSTALL) {
+        if (actionType === ActionType.CLAUDE_MARKETPLACE_INSTALL || actionType === ActionType.CODEX_MARKETPLACE_INSTALL || actionType === ActionType.KIMI_MARKETPLACE_INSTALL) {
           const consumer = action.consumer;
           const runDir = context.runDir;
           if (!runDir) {
@@ -77540,11 +78153,11 @@ function createPluginMarketplaceAdapter(deps = {}) {
             });
           }
           const isolatedHome = resolve19(runDir, "consumers", `${consumer}-${action.plugin}`);
-          const cliCmd = consumer === "claude" ? "claude" : "codex";
+          const cliCmd = consumer === "claude" ? "claude" : consumer === "codex" ? "codex" : "kimi";
           const baseEnv = { ...process.env, ...context.env ?? {} };
           const env = {
             ...baseEnv,
-            ...consumer === "claude" ? { HOME: isolatedHome, CLAUDE_CONFIG_DIR: resolve19(isolatedHome, ".claude") } : { HOME: isolatedHome, CODEX_HOME: isolatedHome }
+            ...consumer === "claude" ? { HOME: isolatedHome, CLAUDE_CONFIG_DIR: resolve19(isolatedHome, ".claude") } : consumer === "codex" ? { HOME: isolatedHome, CODEX_HOME: isolatedHome } : { HOME: isolatedHome, KIMI_CODE_HOME: isolatedHome }
           };
           let frozenTimeoutMs;
           try {
@@ -77555,6 +78168,236 @@ function createPluginMarketplaceAdapter(deps = {}) {
               status: ActionStatus.OBSERVED,
               observation: { installed: false, error: timeoutErr.message },
               error: timeoutErr.message
+            });
+          }
+          if (consumer === "kimi") {
+            const expectedRef = action.ref ?? `v${action.version}`;
+            let boundPlanDigest;
+            try {
+              boundPlanDigest = resolveBoundPlanDigest(context);
+            } catch (planErr) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: false,
+                  error: `cannot bind kimi observation to the frozen plan: ${planErr.message}`
+                }
+              });
+            }
+            let attestationDir;
+            try {
+              attestationDir = kimiAuthorityDir(context, boundPlanDigest, action.plugin);
+            } catch (dirErr) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: { installed: false, error: dirErr.message }
+              });
+            }
+            let requirement = null;
+            try {
+              requirement = JSON.parse(await readFile17(resolve19(attestationDir, KIMI_REQUIREMENT_FILE), "utf8"));
+            } catch {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: false,
+                  manualInstallRequired: true,
+                  error: "kimi manual-install requirement is missing; run execute first"
+                }
+              });
+            }
+            if (requirement.planDigest !== boundPlanDigest || requirement.plugin !== action.plugin || requirement.version !== action.version || requirement.entrySkill !== action.entrySkill || requirement.repo !== action.repo || requirement.ref !== expectedRef) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: false,
+                  error: "kimi manual-install requirement does not match the frozen plan/action"
+                }
+              });
+            }
+            let attestation = null;
+            try {
+              attestation = JSON.parse(await readFile17(resolve19(attestationDir, KIMI_ATTESTATION_FILE), "utf8"));
+            } catch {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: false,
+                  manualInstallRequired: true,
+                  installUrl: requirement.installUrl,
+                  attestationDir,
+                  error: `kimi attestation is missing; write ${resolve19(attestationDir, KIMI_ATTESTATION_FILE)} after the interactive install (${requirement.installUrl})`
+                }
+              });
+            }
+            const attestationCheck = validateKimiAttestation(attestation, action, (/* @__PURE__ */ new Date()).toISOString(), boundPlanDigest);
+            if (!attestationCheck.valid) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: { installed: false, error: attestationCheck.error }
+              });
+            }
+            const kimiCodeHome = resolve19(attestationDir, "kimi-home");
+            const kimiCodeHomeReal = await realpath11(kimiCodeHome).catch(() => null);
+            if (!kimiCodeHomeReal) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: false,
+                  error: `KIMI_CODE_HOME does not exist or cannot be resolved: ${kimiCodeHome}`
+                }
+              });
+            }
+            const managedRootReal = await realpath11(resolve19(kimiCodeHomeReal, KIMI_MANAGED_SUBPATH, action.plugin)).catch(() => null);
+            if (!managedRootReal) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: false,
+                  error: `kimi managed plugin root does not exist: ${resolve19(kimiCodeHomeReal, KIMI_MANAGED_SUBPATH, action.plugin)}`
+                }
+              });
+            }
+            const installPath2 = resolve19(attestation.installPath);
+            let installPathStat;
+            try {
+              installPathStat = await lstat11(installPath2);
+            } catch {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: { installed: false, error: `kimi install path does not exist: ${attestation.installPath}` }
+              });
+            }
+            if (installPathStat.isSymbolicLink()) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: { installed: false, error: `kimi install path must not be a symlink: ${attestation.installPath}` }
+              });
+            }
+            if (!installPathStat.isDirectory()) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: { installed: false, error: `kimi install path must be a directory: ${attestation.installPath}` }
+              });
+            }
+            const installPathReal2 = await realpath11(installPath2).catch(() => null);
+            if (!installPathReal2) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: { installed: false, error: `kimi install path cannot be resolved: ${attestation.installPath}` }
+              });
+            }
+            const sepK = process.platform === "win32" ? "\\" : "/";
+            const relToManaged = relative16(managedRootReal, installPathReal2);
+            if (relToManaged !== "" && (isAbsolute13(relToManaged) || relToManaged === ".." || relToManaged.startsWith(`..${sepK}`))) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: false,
+                  error: `kimi install path escapes the managed root (${managedRootReal}): ${attestation.installPath}`
+                }
+              });
+            }
+            let manifestDigest2;
+            try {
+              manifestDigest2 = await verifyInstalledMarketplacePayload(action, context, installPathReal2, consumer);
+            } catch (digestErr) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: true,
+                  installPath: installPathReal2,
+                  error: `failed to bind installed kimi payload to frozen authority: ${digestErr.message}`
+                }
+              });
+            }
+            if (manifestDigest2 !== action.manifestDigest) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: true,
+                  installPath: installPathReal2,
+                  error: "installed kimi payload digest does not match the frozen plan digest"
+                }
+              });
+            }
+            let installedManifest;
+            let entrySkillFound2 = false;
+            try {
+              const readManifest = await readKimiManifest(installPathReal2);
+              installedManifest = readManifest.manifest;
+              await resolveKimiEntrySkillFile(installPathReal2, installedManifest, action.entrySkill);
+              entrySkillFound2 = true;
+            } catch (entryErr) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: true,
+                  installPath: installPathReal2,
+                  manifestDigest: manifestDigest2,
+                  entrySkillFound: false,
+                  error: `kimi entry skill not resolvable in installed copy: ${entryErr.message}`
+                }
+              });
+            }
+            if (installedManifest.name !== action.plugin) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: true,
+                  installPath: installPathReal2,
+                  manifestDigest: manifestDigest2,
+                  entrySkillFound: true,
+                  error: `installed kimi manifest name "${installedManifest.name}" does not match action plugin "${action.plugin}"`
+                }
+              });
+            }
+            if (installedManifest.version !== action.version) {
+              return createResult({
+                actionType,
+                status: ActionStatus.OBSERVED,
+                observation: {
+                  installed: true,
+                  installPath: installPathReal2,
+                  manifestDigest: manifestDigest2,
+                  entrySkillFound: true,
+                  error: `installed kimi manifest version "${installedManifest.version}" does not match action version "${action.version}"`
+                }
+              });
+            }
+            const observation2 = {
+              installed: true,
+              installPath: installPathReal2,
+              entrySkillFound: true,
+              entrySkill: action.entrySkill,
+              manifestDigest: manifestDigest2,
+              consumer,
+              plugin: installedManifest.name,
+              version: installedManifest.version,
+              repo: action.repo,
+              ref: expectedRef
+            };
+            return createResult({
+              actionType,
+              status: ActionStatus.OBSERVED,
+              observation: observation2
             });
           }
           let evidence = null;
@@ -77581,7 +78424,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
               }
             });
           }
-          const listArgs = consumer === "claude" ? ["plugin", "list", "--json"] : ["plugin", "list", "--json"];
+          const listArgs = ["plugin", "list", "--json"];
           let listOutput;
           try {
             const result = await exec(cliCmd, listArgs, { env, cwd: context.root, timeout: frozenTimeoutMs });
@@ -77632,7 +78475,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
               });
             }
             installPath = found.installPath;
-          } else {
+          } else if (consumer === "codex") {
             installPath = evidence.installOutput?.installedPath;
             if (!installPath) {
               return createResult({
@@ -77735,7 +78578,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
           } catch (digestErr) {
             try {
               const installedSnapshot = await computeFrozenSnapshot(installPath, {
-                excludeRootEntries: consumer === "codex" ? [".git"] : []
+                excludeRootEntries: consumer === "codex" || consumer === "kimi" ? [".git"] : []
               });
               manifestDigest = installedSnapshot.digest;
             } catch {
@@ -77756,7 +78599,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
             observation.plugin = idParts[0];
             observation.marketplace = idParts.slice(1).join("@");
             if (found.version) observation.version = found.version;
-          } else {
+          } else if (consumer === "codex") {
             if (found.name) observation.plugin = found.name;
             if (found.marketplaceName) observation.marketplace = found.marketplaceName;
             if (found.version) observation.version = found.version;
@@ -77891,21 +78734,39 @@ function createPluginMarketplaceAdapter(deps = {}) {
     }
   });
 }
-var execFile9, NAME4, SUPPORTED_TYPES, SAFE_ID_RE, SAFE_REPO_RE, STRICT_SEMVER_RE;
+var execFile9, NAME4, KIMI_REQUIREMENT_FILE, KIMI_ATTESTATION_FILE, KIMI_MANAGED_SUBPATH, KIMI_MAX_ATTESTATION_VALIDITY_MS, HEX_DIGEST_RE, SUPPORTED_TYPES, SAFE_ID_RE, SAFE_REPO_RE, STRICT_SEMVER_RE;
 var init_plugin_marketplace = __esm({
-  "src/adapters/plugin-marketplace.mjs"() {
+  async "src/adapters/plugin-marketplace.mjs"() {
     init_contract2();
     init_frozen();
+    await init_plan();
+    init_digest();
     execFile9 = promisify10(execFileCb10);
     NAME4 = "plugin-marketplace";
     __name(transportPayload, "transportPayload");
     __name(verifyInstalledMarketplacePayload, "verifyInstalledMarketplacePayload");
     __name(writeEvidenceAtomic, "writeEvidenceAtomic");
+    KIMI_REQUIREMENT_FILE = "release-skill-kimi-manual-install.json";
+    KIMI_ATTESTATION_FILE = "release-skill-kimi-attestation.json";
+    KIMI_MANAGED_SUBPATH = join12("plugins", "managed");
+    KIMI_MAX_ATTESTATION_VALIDITY_MS = 24 * 60 * 60 * 1e3;
+    HEX_DIGEST_RE = /^[a-f0-9]{64}$/;
+    __name(normalizePlanForDigest, "normalizePlanForDigest");
+    __name(resolveBoundPlanDigest, "resolveBoundPlanDigest");
+    __name(kimiAuthorityDir, "kimiAuthorityDir");
+    __name(buildKimiInstallUrl, "buildKimiInstallUrl");
+    __name(buildKimiManualInstructions, "buildKimiManualInstructions");
+    __name(readKimiManifest, "readKimiManifest");
+    __name(normalizeKimiSkillsRel, "normalizeKimiSkillsRel");
+    __name(resolveKimiEntrySkillFile, "resolveKimiEntrySkillFile");
+    __name(validateKimiAttestation, "validateKimiAttestation");
+    __name(executeKimiManualRequirement, "executeKimiManualRequirement");
     SUPPORTED_TYPES = [
       ActionType.PLUGIN_MANIFEST_VALIDATE,
       ActionType.PLUGIN_INSTALL_CHECK,
       ActionType.CLAUDE_MARKETPLACE_INSTALL,
-      ActionType.CODEX_MARKETPLACE_INSTALL
+      ActionType.CODEX_MARKETPLACE_INSTALL,
+      ActionType.KIMI_MARKETPLACE_INSTALL
     ];
     SAFE_ID_RE = /^[a-z0-9][a-z0-9._-]*$/;
     SAFE_REPO_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -78364,7 +79225,8 @@ async function verifyRelease(options) {
     const actions = plan.externalActions ?? [];
     const MARKETPLACE_TYPES3 = /* @__PURE__ */ new Set([
       "claude-marketplace-install",
-      "codex-marketplace-install"
+      "codex-marketplace-install",
+      "kimi-marketplace-install"
     ]);
     for (const action of actions) {
       const adapterActionType = ADAPTER_ACTION_TYPE_MAP2[action.type];
@@ -78453,7 +79315,7 @@ async function verifyRelease(options) {
             { actionId: action.id, observation: verifyResult.observation }
           );
         }
-        const distribution = action.type === "claude-marketplace-install" ? "claude-plugin" : "codex-plugin";
+        const distribution = action.type === "claude-marketplace-install" ? "claude-plugin" : action.type === "codex-marketplace-install" ? "codex-plugin" : "kimi-plugin";
         const installPath = verifyResult.observation?.installPath;
         consumerGateResults.push(...await runConsumerVerificationGates({
           plan,
@@ -78465,9 +79327,12 @@ async function verifyRelease(options) {
           fixedEnv: action.type === "claude-marketplace-install" ? {
             HOME: resolve20(runDir, "consumers", `claude-${action.parameters.plugin}`),
             CLAUDE_CONFIG_DIR: resolve20(runDir, "consumers", `claude-${action.parameters.plugin}`, ".claude")
-          } : {
+          } : action.type === "codex-marketplace-install" ? {
             HOME: resolve20(runDir, "consumers", `codex-${action.parameters.plugin}`),
             CODEX_HOME: resolve20(runDir, "consumers", `codex-${action.parameters.plugin}`)
+          } : {
+            HOME: resolve20(runDir, "consumers", `kimi-${action.parameters.plugin}`),
+            KIMI_CODE_HOME: resolve20(runDir, "consumers", `kimi-${action.parameters.plugin}`)
           }
         }));
       } else {
@@ -78628,7 +79493,8 @@ var init_verify = __esm({
       "npm-publish": "npm-publish",
       "github-release": "github-release",
       "claude-marketplace-install": "claude-marketplace-install",
-      "codex-marketplace-install": "codex-marketplace-install"
+      "codex-marketplace-install": "codex-marketplace-install",
+      "kimi-marketplace-install": "kimi-marketplace-install"
     };
     __name(defaultClock3, "defaultClock");
     __name(matchesSubset2, "matchesSubset");
@@ -79345,7 +80211,8 @@ var init_publish = __esm({
       "npm-publish",
       "github-release",
       "claude-marketplace-install",
-      "codex-marketplace-install"
+      "codex-marketplace-install",
+      "kimi-marketplace-install"
     ];
     ADAPTER_ACTION_TYPE_MAP3 = {
       "push-commit": "git-push",
@@ -79355,11 +80222,13 @@ var init_publish = __esm({
       "npm-publish": "npm-publish",
       "github-release": "github-release",
       "claude-marketplace-install": "claude-marketplace-install",
-      "codex-marketplace-install": "codex-marketplace-install"
+      "codex-marketplace-install": "codex-marketplace-install",
+      "kimi-marketplace-install": "kimi-marketplace-install"
     };
     MARKETPLACE_TYPES2 = /* @__PURE__ */ new Set([
       "claude-marketplace-install",
-      "codex-marketplace-install"
+      "codex-marketplace-install",
+      "kimi-marketplace-install"
     ]);
     __name(defaultClock4, "defaultClock");
     __name(deepClone, "deepClone");
@@ -82756,6 +83625,12 @@ async function performEnvironmentChecks() {
     required: false,
     usage: "\u4EC5\u5F53\u8BA1\u5212\u58F0\u660E codex-plugin distribution \u65F6\u7528\u4E8E\u6D88\u8D39\u8005\u5B89\u88C5\u9A8C\u8BC1"
   };
+  const kimiCheck = await checkDependency("kimi", ["--version"]);
+  checks.kimi = {
+    ...kimiCheck,
+    required: false,
+    usage: "\u4EC5\u5F53\u8BA1\u5212\u58F0\u660E kimi-plugin distribution \u65F6\u7528\u4E8E\u6D88\u8D39\u8005\u5B89\u88C5\u9A8C\u8BC1"
+  };
   return checks;
 }
 __name(performEnvironmentChecks, "performEnvironmentChecks");
@@ -82784,7 +83659,7 @@ function getCapabilityMaturity() {
     publish: {
       available: true,
       mode: "controlled production (protocol-tested; no OS/network sandbox)",
-      description: "Publishes frozen GitHub/npm artifacts and runs configured Claude/Codex consumer checkpoints with approval and exact digest confirmation"
+      description: "Publishes frozen GitHub/npm artifacts and runs configured Claude/Codex/Kimi consumer checkpoints with approval and exact digest confirmation"
     },
     reconcile: {
       available: true,
@@ -82794,7 +83669,7 @@ function getCapabilityMaturity() {
     verify: {
       available: true,
       mode: "fresh consumer verification (protocol-tested; no OS/network sandbox)",
-      description: "Recheck remote state, exact npm installation, CLI help, and configured Claude/Codex installs before VERIFIED"
+      description: "Recheck remote state, exact npm installation, CLI help, and configured Claude/Codex/Kimi installs before VERIFIED"
     }
   };
 }
@@ -82917,7 +83792,8 @@ if (!command || command === "help") {
           authentication: "\u8FD0\u884C\u751F\u4EA7\u53D1\u5E03\u524D\u8FD8\u9700\u9A8C\u8BC1 gh auth\u3001Git HTTPS credential \u4E0E npm auth\uFF1Bhelp \u4E0D\u53D1\u8D77\u7F51\u7EDC\u8BA4\u8BC1\u68C0\u67E5\u3002",
           conditionalConsumers: {
             claude: "\u58F0\u660E claude-plugin distribution \u65F6\u5FC5\u987B\u53EF\u7528",
-            codex: "\u58F0\u660E codex-plugin distribution \u65F6\u5FC5\u987B\u53EF\u7528"
+            codex: "\u58F0\u660E codex-plugin distribution \u65F6\u5FC5\u987B\u53EF\u7528",
+            kimi: "\u58F0\u660E kimi-plugin distribution \u65F6\u5FC5\u987B\u53EF\u7528"
           }
         }
       },
@@ -82929,9 +83805,9 @@ if (!command || command === "help") {
         prepare: "offline local writes; configured hooks/gates require their explicit side-effect acknowledgements",
         docs: "read-only dry-run by default; write requires --write, exact --confirm-refresh, and --ack-local-document-write; never commits, pushes, or publishes",
         onlinePrepare: "previous-public-baseline observation available; production mode freezes publish artifacts and fails closed on drift or unknown state",
-        publish: "GitHub/npm plus configured Claude/Codex consumer checkpoints are protocol-tested without an OS/network sandbox; approval and exact digest confirmation required",
+        publish: "GitHub/npm plus configured Claude/Codex/Kimi consumer checkpoints are protocol-tested without an OS/network sandbox; approval and exact digest confirmation required",
         reconcile: "PARTIAL recovery is protocol-tested without an OS/network sandbox; remote conflicts require human intervention",
-        verify: "fresh exact npm and Claude/Codex consumer installation checks are protocol-tested without an OS/network sandbox; configured consumer processes require explicit acknowledgement; success reaches VERIFIED"
+        verify: "fresh exact npm and Claude/Codex/Kimi consumer installation checks are protocol-tested without an OS/network sandbox; configured consumer processes require explicit acknowledgement; success reaches VERIFIED"
       },
       recommendations: []
     };
@@ -82957,6 +83833,9 @@ if (!command || command === "help") {
     }
     if (!checks.codex.available) {
       output.recommendations.push("Install Codex CLI before releasing a configured codex-plugin distribution");
+    }
+    if (!checks.kimi.available) {
+      output.recommendations.push("Install Kimi Code CLI before releasing a configured kimi-plugin distribution");
     }
     console.log(JSON.stringify(output, null, 2));
     process.exit(readiness.status === "READY" ? 0 : 1);
@@ -83180,7 +84059,7 @@ if (command === "reconcile") {
     const { reconcileRelease: reconcileRelease2 } = await init_reconcile().then(() => reconcile_exports);
     const { createGitGithubAdapter: createGitGithubAdapter2 } = await Promise.resolve().then(() => (init_git_github(), git_github_exports));
     const { createNpmAdapter: createNpmAdapter2 } = await Promise.resolve().then(() => (init_npm(), npm_exports));
-    const { createPluginMarketplaceAdapter: createPluginMarketplaceAdapter2 } = await Promise.resolve().then(() => (init_plugin_marketplace(), plugin_marketplace_exports));
+    const { createPluginMarketplaceAdapter: createPluginMarketplaceAdapter2 } = await init_plugin_marketplace().then(() => plugin_marketplace_exports);
     const { createPushSnapshotAdapter: createPushSnapshotAdapter2 } = await Promise.resolve().then(() => (init_push_snapshot(), push_snapshot_exports));
     const { createAdapterRegistry: createAdapterRegistry2 } = await Promise.resolve().then(() => (init_contract2(), contract_exports));
     const registry = createAdapterRegistry2([
@@ -83242,7 +84121,7 @@ if (command === "verify") {
     const { verifyRelease: verifyRelease2 } = await init_verify().then(() => verify_exports);
     const { createGitGithubAdapter: createGitGithubAdapter2 } = await Promise.resolve().then(() => (init_git_github(), git_github_exports));
     const { createNpmAdapter: createNpmAdapter2 } = await Promise.resolve().then(() => (init_npm(), npm_exports));
-    const { createPluginMarketplaceAdapter: createPluginMarketplaceAdapter2 } = await Promise.resolve().then(() => (init_plugin_marketplace(), plugin_marketplace_exports));
+    const { createPluginMarketplaceAdapter: createPluginMarketplaceAdapter2 } = await init_plugin_marketplace().then(() => plugin_marketplace_exports);
     const { createPushSnapshotAdapter: createPushSnapshotAdapter2 } = await Promise.resolve().then(() => (init_push_snapshot(), push_snapshot_exports));
     const { createAdapterRegistry: createAdapterRegistry2 } = await Promise.resolve().then(() => (init_contract2(), contract_exports));
     const registry = createAdapterRegistry2([
@@ -83303,7 +84182,7 @@ if (command === "publish") {
     const { publishRelease: publishRelease2 } = await init_publish().then(() => publish_exports);
     const { createGitGithubAdapter: createGitGithubAdapter2 } = await Promise.resolve().then(() => (init_git_github(), git_github_exports));
     const { createNpmAdapter: createNpmAdapter2 } = await Promise.resolve().then(() => (init_npm(), npm_exports));
-    const { createPluginMarketplaceAdapter: createPluginMarketplaceAdapter2 } = await Promise.resolve().then(() => (init_plugin_marketplace(), plugin_marketplace_exports));
+    const { createPluginMarketplaceAdapter: createPluginMarketplaceAdapter2 } = await init_plugin_marketplace().then(() => plugin_marketplace_exports);
     const { createPushSnapshotAdapter: createPushSnapshotAdapter2 } = await Promise.resolve().then(() => (init_push_snapshot(), push_snapshot_exports));
     const { createAdapterRegistry: createAdapterRegistry2 } = await Promise.resolve().then(() => (init_contract2(), contract_exports));
     const registry = createAdapterRegistry2([

@@ -81,6 +81,7 @@ const CHECKPOINT_ORDER = [
   'github-release',
   'claude-marketplace-install',
   'codex-marketplace-install',
+  'kimi-marketplace-install',
 ];
 
 /**
@@ -99,11 +100,13 @@ const ADAPTER_ACTION_TYPE_MAP = {
   'github-release': 'github-release',
   'claude-marketplace-install': 'claude-marketplace-install',
   'codex-marketplace-install': 'codex-marketplace-install',
+  'kimi-marketplace-install': 'kimi-marketplace-install',
 };
 
 const MARKETPLACE_TYPES = new Set([
   'claude-marketplace-install',
   'codex-marketplace-install',
+  'kimi-marketplace-install',
 ]);
 
 // ---------------------------------------------------------------------------

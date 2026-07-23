@@ -57,7 +57,7 @@ function validateGate(gate) {
   if (!gate.scope || typeof gate.scope.unit !== 'string') {
     throw gateError(gate, 'must declare scope.unit');
   }
-  if (gate.phase === 'consumer-verify' && !['npm', 'claude-plugin', 'codex-plugin'].includes(gate.scope.distribution)) {
+  if (gate.phase === 'consumer-verify' && !['npm', 'claude-plugin', 'codex-plugin', 'kimi-plugin'].includes(gate.scope.distribution)) {
     throw gateError(gate, 'consumer-verify must declare a supported scope.distribution');
   }
   if (!Array.isArray(gate.command) || gate.command.length === 0 || gate.command.some((value) => typeof value !== 'string')) {
