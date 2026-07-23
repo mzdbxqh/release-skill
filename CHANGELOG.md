@@ -1,5 +1,39 @@
 # Changelog
 
+<!-- release-skill:changelog:start version=0.1.9 locale=en baseline=sha256:409f940c03e2d6fd41d33659b246b3d4b622918b4ac5a3a711d83aa09740ef11 -->
+## [0.1.9] - 2026-07-23
+
+v0.1.9 fixes a structural marketplace install verification failure: consumer installs that declare a plugin `source` subdirectory (e.g. `./adapters/claude`) now bind the installed payload to the declared subtree of the sealed whole-unit snapshot, and Claude's root `.in_use` marker is exempted as consumer-owned transport metadata. The sealed snapshot digest, release plan schema, and prepare-side freezing are unchanged, so already-frozen plans reconcile without re-approval. The npm package name (`release-skill`), publishing identity (`publisher: mzdbxqh`), public repository (`ifoohoo/release-skill`), and corporate maintainer remain unchanged.
+
+### Fixed
+
+- **Marketplace payload binding for subdirectory source layouts**: consumer
+  marketplaces may declare a plugin `source` subdirectory such as
+  `./adapters/claude`; the consumer CLI then installs only that subtree while
+  the sealed authority is the whole unit snapshot. Install verification now
+  revalidates the sealed whole-snapshot digest, re-reads the declared source
+  from the marketplace manifest inside the digest-verified snapshot entries,
+  and binds the installed payload to that prefix-stripped subtree. Root
+  layouts and Kimi keep the whole-tree comparison. This resolves the
+  flow-architect v0.4.1 and v0.5.0 PARTIAL marketplace install failures;
+  already-frozen plans reconcile unchanged because the sealed digest, plan
+  schema, and prepare-side freezing are untouched.
+- **Claude `.in_use` transport marker exemption**: the Claude CLI writes an
+  empty `.in_use` marker into the plugin install root; it is now exempted as
+  consumer-owned transport metadata alongside the existing Codex/Kimi `.git`
+  exemption, through a single shared exclusion helper that also backs the
+  observe-time diagnostic fallback. Exemptions remain root-only: nested
+  markers, extra payload, byte tampering, and sealed authority tampering
+  still fail closed.
+- **Regression coverage**: new protocol-level fake-CLI tests cover the
+  subdirectory claude cycle with `.in_use` (including byte-tamper,
+  extra-file, missing-file, `.git`-not-exempt, and nested-marker negatives),
+  fail-closed manifest anomalies (duplicate plugin entry, wrong marketplace
+  name, empty source projection), root-layout claude with `.in_use`, and a
+  codex subdirectory variant.
+<!-- release-skill:changelog:end version=0.1.9 locale=en -->
+
+
 <!-- release-skill:changelog:start version=0.1.8 locale=en baseline=sha256:1e1a0af9d5807bceb7af1eae88b726f67e6811dba4db579fd625c07f3bdbca89 -->
 ## [0.1.8] - 2026-07-23
 

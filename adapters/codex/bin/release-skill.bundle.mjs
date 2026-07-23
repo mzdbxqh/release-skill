@@ -9,7 +9,7 @@ const __bundlePkgRoot = __bundleResolve(__bundleDirname(__bundleFileURLToPath(im
 // Provide a real require() for CJS packages bundled into ESM (e.g. yaml, ajv).
 const __bundleRealRequire = __bundleCreateRequire(import.meta.url);
 // Package identity injected at build time — closure-independent --version probe.
-const __bundlePkg = Object.freeze({"name":"release-skill","version":"0.1.8"});
+const __bundlePkg = Object.freeze({"name":"release-skill","version":"0.1.9"});
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -76930,6 +76930,49 @@ function transportPayload(entries) {
     contentDigest
   }));
 }
+function consumerTransportExclusions(consumer) {
+  if (consumer === "claude") return [".in_use"];
+  if (consumer === "codex" || consumer === "kimi") return [".git"];
+  return [];
+}
+function extractDeclaredPluginSource(consumer, entry) {
+  const rawSource = consumer === "claude" ? entry.source : entry.source?.source === "local" ? entry.source?.path : null;
+  if (typeof rawSource !== "string" || rawSource.length === 0) {
+    throw new Error(`marketplace plugin entry source must be a non-empty relative path${consumer === "codex" ? ' (object with source:"local")' : ""}, got ${JSON.stringify(entry.source)}`);
+  }
+  if (rawSource.startsWith("/") || rawSource.includes("..") || rawSource.includes("\\") || /^https?:\/\//i.test(rawSource)) {
+    throw new Error(`marketplace plugin entry source "${rawSource}" is not a safe relative path`);
+  }
+  const segments = rawSource.split("/").filter((segment) => segment !== "" && segment !== ".");
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error(`marketplace plugin entry source "${rawSource}" is not a safe relative path`);
+  }
+  return segments.length === 0 ? "." : segments.join("/");
+}
+async function resolveInstalledPayloadSubpath(snapshotDir, sourceEntries, action, consumer) {
+  if (consumer === "kimi") return ".";
+  const marketplaceRelative = consumer === "claude" ? ".claude-plugin/marketplace.json" : ".agents/plugins/marketplace.json";
+  const anchored = sourceEntries.some((entry) => entry.type === "file" && entry.path === marketplaceRelative);
+  if (!anchored) {
+    throw new Error(`frozen snapshot is missing the marketplace manifest ${marketplaceRelative}`);
+  }
+  const result = await validateManifestFile(resolve19(snapshotDir, marketplaceRelative), ["name", "plugins"]);
+  if (!result.valid) {
+    throw new Error(`frozen snapshot ${marketplaceRelative} invalid: ${result.error}`);
+  }
+  if (result.manifest.name !== action.marketplace) {
+    throw new Error(`marketplace manifest name "${result.manifest.name}" does not match action marketplace "${action.marketplace}"`);
+  }
+  const plugins = result.manifest.plugins;
+  if (!Array.isArray(plugins)) {
+    throw new Error(`${marketplaceRelative} must have a plugins[] array`);
+  }
+  const matches = plugins.filter((entry) => entry.name === action.plugin);
+  if (matches.length !== 1) {
+    throw new Error(`expected exactly one plugins[] entry with name "${action.plugin}", found ${matches.length}`);
+  }
+  return extractDeclaredPluginSource(consumer, matches[0]);
+}
 async function verifyInstalledMarketplacePayload(action, context, installPath, consumer) {
   const sourcePath = await resolveFrozenPath(
     context.root,
@@ -76940,10 +76983,21 @@ async function verifyInstalledMarketplacePayload(action, context, installPath, c
   if (sourceSnapshot.digest !== action.manifestDigest) {
     throw new Error("frozen marketplace snapshot digest no longer matches the plan");
   }
+  const payloadSubpath = await resolveInstalledPayloadSubpath(
+    sourcePath,
+    sourceSnapshot.entries,
+    action,
+    consumer
+  );
+  const prefix = payloadSubpath === "." ? null : `${payloadSubpath}/`;
+  const authorityEntries = prefix === null ? sourceSnapshot.entries : sourceSnapshot.entries.filter((entry) => entry.path.startsWith(prefix)).map((entry) => ({ ...entry, path: entry.path.slice(prefix.length) }));
+  if (authorityEntries.length === 0) {
+    throw new Error("frozen snapshot contains no payload under the declared marketplace source");
+  }
   const installedSnapshot = await computeFrozenSnapshot(installPath, {
-    excludeRootEntries: consumer === "codex" || consumer === "kimi" ? [".git"] : []
+    excludeRootEntries: consumerTransportExclusions(consumer)
   });
-  if (JSON.stringify(transportPayload(sourceSnapshot.entries)) !== JSON.stringify(transportPayload(installedSnapshot.entries))) {
+  if (JSON.stringify(transportPayload(authorityEntries)) !== JSON.stringify(transportPayload(installedSnapshot.entries))) {
     throw new Error("installed marketplace payload differs in path, bytes, size, or non-write mode bits");
   }
   return action.manifestDigest;
@@ -77643,19 +77697,14 @@ function createPluginMarketplaceAdapter(deps = {}) {
               });
             }
             const entry = pluginEntry[0];
-            const sourcePath = consumer === "claude" ? entry.source : entry.source?.source === "local" ? entry.source?.path : null;
-            if (typeof sourcePath !== "string" || sourcePath.length === 0) {
+            let sourcePath;
+            try {
+              sourcePath = extractDeclaredPluginSource(consumer, entry);
+            } catch (sourceErr) {
               return createResult({
                 actionType,
                 status: ActionStatus.PREFLIGHT_FAILED,
-                error: `marketplace plugin entry source must be a non-empty relative path${consumer === "codex" ? ' (object with source:"local")' : ""}, got ${JSON.stringify(entry.source)}`
-              });
-            }
-            if (sourcePath.startsWith("/") || sourcePath.includes("..") || sourcePath.includes("\\") || /^https?:\/\//i.test(sourcePath)) {
-              return createResult({
-                actionType,
-                status: ActionStatus.PREFLIGHT_FAILED,
-                error: `marketplace plugin entry source "${sourcePath}" is not a safe relative path`
+                error: sourceErr.message
               });
             }
             const sourceDirAbs = resolve19(snapshotDirReal, sourcePath);
@@ -78578,7 +78627,7 @@ function createPluginMarketplaceAdapter(deps = {}) {
           } catch (digestErr) {
             try {
               const installedSnapshot = await computeFrozenSnapshot(installPath, {
-                excludeRootEntries: consumer === "codex" || consumer === "kimi" ? [".git"] : []
+                excludeRootEntries: consumerTransportExclusions(consumer)
               });
               manifestDigest = installedSnapshot.digest;
             } catch {
@@ -78744,6 +78793,9 @@ var init_plugin_marketplace = __esm({
     execFile9 = promisify10(execFileCb10);
     NAME4 = "plugin-marketplace";
     __name(transportPayload, "transportPayload");
+    __name(consumerTransportExclusions, "consumerTransportExclusions");
+    __name(extractDeclaredPluginSource, "extractDeclaredPluginSource");
+    __name(resolveInstalledPayloadSubpath, "resolveInstalledPayloadSubpath");
     __name(verifyInstalledMarketplacePayload, "verifyInstalledMarketplacePayload");
     __name(writeEvidenceAtomic, "writeEvidenceAtomic");
     KIMI_REQUIREMENT_FILE = "release-skill-kimi-manual-install.json";

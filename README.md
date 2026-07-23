@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md) · Installation: [English](INSTALL.md) / [简体中文](INSTALL.zh-CN.md)
 
-<!-- release-skill:release-version: 0.1.8 -->
+<!-- release-skill:release-version: 0.1.9 -->
 Release preparation for Claude Code, Codex, and Kimi Code, with human-edited files kept intact.
 
 release-skill helps a maintainer answer three questions: what will be released,
@@ -11,29 +11,41 @@ reviewed artifacts first and publishes those same artifacts later; it does not
 regenerate a README or re-pack the live workspace at the last step.
 
 <!-- release-skill:managed:start id=latest-release -->
-**0.1.8** (2026-07-23)
+**0.1.9** (2026-07-23)
 
-v0.1.8 adds Kimi Code as a first-class plugin host without rewriting the already-published v0.1.7 artifacts. Kimi delivery uses a generated self-contained adapter and a fail-closed, plan-bound manual installation attestation because Kimi Code has no scriptable non-interactive plugin installation interface. The npm package name (`release-skill`), publishing identity (`publisher: mzdbxqh`), public repository (`ifoohoo/release-skill`), and corporate maintainer remain unchanged.
+v0.1.9 fixes a structural marketplace install verification failure: consumer installs that declare a plugin `source` subdirectory (e.g. `./adapters/claude`) now bind the installed payload to the declared subtree of the sealed whole-unit snapshot, and Claude's root `.in_use` marker is exempted as consumer-owned transport metadata. The sealed snapshot digest, release plan schema, and prepare-side freezing are unchanged, so already-frozen plans reconcile without re-approval. The npm package name (`release-skill`), publishing identity (`publisher: mzdbxqh`), public repository (`ifoohoo/release-skill`), and corporate maintainer remain unchanged.
 
-**Changed**
+**Fixed**
 
-- **Kimi Code plugin delivery and verification**: v0.1.8 adds the root
-  `.kimi-plugin/plugin.json`, a generated self-contained `adapters/kimi/` bundle,
-  and public installation guidance. Because Kimi Code exposes no scriptable
-  non-interactive plugin installation interface, production publish emits a
-  version-pinned manual installation requirement and enters `PARTIAL`; an
-  isolated `KIMI_CODE_HOME` installation and a trusted attestation bound
-  independently to the frozen plan digest and payload digest are required before
-  `reconcile` can reach `PUBLISHED` and `verify` can reach `VERIFIED`.
-- **Immutable v0.1.7 history preserved**: the existing v0.1.7 Git tag,
-  GitHub Release, npm version, and public commit remain untouched. The v0.1.8
-  production plan binds the published v0.1.7 commit
-  `fe5897456d4166a2ec60e99405836b122562b80d` as its previous public baseline.
+- **Marketplace payload binding for subdirectory source layouts**: consumer
+  marketplaces may declare a plugin `source` subdirectory such as
+  `./adapters/claude`; the consumer CLI then installs only that subtree while
+  the sealed authority is the whole unit snapshot. Install verification now
+  revalidates the sealed whole-snapshot digest, re-reads the declared source
+  from the marketplace manifest inside the digest-verified snapshot entries,
+  and binds the installed payload to that prefix-stripped subtree. Root
+  layouts and Kimi keep the whole-tree comparison. This resolves the
+  flow-architect v0.4.1 and v0.5.0 PARTIAL marketplace install failures;
+  already-frozen plans reconcile unchanged because the sealed digest, plan
+  schema, and prepare-side freezing are untouched.
+- **Claude `.in_use` transport marker exemption**: the Claude CLI writes an
+  empty `.in_use` marker into the plugin install root; it is now exempted as
+  consumer-owned transport metadata alongside the existing Codex/Kimi `.git`
+  exemption, through a single shared exclusion helper that also backs the
+  observe-time diagnostic fallback. Exemptions remain root-only: nested
+  markers, extra payload, byte tampering, and sealed authority tampering
+  still fail closed.
+- **Regression coverage**: new protocol-level fake-CLI tests cover the
+  subdirectory claude cycle with `.in_use` (including byte-tamper,
+  extra-file, missing-file, `.git`-not-exempt, and nested-marker negatives),
+  fail-closed manifest anomalies (duplicate plugin entry, wrong marketplace
+  name, empty source projection), root-layout claude with `.in_use`, and a
+  codex subdirectory variant.
 <!-- release-skill:managed:end id=latest-release -->
 
 <!-- release-skill:capability:external-write-boundary -->
-> **Current boundary:** v0.1.8 is the current release (v0.1.7 previously held
-> published status before the Kimi Code distribution was added).
+> **Current boundary:** v0.1.9 is the current release (v0.1.8 previously held
+> published status before the marketplace payload binding fix was added).
 > v0.1.1 completed a real production release to GitHub and npm — the first
 > production-verified milestone — followed by
 > exact npm installation and Claude/Codex consumer installation verification
@@ -50,7 +62,7 @@ v0.1.8 adds Kimi Code as a first-class plugin host without rewriting the already
 > publish global preflight.
 
 <!-- release-skill:capability:safe-first-command -->
-> **Production path verified since the v0.1.1 milestone; v0.1.8 is the current
+> **Production path verified since the v0.1.1 milestone; v0.1.9 is the current
 > release.** The npm-installed CLI is the supported user entry. Source checkout
 > is the development/contributor fallback.
 >

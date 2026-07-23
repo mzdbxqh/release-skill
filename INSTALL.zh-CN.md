@@ -2,7 +2,7 @@
 
 [English](INSTALL.md)
 
-<!-- release-skill:release-version: 0.1.8 -->
+<!-- release-skill:release-version: 0.1.9 -->
 ## 前置条件
 
 - Node.js 22.0.0 或更高版本
@@ -62,7 +62,7 @@ release-skill 把 Kimi 安装建模为“版本钉死的手动安装 + 可信观
    它会安装最新 release 或默认分支），确认信任提示后重新加载：
 
    ```
-   /plugins install https://github.com/ifoohoo/release-skill/releases/tag/release-skill-v0.1.8
+   /plugins install https://github.com/ifoohoo/release-skill/releases/tag/release-skill-v0.1.9
    /plugins reload
    ```
 
@@ -76,10 +76,10 @@ release-skill 把 Kimi 安装建模为“版本钉死的手动安装 + 可信观
 {
   "consumer": "kimi",
   "plugin": "release-skill",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "entrySkill": "release-help",
   "repo": "ifoohoo/release-skill",
-  "ref": "release-skill-v0.1.8",
+  "ref": "release-skill-v0.1.9",
   "installPath": "<kimiCodeHome>/plugins/managed/release-skill",
   "planDigest": "<64 位十六进制冻结计划摘要>",
   "payloadDigest": "<64 位十六进制冻结快照载荷摘要>",

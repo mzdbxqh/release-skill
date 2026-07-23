@@ -82,9 +82,10 @@ async function readStableRegularFile(filePath, displayPath) {
  * Compute the canonical snapshot digest.
  *
  * `excludeRootEntries` is reserved for consumer-owned transport metadata
- * that is not part of the published payload (currently Codex's root `.git`
- * checkout metadata). Exclusions only apply to direct children of the root;
- * all payload paths retain the normal fail-closed file checks.
+ * that is not part of the published payload: Codex's root `.git` checkout
+ * metadata and Claude's root `.in_use` in-use plugin marker. Exclusions
+ * only apply to direct children of the root; all payload paths retain the
+ * normal fail-closed file checks.
  */
 export async function computeFrozenSnapshot(snapshotDir, { excludeRootEntries = [] } = {}) {
   const root = await realpath(snapshotDir);

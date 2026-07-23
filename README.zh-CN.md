@@ -2,31 +2,37 @@
 
 [English](README.md) · 安装指南：[中文](INSTALL.zh-CN.md) / [English](INSTALL.md)
 
-<!-- release-skill:release-version: 0.1.8 -->
+<!-- release-skill:release-version: 0.1.9 -->
 面向 Claude Code、Codex 和 Kimi Code 的发布准备工具，完整保留人工维护的文件内容。
 
 release-skill 帮助维护者回答三个问题：准备发布什么、还有哪些检查未通过、最终发布的内容是什么。它先冻结并供人工审阅，再从同一份冻结产物发布，不会在最后一步重新生成 README、重新打包当前工作区或覆盖人工内容。
 
 <!-- release-skill:managed:start id=latest-release -->
-**0.1.8** (2026-07-23)
+**0.1.9** (2026-07-23)
 
-v0.1.8 在不改写已经公开的 v0.1.7 制品的前提下，新增对 Kimi Code 一等插件宿主的支持。由于 Kimi Code 没有可脚本化的非交互插件安装接口，Kimi 分发采用生成的自包含适配器，以及失败关闭、绑定冻结计划的人工安装证明。npm 包名（`release-skill`）、发布身份（`publisher: mzdbxqh`）、公开仓库（`ifoohoo/release-skill`）与公司维护主体均保持不变。
+v0.1.9 修复一个结构性的 marketplace 安装校验失败：声明插件 `source` 子目录（如 `./adapters/claude`）的消费者安装现在能把安装载荷绑定到密封整 unit 快照中声明的子树，Claude 根目录 `.in_use` 标记作为消费者所有的传输元数据获得豁免。密封快照摘要、发布计划 schema 与 prepare 冻结均未改动，已冻结计划无需重新审批即可 reconcile。npm 包名（`release-skill`）、发布身份（`publisher: mzdbxqh`）、公开仓库（`ifoohoo/release-skill`）与公司维护主体保持不变。
 
-**变更**
+**修复**
 
-- **Kimi Code 插件分发与验证**：v0.1.8 新增根
-  `.kimi-plugin/plugin.json`、生成的自包含 `adapters/kimi/` 适配器和公开安装说明。
-  由于 Kimi Code 没有可脚本化的非交互插件安装接口，生产发布会生成版本钉死的人工
-  安装要求并进入 `PARTIAL`；操作者必须在隔离的 `KIMI_CODE_HOME` 中完成安装，并
-  提供分别绑定冻结计划摘要和载荷摘要的可信证明，之后 `reconcile` 才能进入
-  `PUBLISHED`，`verify` 才能进入 `VERIFIED`。
-- **保留不可变的 v0.1.7 历史**：既有 v0.1.7 Git 标签、GitHub Release、npm
-  版本与公开提交均不改写。v0.1.8 生产计划以已公开的 v0.1.7 提交
-  `fe5897456d4166a2ec60e99405836b122562b80d` 作为前序公开基线。
+- **子目录 source 布局的 marketplace 载荷绑定**：消费者清单可以声明
+  `./adapters/claude` 这样的插件 `source` 子目录，此时消费者 CLI 只安装该子树，
+  而密封权威是整个 unit 快照。安装校验现在先重验密封整快照摘要，再从摘要已验证
+  的快照条目内部读取清单声明的 source，并把安装载荷绑定到剥离前缀后的子树；
+  根布局与 Kimi 保持整树比较。这解决了 flow-architect v0.4.1 与 v0.5.0 的
+  marketplace 安装 PARTIAL 失败；密封摘要、计划 schema 与 prepare 冻结均未改动，
+  已冻结计划可以不变地 reconcile 收口。
+- **Claude `.in_use` 传输标记豁免**：Claude CLI 会在插件安装根目录写入空的
+  `.in_use` 标记，现在与既有的 Codex/Kimi `.git` 豁免一样作为消费者所有的传输
+  元数据豁免，并统一为单一共享 helper（observe 诊断回退同样复用）。豁免仅限根
+  直接子项：嵌套标记、多余载荷、字节篡改与密封权威篡改仍然失败关闭。
+- **回归覆盖**：新增协议级 fake-CLI 测试覆盖带 `.in_use` 的子目录 claude
+  完整链路（含字节篡改、多余文件、缺失文件、`.git` 不豁免与嵌套标记负例）、
+  失败关闭的清单异常（重复插件条目、marketplace 名不符、空 source 投影）、
+  带 `.in_use` 的根布局 claude，以及 codex 子目录变体。
 <!-- release-skill:managed:end id=latest-release -->
 
 <!-- release-skill:capability:external-write-boundary -->
-> **当前边界：** v0.1.8 是当前发布版本（v0.1.7 曾处于已发布、待独立验证状态）。
+> **当前边界：** v0.1.9 是当前发布版本（v0.1.8 曾处于已发布、待独立验证状态）。
 > v0.1.1 已完成 GitHub 与 npm 的
 > 真实生产发布，是首次生产验证的历史里程碑，并从冻结 Git ref 完成精确 npm
 > 安装及 Claude/Codex 消费者安装验证；“当前发布版本”与“首次生产验证里程碑”
@@ -39,7 +45,7 @@ v0.1.8 在不改写已经公开的 v0.1.7 制品的前提下，新增对 Kimi Co
 > 远端唯一性检查在 `publish` 全局预检执行。
 
 <!-- release-skill:capability:safe-first-command -->
-> **生产路径自 v0.1.1 里程碑起已完成真实生产验证；v0.1.8 是当前发布版本。**
+> **生产路径自 v0.1.1 里程碑起已完成真实生产验证；v0.1.9 是当前发布版本。**
 > npm 安装的 CLI 是受支持的用户入口；源码 checkout 保留为开发/贡献者路径。
 >
 > **第一条命令：**
